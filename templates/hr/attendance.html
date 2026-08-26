@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Attendance{% endblock %}
+{% block pagetitle %}Attendance{% endblock %}
+
+{% block extra_head %}
+<style>
+    .info-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: 0 2px 10px rgba(20,24,31,0.03); }
+    .panel-header { border-bottom: 1px dashed var(--border); padding-bottom: 14px; margin-bottom: 18px; }
+    .panel-title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1rem; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 8px; }
+    .pill-filter { display: flex; gap: 6px; background: var(--surface-soft); padding: 5px; border-radius: 14px; width: fit-content; flex-wrap: wrap; }
+    .pill-filter a { padding: 7px 16px; border-radius: 10px; font-size: 0.83rem; font-weight: 600; color: var(--text-secondary); text-decoration: none; transition: all 0.15s ease; }
+    .pill-filter a.active { background: var(--surface); color: var(--text-primary); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .form-card { background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px 20px; }
+    .form-card .form-control, .form-card .form-select { background-color: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.85rem; }
+    .sheet-wrap { overflow-x: auto; }
+    .sheet-table { border-collapse: separate; border-spacing: 0; font-size: 0.75rem; width: 100%; min-width: 700px; }
+    .sheet-table th { position: sticky; top: 0; z-index: 2; background: var(--surface); border-bottom: 2px solid var(--border); padding: 6px 4px; font-weight: 700; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-secondary); text-align: center; white-space: nowrap; }
+    .sheet-table th.emp-name { text-align: left; padding-left: 8px; min-width: 140px; left: 0; z-index: 3; }
+    .sheet-table th.weekend { background: var(--surface-soft); }
+    .sheet-table td { padding: 5px 4px; text-align: center; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
+    .sheet-table td.emp-name { text-align: left; padding-left: 8px; font-weight: 600; font-size: 0.8rem; position: sticky; left: 0; background: var(--surface); z-index: 1; border-right: 1px solid var(--border); }
+    .sheet-table td.emp-name .dept-tag { font-weight: 400; font-size: 0.65rem; color: var(--text-secondary); }
+    .sheet-table tr:hover td { background: var(--surface-soft); }
+    .sheet-table tr:hover td.emp-name { background: var(--surface-soft); }
+    .attn-cell { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; cursor: pointer; transition: transform 0.1s ease, box-shadow 0.1s ease; user-select: none; }
+    .attn-cell.toggle-cell:hover { transform: scale(1.2); box-shadow: 0 0 0 2px var(--border); }
+    .attn-cell.present { background: rgba(30,158,99,0.15); color: #1e9e63; }
+    .attn-cell.absent { background: rgba(214,69,69,0.15); color: #d64545; }
+    .attn-cell.half_day { background: rgba(217,154,43,0.15); color: #d99a2b; }
+    .attn-cell.leave { background: rgba(168,169,173,0.2); color: #6b6c70; }
+    .attn-cell.weekend { background: rgba(20,24,31,0.03); color: var(--text-muted); cursor: default; }
+    .attn-cell.weekend.present { background: rgba(30,158,99,0.08); color: #1e9e63; opacity: 0.7; }
+    .attn-cell.weekend.absent { background: rgba(214,69,69,0.08); color: #d64545; opacity: 0.7; }
+    .attn-cell.weekend.half_day { background: rgba(217,154,43,0.08); color: #d99a2b; opacity: 0.7; }
+    .attn-cell.weekend.leave { background: rgba(168,169,173,0.1); color: #6b6c70; opacity: 0.7; }
+    .attn-cell.no-record { background: transparent; color: var(--text-muted); opacity: 0.4; }
+    .attn-cell.future { cursor: default; opacity: 0.2; }
+    .attn-cell.saving { opacity: 0.5; pointer-events: none; }
+    .sum-cell { font-weight: 700; font-size: 0.75rem; }
+    .sum-cell.good { color: var(--success); }
+    .sum-cell.warn { color: var(--warning); }
+    .sum-cell.bad { color: var(--danger); }
+    .bulk-mark { background: var(--surface-soft); border: 1px dashed var(--border); border-radius: var(--radius-md); padding: 12px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set month_name = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][month-1] %}
+
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+        <div class="pill-filter">
+            {% for m in range(1, 13) %}
+            <a href="?month={{ m }}&year={{ year }}" class="{% if m == month %}active{% endif %}">{{ ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1] }}</a>
+            {% endfor %}
+        </div>
+        <select class="form-select form-select-sm" style="width: auto;" onchange="window.location='?month={{ month }}&year='+this.value">
+            {% for y in range(2023, 2030) %}
+            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <span class="text-muted small">{{ month_name }} {{ year }} — {{ days_in_month }} days</span>
+        <a href="{{ url_for('hr.qr_setup') }}" class="btn btn-outline-secondary btn-sm rounded-pill" style="font-size:0.72rem;"><i class="bi bi-qr-code"></i> QR</a>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-12">
+        <div class="bulk-mark mb-3">
+            <i class="bi bi-calendar-check text-muted"></i>
+            <span class="fw-semibold small">Quick Mark</span>
+            <form method="POST" action="{{ url_for('hr.mark_attendance') }}" class="d-flex align-items-center gap-2 flex-wrap" style="flex:1;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="date" name="date" class="form-control form-control-sm" style="width:150px;" value="{{ date.today() }}">
+                <button type="button" class="btn btn-sm btn-outline-success rounded-pill" onclick="document.querySelectorAll('.att-status').forEach(s => s.value='present');">All Present</button>
+                <button type="submit" class="btn btn-sm btn-primary rounded-pill">Save</button>
+            </form>
+        </div>
+        <div class="info-panel" style="padding:16px;">
+            <div class="sheet-wrap">
+                <table class="sheet-table">
+                    <thead>
+                        <tr>
+                            <th class="emp-name">Employee</th>
+                            {% for d in range(1, days_in_month + 1) %}
+                            {% set dt = date(year, month, d) %}
+                            <th class="{% if dt.weekday() >= 5 %}weekend{% endif %}" title="{{ dt }}">
+                                {{ d }}<br><span style="font-weight:400;">{{ ['Mo','Tu','We','Th','Fr','Sa','Su'][dt.weekday()] }}</span>
+                            </th>
+                            {% endfor %}
+                            <th title="Present">P</th>
+                            <th title="Absent">A</th>
+                            <th title="Half Day">H</th>
+                            <th title="Leave">L</th>
+                            <th title="Attendance %">%</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for emp in employees %}
+                        {% set ns = namespace(p=0, a=0, h=0, l=0) %}
+                        <tr>
+                            <td class="emp-name">{{ emp.name }}<br><span class="dept-tag">{{ emp.designation or emp.department or '—' }}</span></td>
+                            {% for d in range(1, days_in_month + 1) %}
+                            {% set dt = date(year, month, d) %}
+                            {% set key = dt.isoformat() %}
+                            {% set status = record_map.get((emp.id, key)) %}
+                            {% if dt > date.today() %}
+                            <td><span class="attn-cell future">—</span></td>
+                            {% elif key in month_holidays %}
+                            <td><span class="attn-cell weekend" title="{{ month_holiday_names.get(key, 'Holiday') }}">H</span></td>
+                            {% elif status %}
+                            {% if status == 'present' %}{% set ns.p = ns.p + 1 %}{% elif status == 'absent' %}{% set ns.a = ns.a + 1 %}{% elif status == 'half_day' %}{% set ns.h = ns.h + 1 %}{% elif status == 'leave' %}{% set ns.l = ns.l + 1 %}{% endif %}
+                            {% if dt.weekday() >= 5 %}
+                            <td><span class="attn-cell weekend {{ status }}">{{ {'present':'✓','absent':'✗','half_day':'H','leave':'L'}[status] }}</span></td>
+                            {% else %}
+                            <td><span class="attn-cell {{ status }} toggle-cell" data-eid="{{ emp.id }}" data-dt="{{ key }}" data-status="{{ status }}">{{ {'present':'✓','absent':'✗','half_day':'H','leave':'L'}[status] }}</span></td>
+                            {% endif %}
+                            {% elif dt.weekday() >= 5 %}
+                            <td><span class="attn-cell weekend">W</span></td>
+                            {% else %}
+                            <td><span class="attn-cell no-record toggle-cell" data-eid="{{ emp.id }}" data-dt="{{ key }}" data-status="">—</span></td>
+                            {% endif %}
+                            {% endfor %}
+                            {% set total = ns.p + ns.a + ns.h + ns.l %}
+                            {% set pct = (ns.p / total * 100) | round if total > 0 else 0 %}
+                            <td class="sum-cell {% if ns.p > 0 %}good{% endif %}">{{ ns.p }}</td>
+                            <td class="sum-cell {% if ns.a > 0 %}bad{% endif %}">{{ ns.a }}</td>
+                            <td class="sum-cell {% if ns.h > 0 %}warn{% endif %}">{{ ns.h }}</td>
+                            <td class="sum-cell">{{ ns.l }}</td>
+                            <td class="sum-cell {% if pct >= 80 %}good{% elif pct >= 60 %}warn{% else %}bad{% endif %}">{{ pct }}%</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="{{ days_in_month + 7 }}" class="text-muted text-center py-4">No employees. <a href="{{ url_for('hr.employee_list') }}">Add employees first.</a></td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.querySelectorAll('.toggle-cell').forEach(function(cell) {
+    cell.addEventListener('click', function() {
+        var eid = this.getAttribute('data-eid');
+        var dt = this.getAttribute('data-dt');
+        var cur = this.getAttribute('data-status');
+        var cycle = ['', 'present', 'absent', 'half_day', 'leave'];
+        var labels = {'present': '✓', 'absent': '✗', 'half_day': 'H', 'leave': 'L'};
+        var classes = {'present': 'present', 'absent': 'absent', 'half_day': 'half_day', 'leave': 'leave'};
+        var idx = cycle.indexOf(cur);
+        var next = cycle[(idx + 1) % cycle.length];
+        if (!next) { next = cycle[1]; }
+        this.classList.add('saving');
+        fetch('{{ url_for("hr.toggle_attendance") }}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
+            body: JSON.stringify({employee_id: parseInt(eid), date: dt, status: next})
+        }).then(function(r) { return r.json(); }).then(function(data) {
+            if (data.ok) {
+                this.setAttribute('data-status', data.status);
+                this.className = 'attn-cell toggle-cell ' + classes[data.status];
+                this.textContent = labels[data.status];
+                updateSummary();
+            } else {
+                alert(data.error || 'Failed to update');
+            }
+            this.classList.remove('saving');
+        }.bind(this)).catch(function() {
+            this.classList.remove('saving');
+            alert('Network error');
+        }.bind(this));
+    });
+});
+
+function updateSummary() {
+    document.querySelectorAll('tbody tr').forEach(function(row) {
+        var p = 0, a = 0, h = 0, l = 0;
+        row.querySelectorAll('.toggle-cell').forEach(function(cell) {
+            var s = cell.getAttribute('data-status');
+            if (s === 'present') p++;
+            else if (s === 'absent') a++;
+            else if (s === 'half_day') h++;
+            else if (s === 'leave') l++;
+        });
+        var total = p + a + h + l;
+        var pct = total > 0 ? Math.round(p / total * 100) : 0;
+        var cells = row.querySelectorAll('.sum-cell');
+        if (cells.length >= 5) {
+            cells[0].textContent = p;
+            cells[0].className = 'sum-cell' + (p > 0 ? ' good' : '');
+            cells[1].textContent = a;
+            cells[1].className = 'sum-cell' + (a > 0 ? ' bad' : '');
+            cells[2].textContent = h;
+            cells[2].className = 'sum-cell' + (h > 0 ? ' warn' : '');
+            cells[3].textContent = l;
+            cells[3].className = 'sum-cell';
+            cells[4].textContent = pct + '%';
+            cells[4].className = 'sum-cell ' + (pct >= 80 ? 'good' : pct >= 60 ? 'warn' : 'bad');
+        }
+    });
+}
+</script>
+{% endblock %}

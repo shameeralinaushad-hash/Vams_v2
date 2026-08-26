@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Import Historical Record{% endblock %}
+{% block pagetitle %}Import Historical Record{% endblock %}
+{% block content %}
+
+<!-- Success Message Area -->
+{% if message %}
+<div class="alert alert-success mb-4" role="alert">
+    {{ message }}
+</div>
+{% endif %}
+
+<div class="alert alert-info">Use this to bring an old order into the system for record-keeping and search — attach whichever original PDFs you have.</div>
+
+<form method="POST" enctype="multipart/form-data">
+    <div class="row g-3 mb-3">
+        <div class="col-md-4">
+            <label class="form-label">Client</label>
+            <select name="client_id" class="form-select" required>
+                {% for c in clients %}
+                <option value="{{ c.id }}">{{ c.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Status</label>
+            <select name="status" class="form-select">
+                <option value="PO Received">PO Received</option>
+                <option value="Not Received">Not Received</option>
+                <option value="Pending">Pending</option>
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Inquiry / Order Date</label>
+            <input type="date" name="inquiry_date" class="form-control">
+        </div>
+    </div>
+
+    <hr>
+    <h6>Quotation (optional)</h6>
+    <div class="row g-2 mb-3">
+        <div class="col-md-4"><input type="text" name="quotation_number" class="form-control" placeholder="Quotation Number"></div>
+        <div class="col-md-8"><input type="file" name="quotation_file" class="form-control" accept="application/pdf"></div>
+    </div>
+
+    <h6>Purchase Order (optional)</h6>
+    <div class="row g-2 mb-3">
+        <div class="col-md-4"><input type="text" name="po_number" class="form-control" placeholder="PO Number"></div>
+        <div class="col-md-8"><input type="file" name="po_file" class="form-control" accept="application/pdf"></div>
+    </div>
+
+    <h6>Invoice (optional)</h6>
+    <div class="row g-2 mb-3">
+        <div class="col-md-3"><input type="text" name="invoice_number" class="form-control" placeholder="Invoice Number"></div>
+        <div class="col-md-3"><input type="number" step="0.01" name="invoice_total" class="form-control" placeholder="Invoice Total"></div>
+        <div class="col-md-6"><input type="file" name="invoice_file" class="form-control" accept="application/pdf"></div>
+    </div>
+
+    <h6>Delivery Challan (optional)</h6>
+    <div class="row g-2 mb-3">
+        <div class="col-md-4"><input type="text" name="challan_number" class="form-control" placeholder="Challan Number"></div>
+        <div class="col-md-8"><input type="file" name="challan_file" class="form-control" accept="application/pdf"></div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Notes</label>
+        <textarea name="notes" class="form-control" placeholder="Any context worth keeping..."></textarea>
+    </div>
+
+    <button type="submit" class="btn btn-success">Import Record</button>
+</form>
+{% endblock %}

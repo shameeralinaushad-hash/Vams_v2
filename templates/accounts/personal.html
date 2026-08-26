@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% block title %}Personal Expenses{% endblock %}
+{% block pagetitle %}Personal Expenses{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/accounts.css') }}">
+<style>
+    .info-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: 0 2px 10px rgba(20,24,31,0.03); }
+    .panel-header { border-bottom: 1px dashed var(--border); padding-bottom: 14px; margin-bottom: 18px; }
+    .panel-title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1rem; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 8px; }
+    .table-custom { margin: 0; }
+    .table-custom th { border-bottom: 2px solid var(--border); color: var(--text-secondary); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 10px; }
+    .table-custom td { padding: 14px 10px; vertical-align: middle; font-size: 0.85rem; color: var(--text-primary); border-bottom: 1px solid var(--border); }
+    .table-custom tr:last-child td { border-bottom: none; }
+    .progress-thin { height: 8px; border-radius: 999px; background: var(--border); overflow: hidden; }
+    .progress-thin .progress-bar { border-radius: 999px; }
+    .badge-category { background-color: var(--surface-soft); color: var(--text-primary); border: 1px solid var(--border); font-size: 0.75rem; font-weight: 600; padding: 4px 10px; }
+    .form-card { background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 20px; }
+    .form-card .form-control, .form-card .form-select { background-color: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.85rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div class="pill-filter">
+        <a href="{{ url_for('accounts.dashboard') }}">Dashboard</a>
+        <a href="{{ url_for('accounts.personal_expenses') }}" class="active">Personal</a>
+        <a href="{{ url_for('accounts.general_expenses') }}">General</a>
+        <a href="{{ url_for('accounts.company_accounts') }}">Companies</a>
+    </div>
+</div>
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div class="pill-filter">
+        <a href="?period=this_month" class="{% if period == 'this_month' %}active{% endif %}">This Month</a>
+        <a href="?period=last_month" class="{% if period == 'last_month' %}active{% endif %}">Last Month</a>
+        <a href="?period=quarter" class="{% if period == 'quarter' %}active{% endif %}">Quarter</a>
+        <a href="?period=year" class="{% if period == 'year' %}active{% endif %}">Year</a>
+    </div>
+    <div class="pill-filter">
+        <a href="{{ url_for('payments.list_payments') }}"><i class="bi bi-credit-card-2-front me-1"></i>Receivables & Payables</a>
+        <a href="{{ url_for('accounts.receipt_ocr') }}"><i class="bi bi-camera me-1"></i>OCR</a>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-xl-3 col-lg-6 col-md-6">
+        <div class="kpi-card">
+            <div class="kpi-label">This Month</div>
+            <div class="kpi-number" style="color: var(--danger);">{{ this_month | currency }}</div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-lg-6 col-md-6">
+        <div class="kpi-card">
+            <div class="kpi-label">Last Month</div>
+            <div class="kpi-number">{{ last_month | currency }}</div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-lg-6 col-md-6">
+        <div class="kpi-card">
+            <div class="kpi-label">YTD Total</div>
+            <div class="kpi-number">{{ ytd | currency }}</div>
+    </div>
+</div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-xl-12 col-lg-12">
+        <div class="chart-panel">
+            <h6 style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 0.9rem;">Category Breakdown</h6>
+            <div style="position: relative; height: 180px; width: 100%;"><canvas id="categoryChart"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<div class="form-card mb-4">
+    <h6 class="fw-bold mb-3 d-flex align-items-center gap-2" style="font-family: 'Space Grotesk', sans-serif; font-size: 0.95rem;">
+        <i class="bi bi-plus-circle"></i> Add Personal Expense
+    </h6>
+    <form method="POST" action="{{ url_for('accounts.personal_add_expense') }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+            <div class="col-lg-2 col-md-6">
+                <select name="category_id" class="form-select" required>
+                    <option value="" disabled selected>Category</option>
+                    {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-2 col-md-6"><input type="number" step="0.01" name="amount" class="form-control" placeholder="Amount" required></div>
+            <div class="col-lg-2 col-md-6"><input type="date" name="expense_date" class="form-control"></div>
+            <div class="col-lg-2 col-md-6"><input type="text" name="payee" class="form-control" placeholder="Payee/Vendor"></div>
+            <div class="col-lg-2 col-md-6"><input type="text" name="notes" class="form-control" placeholder="Notes"></div>
+            <div class="col-lg-1 col-md-6"><input type="file" name="receipt" class="form-control form-control-sm" accept="image/*,.pdf" style="font-size:0.75rem;"></div>
+            <div class="col-lg-1 col-md-12"><button type="submit" class="btn btn-primary w-100 rounded-pill">Add</button></div>
+        </div>
+    </form>
+</div>
+
+<div class="info-panel">
+    <div class="panel-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <h6 class="panel-title mb-0"><i class="bi bi-receipt"></i> Expense History</h6>
+            <div id="bulkToolbar" class="d-none gap-1 ms-2">
+                <button class="btn btn-sm btn-outline-danger rounded-pill" onclick="bulkDelete()"><i class="bi bi-trash"></i> Delete</button>
+                <button class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="modal" data-bs-target="#bulkCatModal"><i class="bi bi-tag"></i> Re-categorize</button>
+            </div>
+        </div>
+        <form method="GET" class="d-flex gap-2 align-items-center">
+            <input type="text" name="search" class="form-control form-control-sm" placeholder="Search..." value="{{ search }}" style="width: 160px;" id="searchInput" oninput="filterTable()">
+            <button type="submit" class="btn btn-sm btn-outline-secondary rounded-pill">Filter</button>
+        </form>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-custom align-middle">
+            <thead>
+                <tr>
+                    <th style="width:32px"><input type="checkbox" onchange="toggleAll(this)"></th>
+                    <th>Date</th><th>Category</th><th>Payee</th><th>Notes</th><th>Amount</th><th>Receipt</th><th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in expenses %}
+                <tr>
+                    <td><input type="checkbox" class="row-checkbox" value="{{ e.id }}" onchange="updateBulkToolbar()"></td>
+                    <td class="text-secondary small">{{ e.expense_date }}</td>
+                    <td><span class="badge badge-category rounded-pill">{{ e.category_ref.name if e.category_ref else e.category }}</span></td>
+                    <td class="text-muted small">{{ e.payee or "—" }}</td>
+                    <td class="text-muted small">{{ e.notes or "—" }}</td>
+                    <td class="fw-bold">{{ e.amount | currency }}</td>
+                    <td>{% if e.receipt_filename %}<a href="{{ url_for('static', filename='receipts/' + e.receipt_filename) }}" target="_blank" class="btn btn-sm btn-outline-secondary rounded-pill" style="font-size:0.6rem;"><i class="bi bi-paperclip"></i></a>{% else %}—{% endif %}</td>
+                    <td class="text-end">
+                        <button type="button" class="btn btn-sm btn-outline-secondary px-3 rounded-pill" onclick="openEditExpense('personal', {{ e.id }}, {{ e.category_id or 'null' }}, {{ e.amount }}, '{{ e.payee or '' }}', '', '{{ e.notes or '' }}', '{{ e.expense_date }}')">Edit</button>
+                        <form method="POST" action="{{ url_for('accounts.personal_delete_expense', expense_id=e.id) }}" onsubmit="return confirm('Delete this expense?')" class="d-inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger px-3 rounded-pill">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" class="text-muted text-center py-4">No personal expenses yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if pages > 1 %}
+    <div class="d-flex justify-content-center gap-2 mt-3">
+        {% for p in range(1, pages + 1) %}
+        <a href="?page={{ p }}&period={{ period }}{% if selected_category %}&category_id={{ selected_category }}{% endif %}{% if search %}&search={{ search }}{% endif %}" class="btn btn-sm {% if p == page %}btn-dark{% else %}btn-outline-secondary{% endif %} rounded-pill">{{ p }}</a>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+{% include "accounts/_edit_expense_modal.html" %}
+
+<!-- Bulk Recategorize Modal -->
+<div class="modal fade" id="bulkCatModal" tabindex="-1">
+    <div class="modal-dialog modal-sm"><div class="modal-content" style="border-radius: var(--radius-lg);">
+        <div class="modal-header border-0"><h6 class="modal-title fw-bold">Re-categorize Selected</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+            <select id="bulkCatSelect" class="form-select">
+                <option value="">Select category…</option>
+                {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="modal-footer border-0"><button type="button" class="btn btn-dark rounded-pill px-4" onclick="bulkRecategorize()">Apply</button></div>
+    </div></div>
+</div>
+
+<script>
+const COLORS = ['#14181f', '#d64545', '#1e9e63', '#d99a2b', '#8b5cf6', '#06b6d4', '#ec4899', '#0e6b6c', '#a855f7', '#5a6472'];
+const catLabels = {{ cat_totals | map(attribute='name') | list | tojson }};
+const catValues = {{ cat_totals | map(attribute='total') | list | tojson }};
+
+function fmt(v) {
+    if (v >= 1000000) return (v / 1000000).toFixed(2) + 'M';
+    return v.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+}
+
+new Chart(document.getElementById('categoryChart'), {
+    type: 'doughnut',
+    data: {
+        labels: catLabels.length ? catLabels : ['No Data'],
+        datasets: [{ data: catLabels.length ? catValues : [1], backgroundColor: catLabels.length ? COLORS.slice(0, catLabels.length) : ['#14181f'], borderWidth: 2, borderColor: 'var(--surface)' }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } }, tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${fmt(ctx.raw)}` } } },
+        cutout: '70%'
+    }
+});
+
+function filterTable() {
+    var q = document.getElementById('searchInput').value.toLowerCase();
+    document.querySelectorAll('.table-custom tbody tr').forEach(function(r) {
+        r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+}
+
+function getSelectedIds() {
+    return Array.from(document.querySelectorAll('.row-checkbox:checked')).map(function(cb) { return cb.value; });
+}
+
+function updateBulkToolbar() {
+    var ids = getSelectedIds();
+    var toolbar = document.getElementById('bulkToolbar');
+    if (ids.length > 0) {
+        toolbar.classList.remove('d-none');
+        toolbar.classList.add('d-inline-flex');
+    } else {
+        toolbar.classList.add('d-none');
+        toolbar.classList.remove('d-inline-flex');
+    }
+}
+
+function toggleAll(master) {
+    document.querySelectorAll('.row-checkbox').forEach(function(cb) { cb.checked = master.checked; });
+    updateBulkToolbar();
+}
+
+function bulkDelete() {
+    var ids = getSelectedIds();
+    if (!ids.length) return;
+    if (!confirm('Delete ' + ids.length + ' selected expense(s)?')) return;
+    var form = new FormData();
+    ids.forEach(function(id) { form.append('ids[]', id); });
+    form.append('scope', 'personal');
+    form.append('csrf_token', '{{ csrf_token() }}');
+    fetch('{{ url_for("accounts.bulk_delete_expenses") }}', {method:'POST', body:form})
+    .then(function(r) { return r.json(); })
+    .then(function(d) { if (d.ok) location.reload(); });
+}
+
+function bulkRecategorize() {
+    var ids = getSelectedIds();
+    var catId = document.getElementById('bulkCatSelect').value;
+    if (!ids.length || !catId) return;
+    var form = new FormData();
+    ids.forEach(function(id) { form.append('ids[]', id); });
+    form.append('scope', 'personal');
+    form.append('category_id', catId);
+    form.append('csrf_token', '{{ csrf_token() }}');
+    fetch('{{ url_for("accounts.bulk_recategorize_expenses") }}', {method:'POST', body:form})
+    .then(function(r) { return r.json(); })
+    .then(function(d) { if (d.ok) { bootstrap.Modal.getInstance(document.getElementById('bulkCatModal')).hide(); location.reload(); } });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}Reports & Analytics{% endblock %}
+
+{% block content %}
+<style>
+    /* Professional Dashboard Styling */
+    .card { border-radius: 16px !important; transition: box-shadow 0.3s ease; }
+    .card:hover { box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.08) !important; }
+
+    /* Playful Animations */
+    .client-rank-item { transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); cursor: default; }
+    .client-rank-item:hover { transform: translateY(-8px) scale(1.05); }
+
+    /* Minimalist Ranking Circles */
+    .rank-indicator {
+        font-weight: 800;
+        font-size: 0.9rem;
+        background: #f8f9fa;
+        border: 2px solid #e9ecef;
+        color: #6c757d;
+    }
+    .rank-indicator:hover { border-color: #0d6efd; color: #0d6efd; }
+</style>
+
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold text-dark">Reports and Analytics</h2>
+    </div>
+
+    <!-- Row 1: Key Metrics -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 h-100 p-4">
+                <div class="text-uppercase text-muted small fw-bold mb-2">Total Revenue</div>
+                <h2 class="fw-bold mb-0 text-primary">{{ analytics.revenue }}</h2>
+            </div>
+        </div>
+        <div class="col-md-5">
+            <div class="card shadow-sm border-0 h-100 p-4">
+                <div class="text-uppercase text-muted small fw-bold mb-3">Revenue Trend</div>
+                <canvas id="trendChart" style="max-height: 120px;"></canvas>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 h-100 p-4">
+                <div class="text-uppercase text-muted small fw-bold mb-3">Revenue Breakdown</div>
+                <canvas id="allocationChart" style="max-height: 120px;"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Row 2: Executive Insights (Uniform Sizes) -->
+    <div class="row g-4 mb-4">
+        <!-- Margin -->
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 h-100 p-4 d-flex flex-column justify-content-center align-items-center">
+                <div class="text-uppercase text-muted small fw-bold mb-2">Profit Margin</div>
+                <h3 class="fw-bold text-dark mb-0">{{ "%.1f"|format(analytics.margin) }}%</h3>
+            </div>
+        </div>
+        <!-- Fulfillment -->
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 h-100 p-4 d-flex flex-column justify-content-center align-items-center">
+                <div class="text-uppercase text-muted small fw-bold mb-2">Avg. Fulfillment</div>
+                <h3 class="fw-bold text-dark mb-0">{{ analytics.fulfillment }} <span class="h6 text-muted fw-normal">days</span></h3>
+            </div>
+        </div>
+        <!-- Top Clients -->
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 h-100 p-4">
+                <div class="text-uppercase text-muted small fw-bold mb-3">Top 3 Clients</div>
+                <div class="d-flex justify-content-between align-items-start px-2">
+                    {% for client in top_clients %}
+                    <div class="text-center client-rank-item">
+                        <div class="rank-indicator rounded-circle d-flex align-items-center justify-content-center mx-auto mb-2" style="width: 35px; height: 35px;">
+                            {{ loop.index }}
+                        </div>
+                        <div class="small fw-bold text-truncate" style="max-width: 80px;">{{ client.name }}</div>
+                        <div class="text-success small fw-bold mt-1">{{ client.formatted_total }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card shadow-sm border-0 mb-4 p-3 bg-light">
+        <form method="GET" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small fw-bold text-secondary">Client Filter</label>
+                <select name="client_id" class="form-select border-0 shadow-none">
+                    <option value="">All Clients</option>
+                    {% for c in clients %}
+                    <option value="{{ c.id }}" {% if filters.client_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-bold text-secondary">From Date</label>
+                <input type="date" name="date_from" class="form-control border-0 shadow-none" value="{{ filters.date_from }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small fw-bold text-secondary">To Date</label>
+                <input type="date" name="date_to" class="form-control border-0 shadow-none" value="{{ filters.date_to }}">
+            </div>
+            <div class="col-md-2">
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('reports.list_reports') }}" class="btn btn-light border-0 w-50">Clear</a>
+                    <button type="submit" class="btn btn-primary w-50 fw-bold">Update</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Table -->
+    <div class="card p-0 shadow-sm border-0 overflow-hidden">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4 text-secondary small text-uppercase">Client</th>
+                        <th class="text-secondary small text-uppercase">Order</th>
+                        <th class="text-secondary small text-uppercase">Date</th>
+                        <th class="text-secondary small text-uppercase">Revenue</th>
+                        <th class="text-end pe-4 text-secondary small text-uppercase">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for inv in invoices %}
+                    <tr>
+                        <td class="ps-4 fw-medium">{{ inv.order.client.name }}</td>
+                        <td>{{ inv.order.title or inv.order.order_number }}</td>
+                        <td>{{ inv.invoice_date }}</td>
+                        <td>{{ "{:,.2f}".format(inv.net_revenue()) }}</td>
+                        <td class="text-end pe-4">
+                            <a href="{{ url_for('orders.view_order', order_id=inv.order.id) }}" class="btn btn-sm btn-outline-secondary border-0 px-3">View Order</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center py-5 text-muted">No invoices found matching these filters.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <!-- Pagination -->
+        {% if pagination.total_pages > 1 %}
+        <div class="d-flex justify-content-between align-items-center px-4 py-3 border-top bg-light">
+            <small class="text-muted">Showing page {{ pagination.page }} of {{ pagination.total_pages }} ({{ pagination.total }} invoices)</small>
+            <nav>
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item {% if pagination.page <= 1 %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('reports.list_reports', page=pagination.page-1, client_id=filters.client_id, date_from=filters.date_from, date_to=filters.date_to) }}">Previous</a>
+                    </li>
+                    {% for p in range(1, pagination.total_pages + 1) %}
+                    <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                        <a class="page-link" href="{{ url_for('reports.list_reports', page=p, client_id=filters.client_id, date_from=filters.date_from, date_to=filters.date_to) }}">{{ p }}</a>
+                    </li>
+                    {% endfor %}
+                    <li class="page-item {% if pagination.page >= pagination.total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('reports.list_reports', page=pagination.page+1, client_id=filters.client_id, date_from=filters.date_from, date_to=filters.date_to) }}">Next</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const chartData = {{ charts_data | safe }};
+
+    // Trend Chart
+    const trendCtx = document.getElementById('trendChart').getContext('2d');
+    new Chart(trendCtx, {
+        type: 'line',
+        data: {
+            labels: chartData.trend_labels,
+            datasets: [{ label: 'Revenue', data: chartData.trend, borderColor: '#0d6efd', tension: 0.4, fill: true, backgroundColor: 'rgba(13, 110, 253, 0.05)' }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { display: false } } }
+    });
+
+    // Allocation Chart
+    const allocCtx = document.getElementById('allocationChart').getContext('2d');
+    new Chart(allocCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Profit', 'Expenses'],
+            datasets: [{ data: chartData.allocation, backgroundColor: ['#198754', '#dc3545'], borderWidth: 0 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 12 } } } }
+    });
+</script>
+{% endblock %}

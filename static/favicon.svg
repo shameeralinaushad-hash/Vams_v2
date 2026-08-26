@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Outer Hexagon -->
+  <polygon points="50,5 90,27.5 90,72.5 50,95 10,72.5 10,27.5" fill="#2c2e33"/>
+  <!-- Inner Hexagon -->
+  <polygon points="50,11 84,30 84,70 50,89 16,70 16,30" fill="#1e2024"/>
+  <!-- V Letter -->
+  <text x="50" y="66" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="46" fill="#ffffff" text-anchor="middle">V</text>
+</svg>

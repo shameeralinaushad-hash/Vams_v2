@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Possible Duplicate Items{% endblock %}
+{% block pagetitle %}Possible Duplicate Catalog Items{% endblock %}
+{% block content %}
+<p class="text-muted">These item pairs look similar and might be unintentional duplicates. Review and consolidate manually if needed.</p>
+
+{% if duplicate_groups %}
+<table class="table table-bordered bg-white">
+<thead><tr><th>Item A</th><th>Item B</th><th>Similarity</th></tr></thead>
+<tbody>
+{% for g in duplicate_groups %}
+<tr>
+    <td>{{ g.a.description }}</td>
+    <td>{{ g.b.description }}</td>
+    <td><span class="badge bg-warning text-dark">{{ g.score }}%</span></td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% else %}
+<p class="text-muted">No likely duplicates found.</p>
+{% endif %}
+{% endblock %}

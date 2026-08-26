@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Attendance{% endblock %}
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-5 text-center">
+        {% if already_marked %}
+        <div class="mb-3" style="font-size:3rem;">📌</div>
+        <h4 class="fw-bold">Already Marked</h4>
+        <p class="text-muted">You were already marked as <strong>{{ status }}</strong> today.</p>
+        {% else %}
+        <div class="mb-3" style="font-size:3rem;">✅</div>
+        <h4 class="fw-bold">Attendance Recorded</h4>
+        <p class="text-muted">You're marked as <strong>present</strong> for today.</p>
+        {% endif %}
+        <div class="small text-muted mt-2">Employee: <strong>{{ emp.name }}</strong></div>
+        <a href="{{ url_for('home') }}" class="btn btn-outline-secondary rounded-pill mt-3">Back to Dashboard</a>
+    </div>
+</div>
+{% endblock %}

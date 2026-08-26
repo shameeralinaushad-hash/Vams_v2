@@ -1,0 +1,1314 @@
+{% extends "base.html" %}
+{% block title %}Team Tasks{% endblock %}
+{% block pagetitle %}Team Tasks{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<style>
+    :root { --panel-width: 480px; }
+    .summary-strip { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    .summary-strip .chip { display: flex; align-items: center; gap: 5px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 4px 14px; font-size: 0.78rem; }
+    .summary-strip .chip .num { font-weight: 700; }
+    .summary-strip .chip.overdue { background: rgba(214,69,69,0.06); border-color: rgba(214,69,69,0.2); color: var(--danger); }
+    .summary-strip .chip.done { background: rgba(30,158,99,0.06); border-color: rgba(30,158,99,0.2); color: var(--success); }
+    .summary-strip .chip.today { background: rgba(217,154,43,0.06); border-color: rgba(217,154,43,0.2); color: var(--accent-dark); }
+    .filter-bar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    .filter-chip { display: inline-flex; align-items: center; gap: 4px; padding: 5px 14px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); transition: all 0.12s ease; text-decoration: none; }
+    .filter-chip:hover { border-color: var(--text-primary); color: var(--text-primary); }
+    .filter-chip.active { background: var(--text-primary); color: var(--surface); border-color: var(--text-primary); }
+    .filter-chip .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+    .view-toggle { display: flex; gap: 4px; background: var(--surface-soft); padding: 3px; border-radius: 10px; }
+    .view-toggle a { padding: 5px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); text-decoration: none; transition: all 0.12s ease; }
+    .view-toggle a.active { background: var(--surface); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+    .kanban { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 20px; min-height: 400px; }
+    
+    /* Refined Kanban Columns */
+    .kanban-col { flex: 1; min-width: 260px; background: rgba(20, 24, 31, 0.02); border: 1px dashed var(--border); border-radius: var(--radius-lg); padding: 12px; display: flex; flex-direction: column; }
+    .sortable-list { flex: 1; }
+    .kanban-col h6 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 10px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+    .kanban-col h6 .count { background: var(--surface); border-radius: 999px; padding: 0 9px; font-size: 0.7rem; transition: background 0.2s; }
+    .kanban-col h6 .count.warn { background: rgba(217,154,43,0.2); color: var(--accent-dark); }
+    
+    /* Upgraded Task Cards */
+    .task-card { position: relative; background: #ffffff; border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); transition: transform 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out), border-color 0.2s ease, opacity 0.2s ease; cursor: pointer; display: flex; flex-direction: column; overflow: hidden; }
+    .task-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.08); transform: translateY(-3px); border-color: var(--text-primary); }
+    .task-card .edge { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+    .task-card .edge.high { background: #d64545; }
+    .task-card .edge.medium { background: #d99a2b; }
+    .task-card .edge.low { background: #aaa; }
+    .task-card .trow { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .task-card .trow .avatar-init { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; color: #fff; flex-shrink: 0; margin-top: 1px; }
+    .task-card .ttitle { font-size: 0.95rem; font-weight: 700; color: var(--text-primary); line-height: 1.3; margin-bottom: 6px; flex: 1; }
+    .task-card .tdesc { font-size: 0.78rem; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 8px; color: var(--text-secondary); }
+    
+    /* Comprehensive Card Meta Data */
+    .task-card .tmeta { display: flex; align-items: center; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(0,0,0,0.05); flex-wrap: wrap; width: 100%; }
+    .task-card .tmeta .due-chip { font-size: 0.65rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+    .task-card .tmeta .due-chip.neutral { background: var(--surface-soft); color: var(--text-secondary); }
+    .task-card .tmeta .due-chip.amber { background: rgba(217,154,43,0.12); color: var(--accent-dark); }
+    .task-card .tmeta .due-chip.red { background: rgba(214,69,69,0.12); color: var(--danger); }
+    .task-card .tmeta .comment-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 0.65rem; color: var(--text-secondary); }
+    
+    /* Progress Bars */
+    .subtask-progress { flex: 1; min-width: 80px; margin-left: 8px; }
+    .t-progress-bar { height: 4px; background: var(--surface-soft); border-radius: 999px; overflow: hidden; margin-top: 2px; }
+    .t-progress-fill { height: 100%; background: var(--text-primary); border-radius: 999px; transition: width 0.3s ease; }
+
+    .task-card.sortable-chosen { transform: scale(1.02); box-shadow: 0 8px 24px rgba(20,24,31,0.12); }
+    .task-card.sortable-ghost { opacity: 0.4; }
+    .kanban-col.drag-over { background: rgba(20,24,31,0.04); }
+    
+    .empl-section { margin-bottom: 20px; }
+    .empl-section .empl-header { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 0.9rem; margin-bottom: 8px; }
+    .empl-section .empl-header .avatar-init { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; color: #fff; }
+    .empl-section .empl-tasks { display: flex; flex-direction: column; gap: 6px; }
+    .empl-section .empl-tasks .mini-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 14px; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .mini-card .mc-status { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .mini-card .mc-title { flex: 1; font-size: 0.83rem; }
+    .mini-card .mc-meta { font-size: 0.7rem; color: var(--text-secondary); white-space: nowrap; }
+    .subtask-section { margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
+    .subtask-header { margin-bottom:6px; }
+    .subtask-list { display:flex; flex-direction:column; gap:4px; margin-bottom:8px; }
+    .subtask-item { display:flex; align-items:center; gap:6px; padding:4px 6px; border-radius:var(--radius-md); transition:background 0.1s; }
+    .subtask-item:hover { background:var(--surface-soft); }
+    .subtask-item .sti-check { width:16px;height:16px;cursor:pointer;accent-color:var(--text-primary); }
+    .subtask-item .sti-label { font-size:0.82rem; flex:1; cursor:pointer; }
+    .subtask-item .sti-label.done { text-decoration:line-through; color:var(--text-secondary); }
+    .subtask-item .sti-del { cursor:pointer; color:var(--text-secondary); font-size:0.75rem; opacity:0; transition:opacity 0.1s; }
+    .subtask-item:hover .sti-del { opacity:1; }
+    .subtask-add { display:flex; gap:4px; }
+    .entry.answer { margin-left: 38px; padding-left: 10px; border-left: 2px solid var(--border); margin-bottom: 8px; }
+    .entry.answer .e-avatar { width: 24px; height: 24px; font-size: 0.55rem; }
+    .slide-over { position: fixed; top: 0; right: 0; width: var(--panel-width); max-width: 100%; height: 100%; background: var(--surface); z-index: 1050; box-shadow: -8px 0 32px rgba(20,24,31,0.1); transform: translateX(100%); transition: transform 0.25s cubic-bezier(0.16,1,0.3,1); display: flex; flex-direction: column; }
+    .slide-over.open { transform: translateX(0); }
+    .slide-over .so-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+    .slide-over .so-header .so-title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1.05rem; flex: 1; margin: 0; }
+    .slide-over .so-header .so-close { background: none; border: none; font-size: 1.2rem; color: var(--text-secondary); cursor: pointer; padding: 4px; }
+    .slide-over .so-body { flex: 1; overflow-y: auto; padding: 16px 20px; }
+    .slide-over .so-body .edit-title { font-size: 1rem; font-weight: 600; border: 1px solid transparent; border-radius: 6px; padding: 4px 8px; width: 100%; background: transparent; transition: border 0.15s; }
+    .slide-over .so-body .edit-title:focus { border-color: var(--border); background: var(--surface-soft); outline: none; }
+    .slide-over .so-body .edit-desc { font-size: 0.85rem; border: 1px solid transparent; border-radius: 6px; padding: 4px 8px; width: 100%; min-height: 60px; background: transparent; resize: vertical; margin-top: 8px; }
+    .slide-over .so-body .edit-desc:focus { border-color: var(--border); background: var(--surface-soft); outline: none; }
+    .slide-over .so-body .quick-edit { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+    .slide-over .so-body .quick-edit select, .slide-over .so-body .quick-edit input { background: var(--surface-soft); border: 1px solid var(--border); border-radius: 8px; font-size: 0.8rem; padding: 4px 10px; }
+    .slide-over .so-body .thread { margin-top: 16px; }
+    .slide-over .so-body .thread .entry { display: flex; gap: 10px; margin-bottom: 12px; }
+    .slide-over .so-body .thread .entry .e-avatar { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; color: #fff; flex-shrink: 0; }
+    .slide-over .so-body .thread .entry .e-body { flex: 1; }
+    .slide-over .so-body .thread .entry .e-body .e-head { font-size: 0.78rem; font-weight: 600; }
+    .slide-over .so-body .thread .entry .e-body .e-head .e-time { font-weight: 400; color: var(--text-muted); margin-left: 6px; }
+    .slide-over .so-body .thread .entry .e-body .e-text { font-size: 0.83rem; margin-top: 2px; }
+    .slide-over .so-body .thread .entry .e-body .e-reactions { display: flex; gap: 4px; margin-top: 4px; }
+    .slide-over .so-body .thread .entry .e-body .e-reactions button { background: var(--surface-soft); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; font-size: 0.7rem; cursor: pointer; }
+    .slide-over .so-body .thread .entry.system { opacity: 0.65; }
+    .slide-over .so-body .thread .entry.system .e-avatar { display: none; }
+    .slide-over .so-body .thread .entry.system .e-body { margin-left: 0; }
+    .slide-over .so-body .thread .entry.system .e-body .e-text { font-size: 0.75rem; font-style: italic; }
+    .slide-over .so-footer { border-top: 1px solid var(--border); padding: 12px 20px; }
+    .slide-over .so-footer .comment-input-wrap { position: relative; }
+    .slide-over .so-footer .comment-input-wrap textarea { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 10px 40px 10px 12px; resize: none; font-size: 0.83rem; background: var(--surface-soft); }
+    .slide-over .so-footer .comment-input-wrap textarea:focus { outline: none; border-color: var(--text-primary); }
+    .slide-over .so-footer .comment-input-wrap .send-btn { position: absolute; right: 6px; bottom: 6px; background: var(--text-primary); color: #fff; border: none; border-radius: 8px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .slide-over .so-footer .mention-dropdown { position: absolute; bottom: 100%; left: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 6px 20px rgba(20,24,31,0.1); max-height: 160px; overflow-y: auto; display: none; min-width: 180px; }
+    .slide-over .so-footer .mention-dropdown .m-item { padding: 6px 12px; font-size: 0.82rem; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+    .slide-over .so-footer .mention-dropdown .m-item:hover { background: var(--surface-soft); }
+    .slide-over .so-footer .mention-dropdown .m-item .avatar-init { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.55rem; font-weight: 700; color: #fff; }
+    .overlay-backdrop { position: fixed; inset: 0; background: rgba(20,24,31,0.3); z-index: 1049; opacity: 0; pointer-events: none; transition: opacity 0.25s ease; }
+    .overlay-backdrop.show { opacity: 1; pointer-events: auto; }
+    .search-bar { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; }
+    .search-bar input { flex: 1; max-width: 320px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; font-size: 0.8rem; }
+    .search-bar input:focus { outline: none; border-color: var(--text-primary); }
+    .task-table-wrap { overflow-x: auto; }
+    .task-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    .task-table th { background: var(--surface-soft); padding: 10px 12px; text-align: left; font-weight: 700; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-secondary); border-bottom: 2px solid var(--border); white-space: nowrap; user-select: none; }
+    .task-table th a { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+    .task-table th a:hover { color: var(--text-primary); }
+    .task-table th .sort-icon { font-size: 0.65rem; }
+    .task-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .task-table tr:hover td { background: rgba(20,24,31,0.02); }
+    .task-table .cell-inline select { background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; cursor: pointer; }
+    .task-table .cell-inline select:hover { border-color: var(--border); }
+    .task-table .cell-inline select:focus { outline: none; border-color: var(--text-primary); background: var(--surface); }
+    .bulk-toolbar { display: none; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 10px; }
+    .bulk-toolbar.show { display: flex; }
+    .bulk-toolbar .count-label { font-size: 0.8rem; font-weight: 600; margin-right: 6px; }
+    .bulk-toolbar select, .bulk-toolbar button { font-size: 0.78rem; }
+    .ttitle-link { cursor: pointer; color: var(--text-primary); }
+    .ttitle-link:hover { text-decoration: underline; }
+    .inbox-card { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 18px; margin-bottom: 8px; transition: box-shadow 0.15s; }
+    .inbox-card:hover { box-shadow: 0 2px 8px rgba(20,24,31,0.06); }
+    .inbox-card .ic-priority { width: 4px; align-self: stretch; border-radius: 4px; flex-shrink: 0; }
+    .inbox-card .ic-body { flex: 1; min-width: 0; }
+    .inbox-card .ic-body .ic-title { font-weight: 600; font-size: 0.88rem; cursor: pointer; }
+    .inbox-card .ic-body .ic-title:hover { text-decoration: underline; }
+    .inbox-card .ic-body .ic-meta { font-size: 0.72rem; color: var(--text-secondary); margin-top: 2px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .inbox-card .ic-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .inbox-empty { text-align: center; padding: 48px 20px; color: var(--text-secondary); }
+    .inbox-empty i { font-size: 2rem; display: block; margin-bottom: 10px; opacity: 0.3; }
+    .matrix-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .matrix-cell { background: var(--surface-soft); border-radius: var(--radius-lg); overflow: hidden; }
+    .matrix-header { padding: 10px 14px; display: flex; align-items: center; gap: 6px; background: var(--surface); border-bottom: 1px solid var(--border); }
+    .matrix-body { padding: 8px; min-height: 120px; }
+    .matrix-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 12px; margin-bottom: 6px; cursor: pointer; transition: box-shadow 0.12s; }
+    .matrix-card:hover { box-shadow: 0 2px 8px rgba(20,24,31,0.06); }
+    .matrix-meta { font-size: 0.7rem; color: var(--text-secondary); margin-top: 2px; display: flex; gap: 8px; }
+    .timeline-view { display: flex; flex-direction: column; gap: 20px; }
+    .timeline-month { }
+    .timeline-month-header { font-weight: 700; font-size: 0.85rem; padding: 6px 0; margin-bottom: 6px; border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-secondary); }
+    .timeline-bars { display: flex; flex-direction: column; gap: 6px; }
+    .timeline-row { display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 4px 0; }
+    .timeline-row .tl-title { width: 180px; flex-shrink: 0; font-size: 0.82rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .timeline-row .tl-bar-wrap { flex: 1; height: 24px; background: var(--surface-soft); border-radius: 999px; position: relative; overflow: hidden; }
+    .timeline-row .tl-bar { height: 100%; border-radius: 999px; transition: width 0.3s ease; min-width: 12px; }
+    .timeline-row .tl-label { font-size: 0.7rem; color: var(--text-secondary); white-space: nowrap; width: 100px; text-align: right; }
+    .timeline-row:hover .tl-bar { opacity: 0.85; }
+    @media (max-width: 576px) {
+        :root { --panel-width: 100vw; }
+        .slide-over { border-radius: 0; }
+        .slide-over .so-body { padding: 12px 14px; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+    <div class="view-toggle">
+        {% set cur_view = view %}
+        {% if not is_admin %}
+        <a href="{{ url_for('tasks.team_tasks', view='inbox') }}" class="{% if cur_view == 'inbox' %}active{% endif %}"><i class="bi bi-inbox"></i> Inbox{% if unacknowledged_count > 0 %} <span class="badge bg-danger rounded-pill" style="font-size:0.6rem;padding:2px 6px;">{{ unacknowledged_count }}</span>{% endif %}</a>
+        <a href="{{ url_for('tasks.team_tasks', view='my_day') }}" class="{% if cur_view == 'my_day' %}active{% endif %}"><i class="bi bi-sun"></i> My Day</a>
+        {% endif %}
+        <a href="{{ url_for('tasks.team_tasks', view='board', q=q, priority=request.args.get('priority'), status=request.args.get('status'), employee_id=request.args.get('employee_id'), sort=sort_field, dir=sort_dir) }}" class="{% if cur_view == 'board' %}active{% endif %}"><i class="bi bi-columns-gap"></i> Board</a>
+        <a href="{{ url_for('tasks.team_tasks', view='table', q=q, priority=request.args.get('priority'), status=request.args.get('status'), employee_id=request.args.get('employee_id'), sort=sort_field, dir=sort_dir) }}" class="{% if cur_view == 'table' %}active{% endif %}"><i class="bi bi-table"></i> Table</a>
+        <a href="{{ url_for('tasks.team_tasks', view='priority_matrix', q=q, priority=request.args.get('priority'), status=request.args.get('status'), employee_id=request.args.get('employee_id')) }}" class="{% if cur_view == 'priority_matrix' %}active{% endif %}"><i class="bi bi-grid-3x3-gap"></i> Matrix</a>
+        <a href="{{ url_for('tasks.team_tasks', view='timeline', q=q, priority=request.args.get('priority'), status=request.args.get('status'), employee_id=request.args.get('employee_id')) }}" class="{% if cur_view == 'timeline' %}active{% endif %}"><i class="bi bi-bar-chart-line"></i> Timeline</a>
+        {% if is_admin %}<a href="{{ url_for('tasks.team_tasks', view='by_employee', q=q, priority=request.args.get('priority'), status=request.args.get('status'), employee_id=request.args.get('employee_id')) }}" class="{% if cur_view == 'by_employee' %}active{% endif %}"><i class="bi bi-person-lines-fill"></i> By Employee</a>{% endif %}
+    </div>
+    {% if is_admin %}
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-dark btn-sm rounded-pill" data-bs-toggle="modal" data-bs-target="#assignModal"><i class="bi bi-plus-circle"></i> Assign Task</button>
+        <button type="button" class="btn btn-outline-dark btn-sm rounded-pill" data-bs-toggle="modal" data-bs-target="#templateModal"><i class="bi bi-files"></i> Templates</button>
+    </div>
+    {% endif %}
+</div>
+
+<div class="search-bar">
+    <form method="GET" action="{{ url_for('tasks.team_tasks') }}" style="display:contents">
+        <input type="hidden" name="view" value="{{ cur_view }}">
+        <input type="hidden" name="priority" value="{{ request.args.get('priority', '') }}">
+        <input type="hidden" name="employee_id" value="{{ request.args.get('employee_id', '') }}">
+        <input type="search" name="q" value="{{ q }}" placeholder="Search tasks…" onchange="this.form.submit()">
+        {% if q %}<a href="{{ url_for('tasks.team_tasks', view=cur_view) }}" class="filter-chip"><i class="bi bi-x"></i></a>{% endif %}
+    </form>
+    {% if cur_view == 'table' %}
+    <a href="{{ url_for('tasks.team_tasks', view='table', q=q, priority=request.args.get('priority'), status=request.args.get('status'), employee_id=request.args.get('employee_id'), sort=sort_field, dir=sort_dir, format='csv') }}" class="filter-chip" style="margin-left:auto;"><i class="bi bi-download"></i> CSV</a>
+    {% endif %}
+</div>
+
+<div class="summary-strip">
+    {% if overdue %}
+    <div class="chip overdue"><i class="bi bi-exclamation-triangle"></i> <span class="num">{{ overdue | length }}</span> Overdue</div>
+    {% endif %}
+    {% if recent_done %}
+    <div class="chip done"><i class="bi bi-check-circle"></i> <span class="num">{{ week_done }}</span> Done this week</div>
+    {% endif %}
+    {% if due_today %}
+    <div class="chip today"><i class="bi bi-calendar"></i> <span class="num">{{ due_today }}</span> Due today</div>
+    {% endif %}
+    <div class="chip"><i class="bi bi-list-task"></i> <span class="num">{{ tasks | length }}</span> Total</div>
+</div>
+
+<div class="filter-bar">
+    {% macro filter_url(extra) %}{% set args = {'view': cur_view, 'priority': request.args.get('priority'), 'employee_id': request.args.get('employee_id'), 'q': q} %}{% set _ = args.update(extra) %}{{ url_for('tasks.team_tasks', **args) }}{% endmacro %}
+    <a href="{{ filter_url({'priority': 'high'}) }}" class="filter-chip {% if request.args.get('priority') == 'high' %}active{% endif %}"><span class="dot" style="background:#d64545;"></span> High</a>
+    <a href="{{ filter_url({'priority': 'medium'}) }}" class="filter-chip {% if request.args.get('priority') == 'medium' %}active{% endif %}"><span class="dot" style="background:#d99a2b;"></span> Medium</a>
+    <a href="{{ filter_url({'priority': 'low'}) }}" class="filter-chip {% if request.args.get('priority') == 'low' %}active{% endif %}"><span class="dot" style="background:#aaa;"></span> Low</a>
+    {% if is_admin and employees %}
+    <div style="position:relative;display:inline-block;">
+        <select name="employee_id" onchange="var p=new URLSearchParams();p.set('view','{{ cur_view }}');p.set('employee_id',this.value||'');{% if q %}p.set('q','{{ q }}');{% endif %}location='{{ url_for('tasks.team_tasks') }}?'+p.toString();" style="background:var(--surface);border:1px solid var(--border);border-radius:999px;font-size:0.78rem;padding:5px 14px;font-weight:600;color:var(--text-secondary);cursor:pointer;">
+            <option value="">All</option>
+            {% for e in employees %}
+            <option value="{{ e.id }}" {% if request.args.get('employee_id')|int == e.id %}selected{% endif %}>{{ e.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+    <a href="{{ url_for('tasks.team_tasks', view=cur_view) }}" class="filter-chip"><i class="bi bi-x"></i> Clear</a>
+</div>
+
+{% if cur_view == 'inbox' and not is_admin %}
+<div>
+    {% if tasks %}
+    {% for t in tasks %}
+    <div class="inbox-card">
+        <div class="ic-priority" style="background:{% if t.priority == 'high' %}#d64545{% elif t.priority == 'medium' %}#d99a2b{% else %}#aaa{% endif %};"></div>
+        <div class="ic-body">
+            <div class="ic-title" onclick="openPanel({{ t.id }})">{{ t.title }}</div>
+            <div class="ic-meta">
+                <span>From: {{ t.assigner.name if t.assigner else 'System' }}</span>
+                <span>{{ time_ago(t.created_at) if t.created_at else '' }}</span>
+                {% if t.due_date %}<span>Due: {{ t.due_date }}</span>{% endif %}
+            </div>
+        </div>
+        <div class="ic-actions">
+            <button class="btn btn-dark btn-sm rounded-pill px-3" onclick="acknowledge({{ t.id }}, this)"><i class="bi bi-check2"></i> Got it</button>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="inbox-empty">
+        <i class="bi bi-inbox"></i>
+        <h6 class="fw-bold">All caught up</h6>
+        <p class="small text-muted">No unacknowledged tasks.</p>
+    </div>
+    {% endif %}
+</div>
+
+{% elif cur_view == 'my_day' and not is_admin %}
+<div>
+    {% if tasks %}
+    {% for t in tasks %}
+    <div class="inbox-card">
+        <div class="ic-priority" style="background:{% if t.priority == 'high' %}#d64545{% elif t.priority == 'medium' %}#d99a2b{% else %}#aaa{% endif %};"></div>
+        <div class="ic-body">
+            <div class="ic-title" onclick="openPanel({{ t.id }})">{{ t.title }}</div>
+            <div class="ic-meta">
+                <span>{% if t.status == 'done' %}<span class="text-success">Done</span>{% elif t.status == 'in_progress' %}In Progress{% else %}To Do{% endif %}</span>
+                {% if t.due_date %}<span>Due: {{ t.due_date }}</span>{% endif %}
+            </div>
+        </div>
+        <div class="ic-actions">
+            <button class="btn btn-sm rounded-pill px-3 {% if t.status == 'done' %}btn-outline-secondary{% else %}btn-dark{% endif %}" data-status="{{ t.status }}" onclick="toggleDone({{ t.id }}, this)">{{ 'Undo' if t.status == 'done' else 'Done' }}</button>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="inbox-empty">
+        <i class="bi bi-sun"></i>
+        <h6 class="fw-bold">Nothing due today</h6>
+        <p class="small text-muted">Enjoy your day — no tasks due.</p>
+    </div>
+    {% endif %}
+</div>
+
+{% elif cur_view == 'table' %}
+<div class="bulk-toolbar" id="bulkToolbar">
+    <span class="count-label"><span id="selCount">0</span> selected</span>
+    <select id="bulkAction" class="form-select form-select-sm" style="width:auto;">
+        <option value="">Bulk action…</option>
+        <option value="mark_done">Mark Done</option>
+        <option value="set_priority">Set Priority</option>
+        {% if is_admin %}<option value="reassign">Reassign</option>{% endif %}
+        {% if is_admin %}<option value="delete">Delete</option>{% endif %}
+    </select>
+    <select id="bulkValue" class="form-select form-select-sm" style="width:auto;display:none;">
+        <option value="high">High</option>
+        <option value="medium" selected>Medium</option>
+        <option value="low">Low</option>
+    </select>
+    <select id="bulkAssignee" class="form-select form-select-sm" style="width:auto;display:none;">
+        <option value="">Select employee…</option>
+        {% for e in all_employees %}
+        <option value="{{ e.id }}">{{ e.name }}</option>
+        {% endfor %}
+    </select>
+    <button class="btn btn-dark btn-sm rounded-pill px-3" onclick="execBulk()">Go</button>
+</div>
+<div class="task-table-wrap">
+<table class="task-table">
+    <thead>
+        <tr>
+            <th style="width:32px;"><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
+            <th><a href="{{ url_for('tasks.team_tasks', view='table', q=q, priority=request.args.get('priority'), employee_id=request.args.get('employee_id'), sort='title', dir='asc' if sort_field != 'title' or sort_dir == 'desc' else 'desc') }}">Title {% if sort_field == 'title' %}<span class="sort-icon">{{ '▲' if sort_dir == 'asc' else '▼' }}</span>{% endif %}</a></th>
+            <th><a href="{{ url_for('tasks.team_tasks', view='table', q=q, priority=request.args.get('priority'), employee_id=request.args.get('employee_id'), sort='assignee', dir='asc' if sort_field != 'assignee' or sort_dir == 'desc' else 'desc') }}">Assignee {% if sort_field == 'assignee' %}<span class="sort-icon">{{ '▲' if sort_dir == 'asc' else '▼' }}</span>{% endif %}</a></th>
+            <th><a href="{{ url_for('tasks.team_tasks', view='table', q=q, priority=request.args.get('priority'), employee_id=request.args.get('employee_id'), sort='priority', dir='asc' if sort_field != 'priority' or sort_dir == 'desc' else 'desc') }}">Priority {% if sort_field == 'priority' %}<span class="sort-icon">{{ '▲' if sort_dir == 'asc' else '▼' }}</span>{% endif %}</a></th>
+            <th><a href="{{ url_for('tasks.team_tasks', view='table', q=q, priority=request.args.get('priority'), employee_id=request.args.get('employee_id'), sort='status', dir='asc' if sort_field != 'status' or sort_dir == 'desc' else 'desc') }}">Status {% if sort_field == 'status' %}<span class="sort-icon">{{ '▲' if sort_dir == 'asc' else '▼' }}</span>{% endif %}</a></th>
+            <th><a href="{{ url_for('tasks.team_tasks', view='table', q=q, priority=request.args.get('priority'), employee_id=request.args.get('employee_id'), sort='due_date', dir='asc' if sort_field != 'due_date' or sort_dir == 'desc' else 'desc') }}">Due Date {% if sort_field == 'due_date' %}<span class="sort-icon">{{ '▲' if sort_dir == 'asc' else '▼' }}</span>{% endif %}</a></th>
+            {% if is_admin %}<th>Order</th>{% endif %}
+            <th><a href="{{ url_for('tasks.team_tasks', view='table', q=q, priority=request.args.get('priority'), employee_id=request.args.get('employee_id'), sort='created_at', dir='asc' if sort_field != 'created_at' or sort_dir == 'desc' else 'desc') }}">Created {% if sort_field == 'created_at' %}<span class="sort-icon">{{ '▲' if sort_dir == 'asc' else '▼' }}</span>{% endif %}</a></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for t in tasks %}
+        <tr data-id="{{ t.id }}">
+            <td><input type="checkbox" class="row-check" value="{{ t.id }}" onchange="updateBulkBar()"></td>
+            <td><span class="ttitle-link fw-medium" onclick="openPanel({{ t.id }})">{{ t.title }}</span></td>
+            <td>{{ t.assignee.name if t.assignee else '—' }}</td>
+            <td class="cell-inline">
+                <select onchange="inlineEdit({{ t.id }},'priority',this.value)">
+                    <option value="low" {% if t.priority == 'low' %}selected{% endif %}>Low</option>
+                    <option value="medium" {% if t.priority == 'medium' %}selected{% endif %}>Medium</option>
+                    <option value="high" {% if t.priority == 'high' %}selected{% endif %}>High</option>
+                </select>
+            </td>
+            <td class="cell-inline">
+                <select onchange="inlineEdit({{ t.id }},'status',this.value)">
+                    <option value="to_do" {% if t.status == 'to_do' %}selected{% endif %}>To Do</option>
+                    <option value="in_progress" {% if t.status == 'in_progress' %}selected{% endif %}>In Progress</option>
+                    <option value="done" {% if t.status == 'done' %}selected{% endif %}>Done</option>
+                </select>
+            </td>
+            <td>{% if t.due_date %}{{ t.due_date }}{% else %}—{% endif %}</td>
+            {% if is_admin %}<td>{% if t.order_id %}<a href="{{ url_for('orders.view_order', order_id=t.order_id) }}" class="text-decoration-none">Order #{{ t.order_id }}</a>{% else %}—{% endif %}</td>{% endif %}
+            <td class="text-muted small">{{ time_ago(t.created_at) if t.created_at else '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="{% if is_admin %}8{% else %}7{% endif %}" class="text-center text-muted py-4">No tasks match the current filters.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+{% elif cur_view == 'by_employee' and is_admin %}
+{% set grouped = {} %}
+{% for t in tasks %}
+{% set _ = grouped.update({t.assignee_id: grouped.get(t.assignee_id, []) + [t]}) %}
+{% endfor %}
+<div>
+    {% for emp in employees %}
+    {% set etasks = grouped.get(emp.id, []) %}
+    {% if etasks %}
+    <div class="empl-section">
+        <div class="empl-header">
+            <div class="avatar-init" style="background:{{ emp.name | avatar_color }};">{{ emp.name[:1] | upper }}</div>
+            {{ emp.name }}
+            <span class="text-muted small fw-normal">({{ etasks | length }})</span>
+        </div>
+        <div class="empl-tasks">
+            {% for t in etasks %}
+            <div class="mini-card" onclick="openPanel({{ t.id }})">
+                <span class="mc-status" style="background:{% if t.status == 'done' %}#1e9e63{% elif t.status == 'in_progress' %}#d99a2b{% else %}#aaa{% endif %};"></span>
+                <span class="mc-title">{{ t.title }}</span>
+                <span class="priority-dot" style="width:6px;height:6px;background:{% if t.priority == 'high' %}#d64545{% elif t.priority == 'medium' %}#d99a2b{% else %}#aaa{% endif %};"></span>
+                {% if t.due_date %}<span class="mc-meta">{{ t.due_date }}</span>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
+
+{% elif cur_view == 'priority_matrix' %}
+{% set qlabels = {'do_first': 'Do First (Urgent & Important)', 'schedule': 'Schedule (Not Urgent & Important)', 'delegate': 'Delegate (Urgent & Not Important)', 'eliminate': 'Eliminate (Not Urgent & Not Important)'} %}
+{% set qcolors = {'do_first': '#d64545', 'schedule': '#d99a2b', 'delegate': '#8b5cf6', 'eliminate': '#aaa'} %}
+<div class="matrix-grid">
+    {% for qk in ['do_first', 'schedule', 'delegate', 'eliminate'] %}
+    <div class="matrix-cell">
+        <div class="matrix-header" style="border-left:4px solid {{ qcolors[qk] }};">
+            <span class="fw-semibold small">{{ qlabels[qk] }}</span>
+            <span class="badge ms-1" style="background:{{ qcolors[qk] }};color:#fff;">{{ matrix[qk] | length }}</span>
+        </div>
+        <div class="matrix-body">
+            {% for t in matrix[qk] %}
+            <div class="matrix-card" onclick="openPanel({{ t.id }})">
+                <div class="fw-semibold small">{{ t.title }}</div>
+                <div class="matrix-meta">
+                    {% if t.assignee %}<span>{{ t.assignee.name }}</span>{% endif %}
+                    {% if t.due_date %}<span class="text-muted">{{ t.due_date }}</span>{% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div class="text-muted small text-center py-3">Empty</div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% elif cur_view == 'timeline' %}
+<div class="timeline-view">
+    {% for m in months %}
+    {% set month_names = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] %}
+    <div class="timeline-month">
+        <div class="timeline-month-header">{{ month_names[m.month] }} {{ m.year }}</div>
+        <div class="timeline-bars">
+            {% set dim = m.tasks | length %}
+            {% for t in m.tasks %}
+            {% set days_total = 30 %}
+            {% set days_left = (t.due_date - date.today()).days %}
+            {% set pct = [((days_total - days_left) / days_total * 100), 5] | max %}
+            {% set bar_color = '#d64545' if days_left < 0 else '#d99a2b' if days_left < 3 else '#1e9e63' %}
+            <div class="timeline-row" onclick="openPanel({{ t.id }})">
+                <span class="tl-title">{{ t.title }}</span>
+                <div class="tl-bar-wrap">
+                    <div class="tl-bar" style="width:{{ pct | int if pct < 95 else 95 }}%;background:{{ bar_color }};"></div>
+                    <span class="tl-label">{{ t.due_date }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <div class="inbox-empty"><i class="bi bi-calendar-range"></i><h6 class="fw-bold">No tasks with due dates</h6><p class="small text-muted">Assign due dates to see them on the timeline.</p></div>
+    {% endfor %}
+</div>
+
+{% else %}
+<div class="kanban" id="kanbanBoard">
+    {% set cols = [('to_do', 'To Do'), ('in_progress', 'In Progress'), ('done', 'Done')] %}
+    {% for col_key, col_label in cols %}
+    {% set col_tasks = tasks | selectattr('status', 'equalto', col_key) | list %}
+    <div class="kanban-col" data-status="{{ col_key }}">
+        <h6>{{ col_label }} <span class="count {% if col_key == 'in_progress' and col_tasks | length > 6 %}warn{% endif %}">{{ col_tasks | length }}</span></h6>
+        <div class="sortable-list" data-status="{{ col_key }}">
+            {% for t in col_tasks %}
+            <div class="task-card" data-id="{{ t.id }}" onclick="openPanel({{ t.id }})">
+                <div class="edge {{ t.priority }}"></div>
+                
+                <div class="trow">
+                    <div class="ttitle">{{ t.title }}</div>
+                    <div class="avatar-init shadow-sm" style="background:{{ (t.assignee.name if t.assignee else '?') | avatar_color }};" title="{{ t.assignee.name if t.assignee else 'Unassigned' }}">
+                        {{ t.assignee.name[:1] | upper if t.assignee else '?' }}
+                    </div>
+                </div>
+
+                {% if t.description %}
+                <div class="tdesc">{{ t.description | truncate(60, True) }}</div>
+                {% endif %}
+
+                <div class="tmeta">
+                    <span class="due-chip {% if t.due_date and t.due_date < date.today() and t.status != 'done' %}red{% elif t.due_date == date.today() and t.status != 'done' %}amber{% else %}neutral{% endif %}">
+                        <i class="bi bi-calendar-event"></i> {% if t.due_date %}{{ t.due_date }}{% else %}No due date{% endif %}
+                    </span>
+                    
+                    {% set subs = t.sub_items | list %}
+                    {% if subs %}
+                    {% set done = subs | selectattr('is_done', 'equalto', True) | list %}
+                    {% set pct = (done|length / subs|length) * 100 %}
+                    <div class="subtask-progress" title="{{ done|length }} of {{ subs|length }} done">
+                        <div class="d-flex justify-content-between text-muted" style="font-size:0.65rem; margin-bottom:2px;">
+                            <span><i class="bi bi-list-check"></i> {{ done | length }}/{{ subs | length }}</span>
+                        </div>
+                        <div class="t-progress-bar">
+                            <div class="t-progress-fill" style="width: {{ pct }}%;"></div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if t.comments | length > 0 %}
+                    <span class="comment-badge ms-auto"><i class="bi bi-chat-text"></i> {{ t.comments | length }}</span>
+                    {% endif %}
+
+                    {% if is_admin and t.order_id %}
+                    <a href="{{ url_for('orders.view_order', order_id=t.order_id) }}" class="due-chip neutral text-decoration-none" style="font-size:0.63rem;">Order #{{ t.order_id }}</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div class="text-muted small text-center py-4">Empty</div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="overlay-backdrop" id="panelBackdrop" onclick="closePanel()"></div>
+<div class="slide-over" id="slidePanel">
+    <div class="so-header">
+        <h6 class="so-title" id="panelTitle">Task</h6>
+        <div class="d-flex gap-1">
+            {% if is_admin %}<button class="btn btn-sm btn-outline-danger rounded-pill px-2" onclick="deleteTask()" title="Delete task"><i class="bi bi-trash3"></i></button>{% endif %}
+            <button class="so-close" onclick="closePanel()"><i class="bi bi-x-lg"></i></button>
+        </div>
+    </div>
+    <div class="so-body" id="panelBody">
+        <input class="edit-title" id="editTitle" value="" onblur="saveField('title',this.value)">
+        <textarea class="edit-desc" id="editDesc" onblur="saveField('description',this.value)" placeholder="Add description…"></textarea>
+        <div class="subtask-section" id="subtaskSection">
+            <div class="subtask-header"><span class="fw-semibold small text-uppercase" style="letter-spacing:0.03em;color:var(--text-secondary)">Sub-tasks</span></div>
+            <div id="subtaskList" class="subtask-list"></div>
+            <div class="subtask-add">
+                <input type="text" id="subtaskInput" placeholder="Add sub-task…" onkeydown="if(event.key==='Enter')addSubtask()" class="form-control form-control-sm">
+                <button class="btn btn-sm btn-dark rounded-pill px-2 ms-1" onclick="addSubtask()"><i class="bi bi-plus"></i></button>
+            </div>
+        </div>
+        <div class="quick-edit" id="quickEdit">
+            <select id="pePriority" onchange="saveField('priority',this.value)">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+            </select>
+            {% if is_admin %}
+            <select id="peAssignee">
+                <option value="">Assignee…</option>
+                {% for e in all_employees %}
+                <option value="{{ e.id }}">{{ e.name }}</option>
+                {% endfor %}
+            </select>
+            {% else %}
+            <span class="text-muted small" id="peAssigneeDisplay" style="padding:4px 10px;background:var(--surface-soft);border-radius:8px;"><i class="bi bi-person me-1"></i><span id="peAssigneeName"></span></span>
+            {% endif %}
+            <span style="display:inline-flex;align-items:center;gap:4px;"><input type="date" id="peDueDate" onchange="saveField('due_date',this.value)" style="width:140px;"><span class="text-muted" style="cursor:pointer;font-size:0.7rem;" onclick="document.getElementById('peDueDate').value='';saveField('due_date','')" title="Clear due date"><i class="bi bi-x-circle"></i></span></span>
+            {% if is_admin and recent_orders %}
+            <select id="peOrder" onchange="saveField('order_id',this.value)">
+                <option value="">No order</option>
+                {% for o in recent_orders %}
+                <option value="{{ o.id }}">Order #{{ o.order_number or o.id }}</option>
+                {% endfor %}
+            </select>
+            {% endif %}
+        </div>
+        <div id="panelOrderLink" class="panel-order-link" style="display:none;margin-bottom:8px;"></div>
+        <div class="thread" id="panelThread"></div>
+    </div>
+    <div class="so-footer">
+        <div class="comment-input-wrap">
+            <textarea id="commentInput" rows="2" placeholder="Ask a question…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();postComment();}"></textarea>
+            <button class="send-btn" onclick="postComment()"><i class="bi bi-send"></i></button>
+        </div>
+            {% if is_admin %}
+            <button class="btn btn-sm btn-outline-dark rounded-pill w-100 mt-2" onclick="saveTaskAsTemplate()"><i class="bi bi-files"></i> Save as template</button>
+            {% endif %}
+    </div>
+</div>
+
+<div class="modal fade" id="assignModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-md modal-dialog-centered"><div class="modal-content border-0 shadow-sm">
+        <form id="assignForm" method="POST" action="{{ add_url }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="modal-header border-bottom-0 pb-0">
+                <h5 class="modal-title fw-bold"><i class="bi bi-plus-circle me-2"></i>Assign New Task</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-3">
+                <div class="row g-3">
+                    <div class="col-md-8">
+                        <div class="form-floating">
+                            <input type="text" name="title" class="form-control" id="atTitle" placeholder="Task title" required>
+                            <label for="atTitle"><i class="bi bi-type me-1"></i>Title</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-floating">
+                            <select name="priority" class="form-select" id="atPriority">
+                                <option value="low">Low</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="high">High</option>
+                            </select>
+                            <label for="atPriority"><i class="bi bi-flag me-1"></i>Priority</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-floating">
+                            <select name="assignee_id" class="form-select" id="atAssignee" required>
+                                <option value="">Select employee…</option>
+                                {% for e in employees %}
+                                <option value="{{ e.id }}">{{ e.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <label for="atAssignee"><i class="bi bi-person me-1"></i>Assignee</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-floating">
+                            <input type="date" name="due_date" class="form-control" id="atDueDate" value="">
+                            <label for="atDueDate"><i class="bi bi-calendar me-1"></i>Due Date</label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="form-floating">
+                            <textarea name="description" class="form-control" id="atDescription" rows="3" style="min-height:90px"></textarea>
+                            <label for="atDescription"><i class="bi bi-chat me-1"></i>Description</label>
+                        </div>
+                    </div>
+                    {% if is_admin and recent_orders %}
+                    <div class="col-12">
+                        <div class="form-floating">
+                            <select name="order_id" class="form-select" id="atOrder">
+                                <option value="">None</option>
+                                {% for o in recent_orders %}
+                                <option value="{{ o.id }}">Order #{{ o.order_number or o.id }} — {{ o.client.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <label for="atOrder"><i class="bi bi-cart me-1"></i>Link to Order</label>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="modal-footer border-top-0 pt-0">
+                <button type="button" class="btn btn-light rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-dark rounded-pill px-4" id="atSubmitBtn">
+                    <span class="spinner-border spinner-border-sm d-none me-1" id="atSpinner" role="status"></span>
+                    <i class="bi bi-check2 me-1"></i>Assign
+                </button>
+            </div>
+        </form>
+    </div></div>
+</div>
+
+<div class="modal fade" id="templateModal" tabindex="-1">
+    <div class="modal-dialog modal-lg"><div class="modal-content">
+        <div class="modal-header border-0"><h6 class="modal-title fw-bold">Task Templates</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body" id="templateListBody">
+            <div class="text-center py-4 text-muted small">Loading templates…</div>
+        </div>
+        <div class="modal-footer border-0">
+            <button class="btn btn-outline-secondary btn-sm rounded-pill" onclick="generateRecurringTasks()"><i class="bi bi-arrow-repeat"></i> Generate Recurring</button>
+            <button class="btn btn-dark btn-sm rounded-pill" onclick="showCreateTemplateForm()"><i class="bi bi-plus"></i> New Template</button>
+        </div>
+    </div></div>
+</div>
+
+<div class="modal fade" id="createTemplateModal" tabindex="-1">
+    <div class="modal-dialog modal-sm"><div class="modal-content">
+        <form id="createTemplateForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="modal-header border-0"><h6 class="modal-title fw-bold">Create Template</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-3"><label class="form-label">Template Name</label><input type="text" name="title" class="form-control" required></div>
+                <div class="mb-3"><label class="form-label">Default Priority</label><select name="default_priority" class="form-select"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></div>
+                <div class="mb-3"><label class="form-label">Description</label><textarea name="description" class="form-control" rows="2"></textarea></div>
+                <div class="mb-3"><label class="form-label">Sub-tasks (one per line)</label><textarea name="sub_tasks_text" class="form-control" rows="3" placeholder="Sub-task 1&#10;Sub-task 2&#10;Sub-task 3"></textarea></div>
+                <input type="hidden" name="sub_tasks" id="subTasksJson" value="[]">
+                <hr>
+                <div class="form-check form-switch mb-2">
+                    <input class="form-check-input" type="checkbox" id="recurToggle" onchange="document.getElementById('recurDayGroup').style.display=this.checked?'block':'none'">
+                    <label class="form-check-label fw-medium" for="recurToggle">Recurring (auto-generate monthly)</label>
+                </div>
+                <div id="recurDayGroup" style="display:none;">
+                    <label class="form-label">Day of Month</label>
+                    <select name="day_of_month" class="form-select">
+                        {% for d in range(1, 29) %}
+                        <option value="{{ d }}" {% if d == 1 %}selected{% endif %}>{{ d }}{% if d == 1 %}st{% elif d == 2 %}nd{% elif d == 3 %}rd{% else %}th{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text small">Task will auto-generate on this day each month.</div>
+                </div>
+            </div>
+            <div class="modal-footer border-0"><button type="submit" class="btn btn-dark rounded-pill px-4">Save</button></div>
+        </form>
+    </div></div>
+</div>
+
+<div class="modal fade" id="applyTemplateModal" tabindex="-1">
+    <div class="modal-dialog modal-sm"><div class="modal-content">
+        <div class="modal-header border-0"><h6 class="modal-title fw-bold" id="applyTemplateTitle">Apply Template</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+            <div class="mb-3"><label class="form-label">Assignee</label><select id="applyAssignee" class="form-select">
+                <option value="">Select employee…</option>
+                {% for e in all_employees %}
+                <option value="{{ e.id }}">{{ e.name }}</option>
+                {% endfor %}
+            </select></div>
+            <div class="mb-3"><label class="form-label">Due Date</label><input type="date" id="applyDueDate" class="form-control"></div>
+        </div>
+        <div class="modal-footer border-0">
+            <button class="btn btn-dark rounded-pill px-4" onclick="execApplyTemplate()">Apply</button>
+        </div>
+    </div></div>
+</div>
+
+<script>
+var csrf = '{{ csrf_token() }}';
+var updateBase = '{{ update_base }}';
+var dataBase = '{{ data_url }}'.replace('__ID__', '');
+var deleteBase = '{{ delete_base }}';
+var commentBase = '{{ comment_base }}';
+var bulkUrl = '{{ bulk_url }}';
+var acknowledgeUrlTmpl = '{{ url_for("tasks.acknowledge_team_task", task_id="__ID__") }}';
+var subtaskAddBase = '{{ url_for("tasks.add_subtask", task_id="__ID__") }}'.replace('__ID__', '');
+var subtaskToggleBase = '{{ url_for("tasks.toggle_subtask", subtask_id="__ID__") }}'.replace('__ID__', '');
+var subtaskDeleteBase = '{{ url_for("tasks.delete_subtask", subtask_id="__ID__") }}'.replace('__ID__', '');
+var employees = {{ all_employees | map(attribute='name') | list | tojson }};
+var currentTaskId = null;
+var panelOpen = false;
+
+var avatarColors = ['#14181f','#d64545','#d99a2b','#1e9e63','#8b5cf6','#36a2eb'];
+function avatarColor(name) {
+    if (!name) return avatarColors[0];
+    var hash = 0;
+    for (var i = 0; i < name.length; i++) hash += name.charCodeAt(i);
+    return avatarColors[hash % avatarColors.length];
+}
+
+// Drag-and-drop
+document.querySelectorAll('.sortable-list').forEach(function(el) {
+    new Sortable(el, {
+        group: 'kanban',
+        animation: 180,
+        easing: 'cubic-bezier(0.16,1,0.3,1)',
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        dragClass: 'sortable-drag',
+
+
+        onEnd: function(evt) {
+            var newStatus = evt.to.getAttribute('data-status');
+            var id = evt.item.getAttribute('data-id');
+            if (!id) return;
+            var form = new FormData();
+            form.append('status', newStatus);
+            fetch(updateBase + id, {method:'POST', headers:{'X-CSRFToken':csrf,'X-Requested-With':'XMLHttpRequest'}, body:form})
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    if (!d.ok) { showToast('Drag failed','error'); revertDrag(evt); }
+                    else { showToast('Moved to '+newStatus.replace('_',' ')); updateColCounts(); }
+                })
+                .catch(function() { showToast('Network error','error'); revertDrag(evt); });
+        }
+    });
+});
+
+function revertDrag(evt) {
+    if (evt && evt.from && evt.item) {
+        evt.from.appendChild(evt.item);
+        updateColCounts();
+    }
+}
+
+function updateColCounts() {
+    document.querySelectorAll('.kanban-col').forEach(function(col) {
+        var count = col.querySelectorAll('.task-card').length;
+        var badge = col.querySelector('h6 .count');
+        if (badge) badge.textContent = count;
+    });
+}
+
+// Bulk action toolbar
+document.addEventListener('change', function(e) {
+    if (e.target.id === 'bulkAction') {
+        var showVal = e.target.value === 'set_priority';
+        var showEmp = e.target.value === 'reassign';
+        document.getElementById('bulkValue').style.display = showVal ? 'inline-block' : 'none';
+        document.getElementById('bulkAssignee').style.display = showEmp ? 'inline-block' : 'none';
+    }
+});
+
+function toggleAll(el) {
+    document.querySelectorAll('.row-check').forEach(function(c) { c.checked = el.checked; });
+    updateBulkBar();
+}
+
+function updateBulkBar() {
+    var checked = document.querySelectorAll('.row-check:checked');
+    var toolbar = document.getElementById('bulkToolbar');
+    if (checked.length > 0) {
+        toolbar.classList.add('show');
+        document.getElementById('selCount').textContent = checked.length;
+    } else {
+        toolbar.classList.remove('show');
+    }
+}
+
+function execBulk() {
+    var action = document.getElementById('bulkAction').value;
+    if (!action) return;
+    var checked = document.querySelectorAll('.row-check:checked');
+    if (!checked.length) return;
+    var ids = [];
+    checked.forEach(function(c) { ids.push(c.value); });
+    var value = '';
+    if (action === 'set_priority') value = document.getElementById('bulkValue').value;
+    else if (action === 'reassign') value = document.getElementById('bulkAssignee').value;
+    if (action === 'reassign' && !value) { showToast('Select an employee','warn'); return; }
+    if (!confirm('Apply "' + action + '" to ' + ids.length + ' task(s)?')) return;
+    var form = new FormData();
+    ids.forEach(function(id) { form.append('ids[]', id); });
+    form.append('action', action);
+    if (value) form.append('value', value);
+    fetch(bulkUrl, {method:'POST', headers:{'X-CSRFToken':csrf}, body:form})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.ok) {
+                showToast(action.replace('_',' ')+' applied to '+d.count+' tasks');
+                if (action === 'delete') removeBulkByIds(ids);
+                else if (action === 'mark_done') updateBulkStatus(ids, 'done');
+                else softReload();
+            } else { showToast(d.error || 'Error','error'); }
+        });
+}
+
+function removeBulkByIds(ids) {
+    ids.forEach(function(id){
+        document.querySelectorAll('.task-card[data-id="'+id+'"], .task-table tr[data-id="'+id+'"]').forEach(function(el){
+            el.style.transition = 'opacity 0.15s ease';
+            el.style.opacity = '0';
+            setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 150);
+        });
+    });
+    updateColCounts();
+    clearBulkSelection();
+    hideBulkToolbar();
+}
+
+function updateBulkStatus(ids, value) {
+    var col = document.querySelector('.kanban-col[data-status="'+value+'"]');
+    ids.forEach(function(id){
+        var card = document.querySelector('.task-card[data-id="'+id+'"]');
+        if (card && col) col.appendChild(card);
+        var row = document.querySelector('.task-table tr[data-id="'+id+'"]');
+        if (row) row.querySelectorAll('select').forEach(function(s){
+            if (Array.from(s.options).some(function(o){ return o.value === value; })) s.value = value;
+        });
+    });
+    updateColCounts();
+    clearBulkSelection();
+    hideBulkToolbar();
+}
+
+function clearBulkSelection() {
+    document.querySelectorAll('.row-check').forEach(function(c){ c.checked = false; });
+    var all = document.getElementById('selectAll');
+    if (all) all.checked = false;
+}
+
+function hideBulkToolbar() {
+    var tb = document.getElementById('bulkToolbar');
+    if (tb) tb.classList.remove('show');
+}
+
+function inlineEdit(id, field, value) {
+    var form = new FormData();
+    form.append(field, value);
+    fetch(updateBase + id, {method:'POST', headers:{'X-CSRFToken':csrf,'X-Requested-With':'XMLHttpRequest'}, body:form})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) showToast(field.replace('_',' ')+' updated');
+            else showToast(d.error||'Error','error');
+        }).catch(function(){showToast('Network error','error');});
+}
+
+function toggleDone(id, btn) {
+    var next = (btn.dataset.status === 'done') ? 'to_do' : 'done';
+    inlineEdit(id, 'status', next);
+    btn.dataset.status = next;
+    btn.textContent = (next === 'done') ? 'Undo' : 'Done';
+    btn.classList.toggle('btn-dark', next === 'done');
+    btn.classList.toggle('btn-outline-secondary', next === 'done');
+    var card = btn.closest('.ic-card');
+    if (card) {
+        var s = card.querySelector('.ic-meta > span');
+        if (s) {
+            s.textContent = (next === 'done') ? 'Done' : 'To Do';
+            s.className = (next === 'done') ? 'text-success' : '';
+        }
+    }
+}
+
+function softReload() {
+    setTimeout(function(){ location.reload(); }, 350);
+}
+
+function acknowledge(id, btn) {
+    fetch(acknowledgeUrlTmpl.replace('__ID__', id), {method:'POST', headers:{'X-CSRFToken':csrf}})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.ok) {
+                var card = btn.closest('.inbox-card');
+                if (card) { card.style.opacity = '0.3'; }
+                btn.disabled = true;
+                btn.textContent = 'Seen';
+                showToast('Acknowledged');
+            }
+        });
+}
+
+// --- Sub-task operations ---
+function renderSubtaskSection(items) {
+    var el = document.getElementById('subtaskList');
+    if (!items || !items.length) { el.innerHTML = '<div class="text-muted small">No sub-tasks yet.</div>'; return; }
+    el.innerHTML = items.sort(function(a,b){return a.order-b.order}).map(function(s) {
+        return '<div class="subtask-item" data-id="'+s.id+'">' +
+            '<input type="checkbox" class="sti-check" '+(s.is_done?'checked':'')+' onchange="toggleSubtask('+s.id+',this)">' +
+            '<span class="sti-label'+(s.is_done?' done':'')+'" onclick="toggleSubtask('+s.id+',null)">'+escapeHtml(s.title)+'</span>' +
+            '<span class="sti-del" onclick="deleteSubtask('+s.id+')"><i class="bi bi-trash3"></i></span>' +
+        '</div>';
+    }).join('');
+}
+function addSubtask() {
+    var input = document.getElementById('subtaskInput');
+    var title = input.value.trim();
+    if (!title || !currentTaskId) return;
+    var form = new FormData();
+    form.append('title', title);
+    fetch(subtaskAddBase + currentTaskId, {method:'POST', headers:{'X-CSRFToken':csrf}, body:form})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) { input.value=''; loadPanel(currentTaskId); }
+            else { alert(d.error||'Error'); }
+        });
+}
+function toggleSubtask(id, cb) {
+    var form = new FormData();
+    fetch(subtaskToggleBase + id, {method:'POST', headers:{'X-CSRFToken':csrf}, body:form})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) {
+                if (cb) cb.checked = d.is_done;
+                var label = document.querySelector('.subtask-item[data-id="'+id+'"] .sti-label');
+                if (label) { label.classList.toggle('done',d.is_done); }
+            }
+        });
+}
+function deleteSubtask(id) {
+    if (!confirm('Delete this sub-task?')) return;
+    fetch(subtaskDeleteBase + id, {method:'POST', headers:{'X-CSRFToken':csrf}})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) { loadPanel(currentTaskId); }
+        });
+}
+
+// --- Template management ---
+var templateListUrl = '{{ url_for("tasks.list_templates") }}';
+var templateCreateUrl = '{{ url_for("tasks.create_template") }}';
+var templateApplyUrl = '{{ url_for("tasks.apply_template", template_id="__ID__") }}'.replace('__ID__', '');
+var templateDeleteUrl = '{{ url_for("tasks.delete_template", template_id="__ID__") }}'.replace('__ID__', '');
+var templateRecurringToggleUrl = '{{ url_for("tasks.toggle_recurring", template_id="__ID__") }}'.replace('__ID__', '');
+var templateGenerateRecurringUrl = '{{ url_for("tasks.generate_recurring_tasks") }}';
+var pendingApplyTemplateId = null;
+
+function loadTemplates() {
+    var body = document.getElementById('templateListBody');
+    fetch(templateListUrl).then(function(r){return r.json()}).then(function(data){
+        if (!data.length) { body.innerHTML = '<div class="text-center py-4 text-muted small">No templates yet. <a href="#" onclick="showCreateTemplateForm();return false">Create one</a>.</div>'; return; }
+        body.innerHTML = data.map(function(t){
+            var subs = t.sub_tasks && t.sub_tasks.length ? '<span class="small text-muted ms-2">' + t.sub_tasks.length + ' sub-tasks</span>' : '';
+            return '<div class="d-flex align-items-center justify-content-between p-2 border-bottom" style="border-color:var(--border);">' +
+                '<div><strong class="small">' + escapeHtml(t.title) + '</strong> <span class="badge bg-secondary" style="font-size:0.6rem;">' + (t.default_priority || 'medium') + '</span>' + subs + 
+                (t.day_of_month ? ' <span class="badge bg-info" style="font-size:0.55rem;">Day ' + t.day_of_month + '</span>' : '') +
+                '</div>' +
+                '<div class="d-flex gap-1"><button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="applyTemplate(\''+t.id+'\',\''+escapeHtml(t.title).replace(/'/g,"\\'")+'\')">Apply</button>' +
+                '<button class="btn btn-sm btn-outline-danger rounded-pill" onclick="deleteTemplate(\''+t.id+'\',this)"><i class="bi bi-trash3"></i></button></div></div>';
+        }).join('');
+    });
+}
+
+function showCreateTemplateForm() {
+    var modal = new bootstrap.Modal(document.getElementById('createTemplateModal'));
+    modal.show();
+    document.getElementById('createTemplateForm').reset();
+}
+
+document.getElementById('createTemplateForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var form = this;
+    var text = form.querySelector('[name="sub_tasks_text"]').value;
+    var lines = text.split('\n').map(function(s){return s.trim();}).filter(function(s){return s;});
+    document.getElementById('subTasksJson').value = JSON.stringify(lines);
+    var fd = new FormData(form);
+    fetch(templateCreateUrl, {method:'POST', headers:{'X-CSRFToken':csrf}, body:fd})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) { bootstrap.Modal.getInstance(form.closest('.modal')).hide(); loadTemplates(); }
+            else { alert(d.error||'Error'); }
+        });
+});
+
+function applyTemplate(id, name) {
+    pendingApplyTemplateId = id;
+    document.getElementById('applyTemplateTitle').textContent = 'Apply: ' + (name||'Template');
+    document.getElementById('applyAssignee').value = '';
+    document.getElementById('applyDueDate').value = '';
+    new bootstrap.Modal(document.getElementById('applyTemplateModal')).show();
+}
+
+function execApplyTemplate() {
+    var assignee = document.getElementById('applyAssignee').value;
+    if (!assignee) { showToast('Select an assignee','warn'); return; }
+    var due = document.getElementById('applyDueDate').value;
+    var fd = new FormData();
+    fd.append('assignee_id', assignee);
+    if (due) fd.append('due_date', due);
+    fetch(templateApplyUrl + pendingApplyTemplateId, {method:'POST', headers:{'X-CSRFToken':csrf}, body:fd})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) { showToast('Task created from template!'); bootstrap.Modal.getInstance(document.getElementById('applyTemplateModal')).hide(); softReload(); }
+            else { showToast(d.error||'Error','error'); }
+        });
+}
+
+function generateRecurringTasks() {
+    var btn = event.target;
+    btn.disabled = true;
+    fetch(templateGenerateRecurringUrl, {method:'POST', headers:{'X-CSRFToken':csrf}})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) {
+                showToast(d.generated + ' recurring task(s) generated');
+                loadTemplates();
+            } else {
+                showToast(d.error || 'Error', 'error');
+            }
+            btn.disabled = false;
+        }).catch(function(){ btn.disabled = false; });
+}
+
+document.getElementById('assignForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var btn = document.getElementById('atSubmitBtn');
+    var spinner = document.getElementById('atSpinner');
+    btn.disabled = true;
+    spinner.classList.remove('d-none');
+    var fd = new FormData(this);
+    fetch(this.action, {method:'POST', headers:{'X-CSRFToken':csrf,'X-Requested-With':'XMLHttpRequest'}, body:fd})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) {
+                showToast('Task assigned successfully!');
+                bootstrap.Modal.getInstance(document.getElementById('assignModal')).hide();
+                softReload();
+            } else {
+                showToast(d.error || 'Failed to assign task', 'error');
+                btn.disabled = false;
+                spinner.classList.add('d-none');
+            }
+        }).catch(function(){
+            showToast('Network error', 'error');
+            btn.disabled = false;
+            spinner.classList.add('d-none');
+        });
+});
+
+function deleteTemplate(id, btn) {
+    if (!confirm('Delete this template?')) return;
+    fetch(templateDeleteUrl + id, {method:'POST', headers:{'X-CSRFToken':csrf}})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) { btn.closest('.d-flex').remove(); showToast('Template deleted'); }
+            else { showToast(d.error||'Error','error'); }
+        });
+}
+
+function saveTaskAsTemplate() {
+    if (!currentTaskId) return;
+    var name = prompt('Template name:');
+    if (!name) return;
+    var fd = new FormData();
+    fd.append('title', name);
+    fd.append('source_task_id', currentTaskId);
+    fetch(templateCreateUrl, {method:'POST', headers:{'X-CSRFToken':csrf}, body:fd})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) { showToast('Template saved!'); }
+            else { showToast(d.error||'Error','error'); }
+        });
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+    var tm = document.getElementById('templateModal');
+    if (tm) tm.addEventListener('show.bs.modal', loadTemplates);
+});
+
+// Open slide-over panel (auto-acknowledges for inbox view)
+function openPanel(id) {
+    currentTaskId = id;
+    document.getElementById('slidePanel').classList.add('open');
+    document.getElementById('panelBackdrop').classList.add('show');
+    document.body.style.overflow = 'hidden';
+    fetch(acknowledgeUrlTmpl.replace('__ID__', id), {method:'POST', headers:{'X-CSRFToken':csrf}}).catch(function(){});
+    loadPanel(id);
+}
+
+function closePanel() {
+    document.getElementById('slidePanel').classList.remove('open');
+    document.getElementById('panelBackdrop').classList.remove('show');
+    document.body.style.overflow = '';
+    currentTaskId = null;
+}
+
+function deleteTask() {
+    if (!currentTaskId) return;
+    if (!confirm('Are you sure you want to delete this task? This cannot be undone.')) return;
+    fetch(deleteBase + currentTaskId, {method:'POST', headers:{'X-CSRFToken':csrf,'X-Requested-With':'XMLHttpRequest'}})
+        .then(function(r){return r.json()})
+        .then(function(d){
+if (d.ok) {
+                        showToast('Task deleted');
+                        closePanel();
+                        var card = document.querySelector('.task-card[data-id="'+currentTaskId+'"]');
+                        if (card) {
+                            card.style.transition = 'opacity 0.15s ease, transform 0.15s ease';
+                            card.style.opacity = '0';
+                            setTimeout(function(){ if (card.parentNode) card.parentNode.removeChild(card); }, 150);
+                        }
+                        updateColCounts();
+                    } else {
+                showToast(d.error||'Error deleting task','error');
+            }
+        }).catch(function(){showToast('Network error','error');});
+}
+
+function loadPanel(id) {
+    fetch(dataBase + id)
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d.ok) return;
+            var t = d.task;
+            document.getElementById('panelTitle').textContent = t.title;
+            document.getElementById('editTitle').value = t.title;
+            document.getElementById('editDesc').value = t.description;
+            document.getElementById('pePriority').value = t.priority;
+            document.getElementById('peDueDate').value = t.due_date;
+            var peAs = document.getElementById('peAssignee');
+            if (peAs) peAs.value = t.assignee_id;
+            var peAsName = document.getElementById('peAssigneeName');
+            if (peAsName) peAsName.textContent = t.assignee_name || 'Unassigned';
+            var peOrder = document.getElementById('peOrder');
+            if (peOrder) peOrder.value = t.order_id || '';
+            renderSubtaskSection(t.sub_items);
+            var orderEl = document.getElementById('panelOrderLink');
+            if (t.order_id && t.order_url) {
+                orderEl.style.display = 'block';
+                orderEl.innerHTML = '<span class="small text-muted">Linked to </span><a href="' + t.order_url + '" class="fw-semibold small">Order #' + t.order_id + '</a>';
+            } else {
+                orderEl.style.display = 'none';
+            }
+            renderThread(d.thread);
+        });
+}
+
+function renderThread(thread) {
+    var el = document.getElementById('panelThread');
+    el.innerHTML = '';
+    var questions = thread.filter(function(e){return !e.parent_id;});
+    var answers = {};
+    thread.filter(function(e){return e.parent_id;}).forEach(function(a){answers[a.parent_id]=a;});
+    questions.forEach(function(e) {
+        var isSystem = e.is_system;
+        if (isSystem) {
+            el.innerHTML += '<div class="entry system"><div class="e-body"><div class="e-text">' + escapeHtml(e.body) + ' <span class="e-time">' + timeAgo(e.created_at) + '</span></div></div></div>';
+        } else {
+            var initials = e.author ? e.author.charAt(0).toUpperCase() : '?';
+            var color = avatarColor(e.author);
+            el.innerHTML += '<div class="entry"><div class="e-avatar" style="background:' + color + ';">' + initials + '</div><div class="e-body"><div class="e-head">' + escapeHtml(e.author) + ' <span class="e-time">' + timeAgo(e.created_at) + '</span></div><div class="e-text">' + escapeHtml(e.body) + '</div><div class="mt-1"><button class="btn btn-sm btn-outline-secondary rounded-pill" style="font-size:0.65rem;padding:1px 8px;" onclick="showAnswerForm(' + e.id + ')">Answer</button></div></div></div>';
+            var ans = answers[e.id];
+            if (ans) {
+                var aColor = avatarColor(ans.author);
+                el.innerHTML += '<div class="entry answer"><div class="e-avatar" style="background:' + aColor + ';">' + (ans.author.charAt(0).toUpperCase()||'?') + '</div><div class="e-body"><div class="e-head">' + escapeHtml(ans.author) + ' <span class="e-time">' + timeAgo(ans.created_at) + '</span></div><div class="e-text">' + escapeHtml(ans.body) + '</div></div></div>';
+            }
+        }
+    });
+}
+
+function saveField(field, value) {
+    if (!currentTaskId) return;
+    var form = new FormData();
+    form.append(field, value);
+    fetch(updateBase + currentTaskId, {method:'POST', headers:{'X-CSRFToken':csrf,'X-Requested-With':'XMLHttpRequest'}, body:form})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) showToast(field.replace('_',' ')+' saved');
+            else showToast(d.error||'Error saving','error');
+        })
+        .catch(function(){showToast('Network error','error');});
+}
+
+function postComment() {
+    var input = document.getElementById('commentInput');
+    var body = input.value.trim();
+    if (!body || !currentTaskId) return;
+    var form = new FormData();
+    form.append('body', body);
+    fetch(commentBase + currentTaskId, {method:'POST', headers:{'X-CSRFToken':csrf,'X-Requested-With':'XMLHttpRequest'}, body:form})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.ok) {
+                input.value = '';
+                showToast('Comment posted');
+                loadPanel(currentTaskId);
+            } else { showToast(d.error||'Error','error'); }
+        }).catch(function(){showToast('Network error','error');});
+}
+
+function showAnswerForm(parentId) {
+    var existing = document.getElementById('answerForm_' + parentId);
+    if (existing) { existing.remove(); return; }
+    var form = document.createElement('div');
+    form.id = 'answerForm_' + parentId;
+    form.className = 'mt-1 mb-2';
+    form.style.marginLeft = '38px';
+    form.innerHTML = '<textarea id="ansInput_'+parentId+'" class="form-control form-control-sm" rows="2" placeholder="Write an answer…"></textarea><div class="d-flex gap-1 mt-1"><button class="btn btn-dark btn-sm rounded-pill" style="font-size:0.7rem;padding:2px 12px;" onclick="postAnswer('+parentId+')">Post Answer</button><button class="btn btn-sm btn-outline-secondary rounded-pill" style="font-size:0.7rem;padding:2px 12px;" onclick="this.parentElement.parentElement.remove()">Cancel</button></div>';
+    var btn = document.querySelector('.entry .mt-1 button[onclick*="showAnswerForm('+parentId+')"]');
+    if (btn) btn.closest('.entry').after(form);
+}
+function postAnswer(parentId) {
+    var input = document.getElementById('ansInput_' + parentId);
+    var body = input.value.trim();
+    if (!body || !currentTaskId) return;
+    var fd = new FormData();
+    fd.append('body', body);
+    fd.append('parent_id', parentId);
+    fetch(commentBase + currentTaskId, {method:'POST', headers:{'X-CSRFToken':csrf,'X-Requested-With':'XMLHttpRequest'}, body:fd})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) { showToast('Answer posted'); loadPanel(currentTaskId); }
+            else { showToast(d.error||'Error','error'); }
+        }).catch(function(){showToast('Network error','error');});
+}
+
+// @mention autocomplete (discussions only — removed from task comments)
+var mentionData = {{ all_employees | map(attribute='name') | list | tojson }};
+function onCommentInput(el) {
+    var val = el.value;
+    var cursor = el.selectionStart;
+    var before = val.substring(0, cursor);
+    var atIdx = before.lastIndexOf('@');
+    if (atIdx >= 0 && atIdx === before.length - 1) {
+        showMentions('');
+    } else if (atIdx >= 0) {
+        var q = before.substring(atIdx + 1).toLowerCase();
+        if (q && !q.includes(' ')) {
+            showMentions(q);
+        } else {
+            hideMentions();
+        }
+    } else {
+        hideMentions();
+    }
+}
+
+function showMentions(q) {
+    var dd = document.getElementById('mentionDropdown');
+    var filtered = q ? mentionData.filter(function(n) { return n.toLowerCase().startsWith(q); }) : mentionData;
+    if (!filtered.length) { dd.style.display = 'none'; return; }
+    dd.innerHTML = filtered.map(function(n) {
+        var initials = n.charAt(0).toUpperCase();
+        return '<div class="m-item" onclick="insertMention(\'' + n + '\')"><span class="avatar-init" style="background:#14181f;">' + initials + '</span>' + n + '</div>';
+    }).join('');
+    dd.style.display = 'block';
+}
+
+function hideMentions() { document.getElementById('mentionDropdown').style.display = 'none'; }
+
+function insertMention(name) {
+    var input = document.getElementById('commentInput');
+    var val = input.value;
+    var cursor = input.selectionStart;
+    var before = val.substring(0, cursor);
+    var atIdx = before.lastIndexOf('@');
+    var after = val.substring(cursor);
+    input.value = before.substring(0, atIdx) + '@' + name + ' ' + after;
+    hideMentions();
+    input.focus();
+}
+
+function timeAgo(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    var diff = Date.now() - d.getTime();
+    var sec = Math.floor(diff / 1000);
+    if (sec < 60) return 'just now';
+    var min = Math.floor(sec / 60);
+    if (min < 60) return min + 'm ago';
+    var hr = Math.floor(min / 60);
+    if (hr < 24) return hr + 'h ago';
+    var days = Math.floor(hr / 24);
+    if (days < 30) return days + 'd ago';
+    return Math.floor(days / 30) + 'mo ago';
+}
+
+function escapeHtml(t) {
+    if (!t) return '';
+    return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && panelOpen) closePanel();
+});
+</script>
+{% endblock %}

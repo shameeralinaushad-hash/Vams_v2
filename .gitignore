@@ -1,0 +1,52 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# Database
+database/*.db
+database/backups/
+
+# Logs
+logs/
+*.log
+
+# Generated PDFs
+static/generated_pdfs/
+static/statements/
+
+# Uploaded files
+static/uploads/
+static/letterheads/
+static/company_logos/
+static/client_logos/
+static/signatures/
+static/company_documents/
+static/documents/
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Cache
+.pytest_cache/
+
+# Client / business documents — not code, don't belong in git history
+Delivery Challan.xlsx
+QUOTATION.docx
+Qoutation for Working/
+Quotation_rostam-ISB-EXA-2026-2_v10.pdf
+Quotation_rostam-ISB-EXA-2026-4_v8.pdf
+
+# Dev tool artifacts
+.playwright-mcp/
+test_default.pdf
+test_infobox.pdf
+AGENTS.md
+.agents/
+skills-lock.json

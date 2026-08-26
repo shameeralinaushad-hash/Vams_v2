@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}My Profile{% endblock %}
+{% block pagetitle %}My Profile{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .info-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: 0 2px 10px rgba(20,24,31,0.03); }
+    .panel-header { border-bottom: 1px dashed var(--border); padding-bottom: 14px; margin-bottom: 18px; }
+    .panel-title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1rem; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 8px; }
+    .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: 0 2px 10px rgba(20,24,31,0.03); height: 100%; }
+    .kpi-card .kpi-number { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.2; }
+    .kpi-card .kpi-label { color: var(--text-secondary); font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+    .detail-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); margin-bottom: 2px; }
+    .detail-value { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); }
+    .heatmap-grid { display: grid; grid-template-columns: repeat(53, 1fr); gap: 2px; }
+    .heatmap-cell { aspect-ratio: 1; border-radius: 2px; min-width: 8px; cursor: pointer; position: relative; }
+    .heatmap-cell:hover::after { content: attr(data-tip); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: var(--accent-dark); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; white-space: nowrap; z-index: 10; }
+    .table-custom { margin: 0; }
+    .table-custom th { border-bottom: 2px solid var(--border); color: var(--text-secondary); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 10px; }
+    .table-custom td { padding: 14px 10px; vertical-align: middle; font-size: 0.85rem; color: var(--text-primary); border-bottom: 1px solid var(--border); }
+    .table-custom tr:last-child td { border-bottom: none; }
+    .todo-item { padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+    .todo-item:last-child { border-bottom: none; }
+    .todo-item .todo-text { flex: 1; font-size: 0.85rem; }
+    .todo-item .todo-done { text-decoration: line-through; color: var(--text-secondary); }
+    .eff-ring-lg { width: 100px; height: 100px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; font-weight: 800; flex-shrink: 0; margin: 0 auto; }
+    .eff-ring-lg span { background: var(--surface); width: 76px; height: 76px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+    .eff-metric { text-align: center; padding: 8px; border-radius: var(--radius-md); background: var(--surface-soft); }
+    .eff-metric .num { font-size: 1.1rem; font-weight: 700; }
+    .eff-metric .lbl { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-secondary); }
+    .modal-form .form-control, .modal-form .form-select { background-color: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.85rem; }
+    .modal-form .form-label { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set month = date.today().month %}
+{% set year = date.today().year %}
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-8">
+        <div class="info-panel">
+            <div class="d-flex align-items-start gap-3">
+                <div style="width:64px;height:64px;border-radius:50%;background:var(--surface-soft);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.5rem;color:var(--text-secondary);flex-shrink:0;">{{ current_user.name[:1] }}</div>
+                <div style="flex:1;">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h4 class="fw-bold mb-1">{{ current_user.name }}</h4>
+                            <div class="text-muted small">{{ current_user.email }}</div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <form method="POST" action="{{ url_for('auth.toggle_email_notify') }}" class="d-flex align-items-center gap-1" style="font-size:0.78rem;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input class="form-check-input m-0" type="checkbox" name="email_notifications" id="emailNotifyToggle"
+                                       onchange="this.form.submit()" {% if current_user.email_notifications %}checked{% endif %}>
+                                <label class="text-muted small mb-0" for="emailNotifyToggle" style="cursor:pointer;">Email</label>
+                            </form>
+                            <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill" data-bs-toggle="modal" data-bs-target="#editNameModal"><i class="bi bi-pencil"></i> Edit Name</button>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-2">
+                        <div class="col-md-4 col-6"><div class="detail-label">Role</div><div class="detail-value">{{ current_user.role | capitalize }}</div></div>
+                        <div class="col-md-4 col-6"><div class="detail-label">Linked Employee</div><div class="detail-value">{% if emp %}<a href="{{ url_for('hr.employee_profile', employee_id=emp.id) }}">{{ emp.name }}</a>{% else %}<span class="text-muted small">None</span>{% endif %}</div></div>
+                        <div class="col-md-4 col-6"><div class="detail-label">Department</div><div class="detail-value">{{ emp.department or '—' if emp else '—' }}</div></div>
+                        <div class="col-md-4 col-6"><div class="detail-label">Designation</div><div class="detail-value">{{ emp.designation or '—' if emp else '—' }}</div></div>
+                        <div class="col-md-4 col-6"><div class="detail-label">Employee Code</div><div class="detail-value">{{ emp.employee_code or '—' if emp else '—' }}</div></div>
+                        <div class="col-md-4 col-6"><div class="detail-label">Date Joined</div><div class="detail-value">{{ emp.date_joined or '—' if emp else '—' }}</div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="info-panel">
+            <div class="panel-header" style="padding-bottom:10px;margin-bottom:12px;"><h6 class="panel-title"><i class="bi bi-gauge-high"></i> Efficiency</h6></div>
+            <div class="text-center mb-3">
+                <div class="eff-ring-lg" style="background: conic-gradient(var(--accent-dark) 0deg {{ (efficiency / 100 * 360) | round }}deg, var(--surface-soft) {{ (efficiency / 100 * 360) | round }}deg 360deg);">
+                    <span>{{ efficiency }}%</span>
+                </div>
+            </div>
+            <div class="row g-2">
+                <div class="col-6"><div class="eff-metric"><div class="num" style="color:var(--success);">{{ attn_pct }}%</div><div class="lbl">Attendance</div></div></div>
+                <div class="col-6"><div class="eff-metric"><div class="num" style="color:var(--accent-dark);">{{ task_pct }}%</div><div class="lbl">Velocity</div></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if leave_stats %}
+<div class="row g-4 mb-3">
+    <div class="col-lg-12">
+        <div class="info-panel">
+            <div class="panel-header"><h6 class="panel-title"><i class="bi bi-umbrella"></i> Paid Leave Balance</h6></div>
+            <div class="row g-3">
+                <div class="col-4"><div class="eff-metric"><div class="num" style="color:var(--accent-dark);">{{ leave_stats.earned }}</div><div class="lbl">Earned</div></div></div>
+                <div class="col-4"><div class="eff-metric"><div class="num" style="color:var(--danger);">{{ leave_stats.used }}</div><div class="lbl">Used</div></div></div>
+                <div class="col-4"><div class="eff-metric"><div class="num" style="color:var(--success);">{{ leave_stats.balance }}</div><div class="lbl">Balance</div></div></div>
+            </div>
+            <div class="small text-muted mt-2"><i class="bi bi-info-circle"></i> {{ leave_stats.monthly_accrual }} paid leaves per month &middot; {{ leave_stats.months_active }} months active</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if emp %}
+<div class="row g-4 mb-3">
+    <div class="col-lg-8">
+        <div class="info-panel">
+            <div class="panel-header"><h6 class="panel-title"><i class="bi bi-calendar-heart"></i> My Attendance — {{ year }}</h6></div>
+            <div class="heatmap-grid" id="heatmapGrid" style="margin-bottom:20px;">
+                {% for day_offset in range(365) %}
+                {% set d = date(year, 1, 1) + timedelta(days=day_offset) %}
+                {% set key = d.isoformat() %}
+                {% set status = heatmap.get(key) %}
+                {% set color = '#dce1e8' %}
+                {% if status == 'present' %}{% set color = '#1e9e63' %}
+                {% elif status == 'absent' %}{% set color = '#d64545' %}
+                {% elif status == 'half_day' %}{% set color = '#d99a2b' %}
+                {% elif status == 'leave' %}{% set color = '#98a0ac' %}
+                {% endif %}
+                <div class="heatmap-cell" style="background: {{ color }};" data-tip="{{ key }}: {{ status or 'no record' }}"></div>
+                {% endfor %}
+            </div>
+            <div class="d-flex gap-3 mt-2 small text-muted">
+                <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:#1e9e63;"></span> Present</span>
+                <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:#d64545;"></span> Absent</span>
+                <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:#d99a2b;"></span> Half Day</span>
+                <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:#98a0ac;"></span> Leave</span>
+                <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:#dce1e8;"></span> No Record</span>
+            </div>
+        </div>
+        <div class="info-panel mt-3">
+            <div class="panel-header" style="padding-bottom:10px;margin-bottom:12px;"><h6 class="panel-title"><i class="bi bi-graph-up"></i> Monthly Attendance Trend</h6></div>
+            <div style="position: relative; height: 160px; width: 100%;"><canvas id="attnTrendChart"></canvas></div>
+        </div>
+        <div class="info-panel mt-3">
+            <div class="panel-header" style="padding-bottom:10px;margin-bottom:12px;"><h6 class="panel-title"><i class="bi bi-rocket-takeoff"></i> Task Velocity <span class="badge bg-info text-dark" style="font-size:0.6rem;vertical-align:middle;">3-mo avg</span></h6></div>
+            <div class="row g-2">
+                <div class="col-4"><div class="eff-metric"><div class="num" style="color:var(--accent-dark);">{{ task_pct }}%</div><div class="lbl">Velocity</div></div></div>
+                <div class="col-4"><div class="eff-metric"><div class="num">{{ task_done_this_month }}</div><div class="lbl">This Month</div></div></div>
+                <div class="col-4"><div class="eff-metric"><div class="num">{{ task_rolling_avg }}</div><div class="lbl">3-mo Avg</div></div></div>
+            </div>
+            <div class="small text-muted mt-2"><i class="bi bi-info-circle"></i> Velocity = this month's completed tasks &divide; 3-month historical average &times; 100</div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        {% if notifications %}
+        <div class="info-panel mb-2">
+            <div class="panel-header" style="padding-bottom:10px;margin-bottom:12px;"><h6 class="panel-title"><i class="bi bi-bell"></i> Notifications</h6></div>
+            {% for n in notifications %}
+            <div class="d-flex align-items-center gap-2 mb-1" style="font-size:0.8rem;">
+                <span>•</span>
+                {% if n.link %}<a href="{{ n.link }}" class="text-decoration-none">{% endif %}
+                {{ n.message }}
+                {% if n.link %}</a>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% if upcoming_holidays %}
+        <div class="info-panel mb-2">
+            <div class="panel-header" style="padding-bottom:10px;margin-bottom:12px;"><h6 class="panel-title"><i class="bi bi-calendar-event"></i> Upcoming Holidays</h6></div>
+            {% for h in upcoming_holidays %}
+            <div class="d-flex justify-content-between align-items-center mb-1">
+                <span style="font-size:0.8rem;">{{ h.date.strftime('%d %b') }} — {{ h.name }}</span>
+                <span class="badge bg-{% if (h.date - date.today()).days <= 3 %}danger{% elif (h.date - date.today()).days <= 7 %}warning{% else %}secondary{% endif %} rounded-pill" style="font-size:0.55rem;">{{ (h.date - date.today()).days }}d</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        <div class="info-panel mb-2">
+            <div class="panel-header" style="padding-bottom:10px;margin-bottom:12px;"><h6 class="panel-title"><i class="bi bi-check2-square"></i> My Tasks</h6></div>
+            {% if tasks %}
+            {% for t in tasks %}
+            <div class="todo-item" style="padding:6px 0;">
+                <i class="bi {% if t.is_done %}bi-check-circle-fill text-success{% else %}bi-circle text-muted{% endif %}"></i>
+                <span class="todo-text {% if t.is_done %}todo-done{% endif %}">{{ t.text }}</span>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="text-muted small">No tasks assigned.</div>
+            {% endif %}
+        </div>
+        <div class="info-panel">
+            <div class="panel-header" style="padding-bottom:10px;margin-bottom:12px;"><h6 class="panel-title"><i class="bi bi-clock-history"></i> Payroll History</h6></div>
+            {% if payroll_history %}
+            <div class="table-responsive">
+                <table class="table table-custom align-middle">
+                    <thead><tr><th>Period</th><th>Base</th><th>Final</th><th>Status</th><th class="text-end">Slip</th></tr></thead>
+                    <tbody>
+                        {% for pr in payroll_history[:5] %}
+                        <tr>
+                            <td class="small">{{ pr.month }}/{{ pr.year }}</td>
+                            <td>{{ pr.base_salary | currency }}</td>
+                            <td class="fw-bold">{{ pr.final_salary | currency }}</td>
+                            <td><span class="badge {% if pr.status == 'paid' %}bg-success{% elif pr.status == 'finalized' %}bg-warning{% else %}bg-secondary{% endif %} rounded-pill" style="font-size:0.6rem;">{{ pr.status }}</span></td>
+                            <td class="text-end"><a href="{{ url_for('hr.download_salary_slip', record_id=pr.id) }}" class="btn btn-sm btn-outline-secondary rounded-pill" style="font-size:0.6rem;">PDF</a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-muted small">No payroll records.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+const monthlyPct = {{ monthly_pct | tojson }};
+const monthLabels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+new Chart(document.getElementById('attnTrendChart'), {
+    type: 'line',
+    data: {
+        labels: monthLabels,
+        datasets: [{
+            label: 'Attendance %', data: monthlyPct,
+            borderColor: '#14181f', backgroundColor: 'rgba(20,24,31,0.06)', fill: true,
+            borderWidth: 2, tension: 0.3, pointRadius: 3,
+        }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.raw}%` } } },
+        scales: { x: { grid: { display: false } }, y: { grid: { color: 'rgba(20,24,31,0.06)' }, min: 0, max: 100, ticks: { callback: (v) => `${v}%` } } }
+    }
+});
+</script>
+{% else %}
+<div class="row g-4">
+    <div class="col-12">
+        <div class="info-panel text-center py-5">
+            <i class="bi bi-person-plus" style="font-size: 2rem; color: var(--text-secondary);"></i>
+            <h5 class="mt-3 fw-bold">No HR Profile Linked</h5>
+            <p class="text-muted small">Your user account is not linked to any employee profile yet.<br>Ask an admin to link your account in the Employees section.</p>
+            {% if current_user.role == 'admin' %}
+            <a href="{{ url_for('hr.employee_list') }}" class="btn btn-primary rounded-pill">Go to Employees</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="modal fade" id="editNameModal" tabindex="-1">
+    <div class="modal-dialog modal-sm"><div class="modal-content" style="border-radius: var(--radius-lg);">
+        <form method="POST" action="{{ url_for('auth.profile') }}" class="modal-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="modal-header border-0"><h6 class="modal-title fw-bold">Edit Name</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <label class="form-label">Name</label>
+                <input type="text" name="name" class="form-control" value="{{ current_user.name or '' }}" required>
+            </div>
+            <div class="modal-footer border-0"><button type="submit" class="btn btn-primary rounded-pill px-4">Save</button></div>
+        </form>
+    </div></div>
+</div>
+
+{% endblock %}

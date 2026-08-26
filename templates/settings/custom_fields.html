@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Custom Fields — PDF Columns{% endblock %}
+{% block pagetitle %}Custom Fields for Quotations{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <div class="settings-panel mb-4" style="max-width: 640px;">
+        <h6 class="fw-bold mb-1">Add Custom Field</h6>
+        <p class="text-muted small mb-3">
+            Custom fields appear as extra item-table columns in quotations for
+            <strong>{{ company.name }}</strong>. Values are entered per line item when creating a quotation,
+            and the column only prints for quotations where you enable it.
+        </p>
+
+        <form method="POST" class="row g-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-md-5">
+                <label class="small text-muted mb-1 d-block">Field Name</label>
+                <input type="text" name="name" class="form-control" placeholder="e.g. Brand / HS Code / Warranty" required>
+            </div>
+            <div class="col-md-4">
+                <label class="small text-muted mb-1 d-block">Type</label>
+                <select name="field_type" class="form-select">
+                    <option value="text">Text</option>
+                    <option value="number">Number</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary rounded-pill px-4 w-100">
+                    <i class="bi bi-plus-lg me-1"></i> Add Field
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div class="settings-panel" style="max-width: 640px;">
+        <h6 class="fw-bold mb-3">Existing Fields</h6>
+
+        {% if fields %}
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr class="text-muted small text-uppercase">
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th class="text-center">Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in fields %}
+                <tr>
+                    <td class="fw-semibold">{{ f.name }}</td>
+                    <td class="text-muted small">{{ "Number" if f.field_type == "number" else "Text" }}</td>
+                    <td class="text-center">
+                        <form method="POST" action="{{ url_for('settings.toggle_custom_field', field_id=f.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <div class="form-check form-switch justify-content-center">
+                                <input class="form-check-input" type="checkbox" role="switch"
+                                       name="is_active" {% if f.is_active %}checked{% endif %}
+                                       onchange="this.form.submit()">
+                            </div>
+                        </form>
+                    </td>
+                    <td class="text-end">
+                        <form method="POST" action="{{ url_for('settings.delete_custom_field', field_id=f.id) }}"
+                              onsubmit="return confirm('Delete field \'{{ f.name }}\'? Values on existing quotations are not affected.');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-3">
+                                <i class="bi bi-trash me-1"></i> Delete
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted small mb-0">
+            No custom fields yet. Add one above — it will then appear in the quotation line-item table.
+        </p>
+        {% endif %}
+    </div>
+
+    <div class="mt-3" style="max-width: 640px;">
+        <a href="{{ url_for('settings.pdf_builder') }}" class="btn btn-outline-secondary rounded-pill px-4">
+            <i class="bi bi-layout-three-columns me-1"></i> Open PDF Column Builder
+        </a>
+    </div>
+</div>
+{% endblock %}

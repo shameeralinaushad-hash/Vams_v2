@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}PDF Column Builder{% endblock %}
+{% block pagetitle %}PDF Column Builder — {{ company.name }}{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <div class="settings-panel mb-4" style="max-width: 720px;">
+        <h6 class="fw-bold mb-1">Quotation Item-Table Columns</h6>
+        <p class="text-muted small mb-4">
+            Choose which columns appear by default in quotations for this company. The saved order is used
+            left-to-right. <strong>Nomenclature, Unit Price and Total cannot be removed</strong> — they always print.
+            Custom fields are managed separately and added per quotation.
+            <span class="text-warning">Note: these defaults currently apply to the Vision (Rostam) quotation layout.</span>
+        </p>
+
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div id="columnList" class="d-flex flex-column gap-2 mb-3">
+                {% for col in all_columns %}
+                {% set checked = not current_columns or col.key in current_columns %}
+                {% set fixed = col.key in ['nomenclature', 'price', 'total'] %}
+                <div class="d-flex align-items-center gap-3 border rounded p-2 px-3 bg-white"
+                     data-col-key="{{ col.key }}">
+                    <i class="bi bi-grip-vertical text-muted" style="cursor: grab;"></i>
+                    <div class="form-check mb-0">
+                        <input class="form-check-input column-toggle" type="checkbox" name="column"
+                               value="{{ col.key }}" id="col_{{ col.key }}"
+                               {% if checked %}checked{% endif %}
+                               {% if fixed %}disabled{% endif %}>
+                        <label class="form-check-label fw-semibold" for="col_{{ col.key }}">
+                            {{ col.label }}
+                            {% if fixed %}<span class="text-muted fw-normal small">(always shown)</span>{% endif %}
+                        </label>
+                    </div>
+                    <input type="hidden" name="column_order" value="{{ col.key }}" class="column-order">
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary rounded-pill px-4">
+                    <i class="bi bi-check-lg me-1"></i> Save Layout
+                </button>
+                <a href="{{ url_for('settings.custom_fields') }}" class="btn btn-outline-secondary rounded-pill px-4">
+                    <i class="bi bi-list-check me-1"></i> Manage Custom Fields
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <div class="settings-panel" style="max-width: 720px;">
+        <h6 class="fw-bold mb-2">How it works</h6>
+        <ul class="text-muted small mb-0" style="line-height: 1.7;">
+            <li>Drag rows to set the column order (fixed columns stay in place).</li>
+            <li>When creating a quotation you can still override these columns for that single document.</li>
+            <li>With no columns saved, columns appear automatically based on the data (e.g. GST only when taxed).</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+    const FIXED_KEYS = ['nomenclature', 'price', 'total'];
+
+    function persistColumnOrder() {
+        document.querySelectorAll("#columnList > div").forEach((row, idx) => {
+            row.querySelector(".column-order").value = row.dataset.colKey;
+        });
+    }
+
+    let dragRow = null;
+    document.querySelectorAll("#columnList > div").forEach(row => {
+        row.addEventListener("dragstart", function(e) {
+            if (FIXED_KEYS.includes(row.dataset.colKey)) { e.preventDefault(); return; }
+            dragRow = row;
+            row.style.opacity = "0.5";
+        });
+        row.addEventListener("dragend", function() {
+            dragRow = null;
+            row.style.opacity = "1";
+        });
+        row.addEventListener("dragover", function(e) {
+            e.preventDefault();
+            if (!dragRow || dragRow === row) return;
+            if (FIXED_KEYS.includes(row.dataset.colKey) && !FIXED_KEYS.includes(dragRow.dataset.colKey)) return;
+            const container = document.getElementById("columnList");
+            const after = row === dragRow.nextSibling ? null : row;
+            container.insertBefore(dragRow, after);
+            persistColumnOrder();
+        });
+    });
+</script>
+{% endblock %}

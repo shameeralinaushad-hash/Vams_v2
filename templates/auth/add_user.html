@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Add User{% endblock %}
+{% block pagetitle %}Add User{% endblock %}
+{% block content %}
+<div class="card-stat p-4" style="max-width:450px;">
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="mb-3">
+            <label class="form-label">Name</label>
+            <input type="text" name="name" class="form-control" required>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input type="email" name="email" class="form-control" required>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Password</label>
+            <input type="password" name="password" class="form-control" required minlength="6">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Role</label>
+            <select name="role" class="form-select">
+                <option value="staff">Staff</option>
+                <option value="hr">HR</option>
+                <option value="admin">Admin</option>
+            </select>
+            <div class="form-text">Admins: full access. HR: HR module. Staff: basic access.</div>
+        </div>
+        <button type="submit" class="btn btn-success">Create User</button>
+        <a href="{{ url_for('auth.list_users') }}" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

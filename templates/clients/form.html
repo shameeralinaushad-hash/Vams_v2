@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <div class="page-eyebrow">Clients</div>
+        <h1 class="page-title">{{ "Edit" if client else "New" }} client</h1>
+    </div>
+</div>
+<form method="post" enctype="multipart/form-data" class="panel form-panel">
+    <div class="mb-3">
+        <label class="form-label-custom">Client name</label>
+        <input type="text" name="name" class="form-control w-100" value="{{ client.name if client else '' }}" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label-custom">Address</label>
+        <textarea name="address" class="form-control w-100">{{ client.address if client else '' }}</textarea>
+    </div>
+    <div class="mb-3">
+        <label class="form-label-custom">Contact info</label>
+        <input type="text" name="contact_info" class="form-control w-100" value="{{ client.contact_info if client else '' }}">
+    </div>
+    <div class="mb-3">
+        <label class="form-label-custom">Phone number</label>
+        <input type="text" name="phone_number" class="form-control w-100" value="{{ client.phone_number if client else '' }}">
+    </div>
+    <div class="mb-3">
+        <label class="form-label-custom">Tax number</label>
+        <input type="text" name="tax_number" class="form-control w-100" value="{{ client.tax_number if client else '' }}">
+    </div>
+    <div class="mb-4">
+        <label class="form-label-custom">Logo (optional)</label>
+        <input type="file" name="logo" class="form-control w-100">
+    </div>
+    <button type="submit" class="btn-brand">Save client</button>
+</form>
+{% endblock %}

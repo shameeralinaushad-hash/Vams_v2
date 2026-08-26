@@ -1,0 +1,236 @@
+﻿{% extends "base.html" %}
+{% block title %}Orders{% endblock %}
+{% block pagetitle %}Orders{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* ---------- Filter & Search Bar Styling ---------- */
+    .pill-tabs {
+        display: inline-flex;
+        background: var(--surface-soft);
+        border-radius: 30px;
+        padding: 4px;
+        border: 1px solid var(--border);
+    }
+    .pill-tabs a {
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        font-weight: 600;
+        padding: 6px 16px;
+        border-radius: 30px;
+        text-decoration: none;
+        transition: all 0.2s ease;
+    }
+    .pill-tabs a.active {
+        background: #ffffff;
+        color: var(--text-primary);
+        box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+    }
+
+    /* ---------- Table Styling ---------- */
+    .info-panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 24px;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.02);
+    }
+    .table-custom th {
+        border-bottom: 2px solid var(--border);
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 12px 10px;
+    }
+    .table-custom td {
+        padding: 14px 10px;
+        vertical-align: middle;
+        font-size: 0.85rem;
+        color: var(--text-primary);
+        border-bottom: 1px solid var(--border);
+    }
+
+    /* ---------- Search Preview Styling ---------- */
+    #livePreview {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        overflow: hidden;
+    }
+    #livePreview .list-group-item {
+        border: none;
+        border-bottom: 1px solid var(--border);
+        background: transparent;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Header & Add Button -->
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <h5 class="fw-bold m-0" style="font-family: 'Space Grotesk', sans-serif;">Manage Orders</h5>
+    <a href="{{ url_for('orders.add_order') }}" class="btn btn-primary rounded-pill px-4 fw-semibold">
+        <i class="bi bi-plus-lg me-1"></i> New Order
+    </a>
+</div>
+
+<!-- Controls: Filter & Search -->
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div class="d-flex gap-2 align-items-center">
+        <div class="pill-tabs">
+            <a href="{{ url_for('orders.list_orders', client_id=client_filter) }}" class="{{ 'active' if not status_filter }}">All</a>
+            <a href="{{ url_for('orders.list_orders', status='Pending', client_id=client_filter) }}" class="{{ 'active' if status_filter=='Pending' }}">Pending</a>
+            <a href="{{ url_for('orders.list_orders', status='PO Received', client_id=client_filter) }}" class="{{ 'active' if status_filter=='PO Received' }}">PO Received</a>
+            <a href="{{ url_for('orders.list_orders', status='Not Received', client_id=client_filter) }}" class="{{ 'active' if status_filter=='Not Received' }}">Not Received</a>
+        </div>
+
+        <!-- Client Dropdown -->
+        <select class="form-select rounded-pill border-1" style="width: auto; font-size: 0.8rem; background-color: var(--surface-soft);"
+                onchange="window.location.href='{{ url_for('orders.list_orders', status=status_filter, search=search) }}&client_id=' + this.value">
+            <option value="">All Clients</option>
+            {% for c in clients %}
+                <option value="{{ c.id }}" {% if client_filter|int == c.id %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div style="position:relative; width: 300px;">
+        <form method="GET" id="searchForm">
+            {% if status_filter %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
+            {% if client_filter %}<input type="hidden" name="client_id" value="{{ client_filter }}">{% endif %}
+            <div class="input-group">
+                <span class="input-group-text bg-white border-end-0 rounded-start-pill ps-3">
+                    <i class="bi bi-search text-secondary"></i>
+                </span>
+                <input type="text" name="search" id="searchInput" class="form-control border-start-0 rounded-end-pill"
+                       autocomplete="off" placeholder="Search orders/products..." value="{{ search }}">
+            </div>
+        </form>
+        <div id="livePreview" class="list-group" style="position:absolute; z-index:20; width:100%; display:none; max-height:320px; overflow-y:auto; margin-top: 5px;"></div>
+    </div>
+</div>
+
+<!-- Main Data Panel -->
+<div class="info-panel">
+    <div class="table-responsive-mobile">
+        <table class="table table-custom align-middle">
+            <thead>
+                <tr>
+                    <th>
+                        <a href="{{ url_for('orders.list_orders', status=status_filter, client_id=client_filter, search=search, sort_by='id', sort_dir='asc' if sort_by=='id' and sort_dir=='desc' else 'desc') }}" class="text-decoration-none text-muted">
+                            Order # {% if sort_by == 'id' %}<i class="bi bi-arrow-{{ 'up' if sort_dir == 'asc' else 'down' }}"></i>{% endif %}
+                        </a>
+                    </th>
+                    <th>Title</th>
+                    <th>Quotation #</th>
+                    <th>PO Number</th>
+                    <th>
+                        <a href="{{ url_for('orders.list_orders', status=status_filter, client_id=client_filter, search=search, sort_by='client', sort_dir='asc' if sort_by=='client' and sort_dir=='desc' else 'desc') }}" class="text-decoration-none text-muted">
+                            Client {% if sort_by == 'client' %}<i class="bi bi-arrow-{{ 'up' if sort_dir == 'asc' else 'down' }}"></i>{% endif %}
+                        </a>
+                    </th>
+                    <th>Status</th>
+                    <th>Inquiry Date</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for o in orders %}
+                <tr>
+                    <td class="fw-bold">{{ o.order_number or o.id }}</td>
+                    <td>{{ o.title or "—" }}</td>
+                    <td class="text-secondary">{{ o.commercial_quotation.quote_number if o.commercial_quotation else o.quotation.quote_number if o.quotation else "—" }}</td>
+                    <td>{{ o.purchase_order.po_number if (o.purchase_order and o.purchase_order.po_number) else "—" }}</td>
+                    <td class="fw-semibold">{{ o.client.name }}</td>
+                    <td>
+                        {% if o.status == 'PO Received' %}
+                            <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-10 rounded-pill px-2 py-1">PO Received</span>
+                        {% elif o.status == 'Not Received' %}
+                            <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-10 rounded-pill px-2 py-1">Not Received</span>
+                        {% else %}
+                            <span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-10 rounded-pill px-2 py-1">Pending</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-secondary small">{{ o.inquiry_date }}</td>
+                    <td class="text-end">
+                        <a href="{{ url_for('orders.view_order', order_id=o.id) }}" class="btn btn-sm btn-outline-primary rounded-pill px-3 me-1">Open</a>
+                        <form method="POST" action="{{ url_for('orders.delete_order', order_id=o.id) }}" class="d-inline"
+                              onsubmit="return confirm('Delete order for {{ o.client.name }}? This cannot be undone.')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-3">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" class="text-center py-5 text-muted">No orders found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Pagination -->
+{% if pagination and pagination.pages > 1 %}
+<nav class="mt-4">
+    <ul class="pagination pagination-sm justify-content-center">
+        {% for p in range(1, pagination.pages + 1) %}
+        <li class="page-item {{ 'active' if p == pagination.page }}">
+            <a class="page-link shadow-none" href="{{ url_for('orders.list_orders', status=status_filter, client_id=client_filter, search=search, sort_by=sort_by, sort_dir=sort_dir, page=p) }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+    </ul>
+</nav>
+{% endif %}
+
+<!-- Script -->
+<script>
+    const searchInput = document.getElementById("searchInput");
+    const livePreview = document.getElementById("livePreview");
+    let debounceTimer;
+
+    searchInput.addEventListener("input", function() {
+        clearTimeout(debounceTimer);
+        const q = searchInput.value.trim();
+        if (q.length < 2) {
+            livePreview.style.display = "none";
+            return;
+        }
+
+        debounceTimer = setTimeout(() => {
+            fetch("{{ url_for('orders.search_preview') }}?q=" + encodeURIComponent(q))
+                .then(r => r.json())
+                .then(results => {
+                    livePreview.innerHTML = "";
+                    if (results.length === 0) {
+                        livePreview.style.display = "none";
+                        return;
+                    }
+                    results.forEach(o => {
+                        const a = document.createElement("a");
+                        a.href = "/orders/" + o.id;
+                        a.className = "list-group-item list-group-item-action d-flex justify-content-between align-items-center";
+                        a.innerHTML = `
+                            <div>
+                                <div class="fw-bold text-dark small">${o.title}</div>
+                                <div class="small text-muted">${o.client} ${o.quote_number ? " · " + o.quote_number : ""}</div>
+                            </div>
+                            <span class="badge bg-secondary bg-opacity-10 text-secondary rounded-pill" style="font-size:0.65rem;">${o.status}</span>
+                        `;
+                        livePreview.appendChild(a);
+                    });
+                    livePreview.style.display = "block";
+                });
+        }, 200);
+    });
+
+    document.addEventListener("click", function(e) {
+        if (!livePreview.contains(e.target) && e.target !== searchInput) {
+            livePreview.style.display = "none";
+        }
+    });
+</script>
+{% endblock %}

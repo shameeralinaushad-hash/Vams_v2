@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Entity Profile — {{ company.name }}{% endblock %}
+{% block pagetitle %}Entity Profile{% endblock %}
+
+{% block extra_head %}
+<style>
+    .profile-card { background: #ffffff; border: 1px solid var(--border); border-radius: 16px; padding: 24px; }
+    .profile-stat { text-align: center; padding: 16px 8px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-soft, #f8fafc); }
+    .profile-stat .num { font-size: 1.4rem; font-weight: 800; color: var(--text-dark); }
+    .profile-stat .lbl { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .profile-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
+    .profile-value { font-weight: 600; color: var(--text-dark); }
+    .badge-status { background: #dcfce7; color: #15803d; padding: 3px 12px; border-radius: 20px; font-weight: 700; font-size: 0.75rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex align-items-center gap-3">
+        {% if company.logo_filename %}
+        <img src="{{ url_for('static', filename='company_logos/' ~ company.logo_filename) }}" style="width:56px;height:56px;object-fit:contain;border:1px solid var(--border);border-radius:12px;">
+        {% endif %}
+        <div>
+            <h5 class="fw-bold m-0" style="font-family: 'Space Grotesk', sans-serif;">{{ company.name }}</h5>
+            {% if company.status %}
+            <span class="badge-status">{{ company.status }}</span>
+            {% else %}
+            <span class="text-muted" style="font-size:0.85rem;">Entity profile</span>
+            {% endif %}
+        </div>
+    </div>
+    <div>
+        <a href="{{ url_for('companies.edit_company', company_id=company.id) }}" class="btn btn-outline-primary rounded-pill px-4">
+            <i class="bi bi-pencil me-1"></i> Edit
+        </a>
+        <a href="{{ url_for('companies.list_companies') }}" class="btn btn-outline-secondary rounded-pill px-4 ms-1">Back</a>
+    </div>
+</div>
+
+<!-- Stat row -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-2"><div class="profile-stat"><div class="num">{{ counts.orders }}</div><div class="lbl">Orders</div></div></div>
+    <div class="col-6 col-md-2"><div class="profile-stat"><div class="num">{{ counts.invoices }}</div><div class="lbl">Invoices</div></div></div>
+    <div class="col-6 col-md-2"><div class="profile-stat"><div class="num">{{ counts.quotations }}</div><div class="lbl">Quotations</div></div></div>
+    <div class="col-6 col-md-2"><div class="profile-stat"><div class="num">{{ counts.purchase_orders }}</div><div class="lbl">Purchase Orders</div></div></div>
+    <div class="col-6 col-md-2"><div class="profile-stat"><div class="num">{{ counts.challans }}</div><div class="lbl">Challans</div></div></div>
+</div>
+
+<div class="row g-3">
+    <!-- Entity information -->
+    <div class="col-md-6">
+        <div class="profile-card h-100">
+            <h6 class="fw-bold mb-3">Entity Information</h6>
+            <div class="row mb-2"><div class="col-5 profile-label">Entity Type</div><div class="col-7 profile-value">{{ company.entity_type or "—" }}</div></div>
+            <div class="row mb-2"><div class="col-5 profile-label">Status</div><div class="col-7 profile-value">{{ company.status or "—" }}</div></div>
+            <div class="row mb-2"><div class="col-5 profile-label">Formation Date</div><div class="col-7 profile-value">{{ company.formation_date.strftime('%b %d, %Y') if company.formation_date else "—" }}</div></div>
+            <div class="row mb-2"><div class="col-5 profile-label">EIN</div><div class="col-7 profile-value">{{ company.ein or "—" }}</div></div>
+            <div class="row mb-2"><div class="col-5 profile-label">Registered Agent</div><div class="col-7 profile-value">{{ company.registered_agent or "—" }}</div></div>
+            <div class="row mb-2"><div class="col-5 profile-label">Tax / Reg. Number</div><div class="col-7 profile-value">{{ company.tax_number or "—" }}</div></div>
+        </div>
+    </div>
+
+    <!-- Contact & documents -->
+    <div class="col-md-6">
+        <div class="profile-card h-100">
+            <h6 class="fw-bold mb-3">Contact &amp; Details</h6>
+            <div class="row mb-2"><div class="col-5 profile-label">Address</div><div class="col-7 profile-value">{{ company.address or "—" }}</div></div>
+            <div class="row mb-2"><div class="col-5 profile-label">Phone</div><div class="col-7 profile-value">{{ company.phone or "—" }}</div></div>
+            <div class="row mb-2"><div class="col-5 profile-label">Email</div><div class="col-7 profile-value">{{ company.email or "—" }}</div></div>
+            <div class="row mb-2"><div class="col-5 profile-label">Authorized Signatory</div><div class="col-7 profile-value">{{ company.authorized_name or "—" }}</div></div>
+            <div class="row mb-2"><div class="col-5 profile-label">Designation</div><div class="col-7 profile-value">{{ company.designation or "—" }}</div></div>
+            <div class="row mb-2"><div class="col-5 profile-label">Short Name</div><div class="col-7 profile-value">{{ company.short_name or "—" }}</div></div>
+            <div class="row mb-2"><div class="col-5 profile-label">Location Code</div><div class="col-7 profile-value">{{ company.location_code or "—" }}</div></div>
+        </div>
+    </div>
+</div>
+{% endblock %}

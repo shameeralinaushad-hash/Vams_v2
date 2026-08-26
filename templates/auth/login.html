@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login — VAMS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent-dark: #14181f;
+            --accent: #0e6b6c;
+            --accent-soft: rgba(14, 107, 108, 0.12);
+            --surface: #ffffff;
+            --bg: #edf0f4;
+            --border: #dce1e8;
+            --text-primary: #14181f;
+            --text-secondary: #5a6472;
+            --font-display: 'Space Grotesk', sans-serif;
+            --font-mono: 'IBM Plex Mono', monospace;
+        }
+        body, html { height: 100%; font-family: 'Inter', sans-serif; overflow-x: hidden; background: var(--bg); }
+
+        .brand-panel {
+            background: linear-gradient(160deg, #14181f 0%, #1f2730 55%, #14181f 100%);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 3rem;
+            min-height: 40vh;
+        }
+
+        .login-panel {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 3rem;
+            background: var(--surface);
+            min-height: 60vh;
+        }
+
+        .logo-container { width: 80px; height: 80px; position: relative; margin-bottom: 1.5rem; }
+        .logo-v {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: var(--accent); font-family: var(--font-display); font-weight: 700; font-size: 34px; pointer-events: none;
+        }
+        .brand-ref {
+            font-family: var(--font-mono);
+            font-size: 0.66rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .brand-ref::before {
+            content: "";
+            width: 6px; height: 6px;
+            background: var(--accent);
+            display: inline-block;
+        }
+
+        /* Floating Labels */
+        .form-floating > label { padding-left: 1.5rem; }
+        .form-floating > .form-control { padding-left: 1.5rem; border-radius: 10px; }
+        .form-floating > .form-control:focus { border-color: var(--accent); box-shadow: 0 0 0 0.25rem var(--accent-soft); }
+
+        /* Password Toggle */
+        .input-wrapper { position: relative; }
+        .toggle-password {
+            position: absolute; right: 15px; top: 0; bottom: 0; margin: auto;
+            height: 24px; display: flex; align-items: center; cursor: pointer; color: var(--text-secondary); z-index: 10;
+        }
+        .toggle-password:hover { color: var(--accent); }
+
+        .btn-login {
+            background: var(--accent); color: #fff; border-radius: 10px;
+            padding: 12px; font-weight: 600; width: 100%; border: none;
+            transition: transform 0.2s, background 0.15s ease;
+        }
+        .btn-login:hover { transform: translateY(-2px); background: var(--accent-yellow-2, #0a5152); }
+
+        /* Footer */
+        .footer-links { font-size: 0.8rem; color: var(--text-muted); margin-top: 2rem; }
+        .footer-links a { color: var(--text-secondary); text-decoration: none; margin: 0 10px; }
+        .status-indicator { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-secondary); margin-top: 1rem; }
+        .status-dot { height: 8px; width: 8px; background-color: var(--success, #1e9e63); border-radius: 1px; display: inline-block; margin-right: 5px; }
+
+        :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.001ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.001ms !important;
+            }
+        }
+
+        @media (hover: none) and (pointer: coarse) {
+            *:hover {
+                transform: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid h-100">
+    <div class="row h-100">
+        <div class="col-md-6 brand-panel">
+            <div class="logo-container">
+                <svg viewBox="0 0 40 40" style="display: block; width: 100%; height: 100%;" preserveAspectRatio="xMidYMid meet">
+                    <path d="M20,4 L34,12 L34,28 L20,36 L6,28 L6,12 Z" fill="#ffffff" stroke="#0e6b6c" stroke-width="2px" />
+                </svg>
+                <span class="logo-v">V</span>
+            </div>
+            <span class="brand-ref">VAMS BUSINESS SYSTEM</span>
+            <h2 class="fw-bold" style="font-family: var(--font-display);">VAMS</h2>
+            <p class="text-white-50">Secure access to your dashboard.</p>
+        </div>
+
+        <div class="col-md-6 login-panel">
+            <div class="mx-auto" style="width: 100%; max-width: 400px;">
+                <h3 class="fw-bold mb-1" style="font-family: var(--font-display);">Welcome back</h3>
+                <p class="text-muted mb-4">Sign in to open your workspace.</p>
+
+                {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                <div class="alert alert-danger d-flex align-items-center gap-2" style="border-radius: 12px; font-size: 0.88rem;" role="alert">
+                    <i class="bi bi-exclamation-circle-fill"></i>
+                    <div>{{ messages[0] }}</div>
+                </div>
+                {% endif %}
+                {% endwith %}
+
+
+                <form method="POST" id="loginForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <div class="form-floating mb-3">
+                        <input type="email" name="email" class="form-control" id="email" placeholder="name@company.com" required autofocus>
+                        <label for="email">Email address</label>
+                    </div>
+
+                    <div class="form-floating mb-3 input-wrapper">
+                        <input type="password" name="password" class="form-control" id="passwordField" placeholder="Password" required>
+                        <label for="password">Password</label>
+                        <i class="bi bi-eye toggle-password" id="togglePassword"></i>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="rememberMe">
+                            <label class="form-check-label small text-muted" for="rememberMe">Remember me</label>
+                        </div>
+                    </div>
+
+                    {% if config.TURNSTILE_SITE_KEY %}
+                    <div class="mb-3 d-flex justify-content-center">
+                        <div class="cf-turnstile" data-sitekey="{{ config.TURNSTILE_SITE_KEY }}"></div>
+                    </div>
+                    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+                    {% endif %}
+
+                    <button type="submit" class="btn-login" id="loginBtn">Sign in</button>
+                </form>
+
+                <div class="footer-links text-center">
+                    <a href="#">Privacy Policy</a>
+                    <a href="#">Terms of Service</a>
+                    <div class="status-indicator">
+                        <span class="status-dot"></span> System Operational
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const togglePassword = document.getElementById('togglePassword');
+    const passwordField = document.getElementById('passwordField');
+    togglePassword.addEventListener('click', () => {
+        const type = passwordField.getAttribute('type') === 'password' ? 'text' : 'password';
+        passwordField.setAttribute('type', type);
+        togglePassword.classList.toggle('bi-eye');
+        togglePassword.classList.toggle('bi-eye-slash');
+    });
+
+    document.getElementById('loginForm').addEventListener('submit', () => {
+        const btn = document.getElementById('loginBtn');
+        btn.disabled = true;
+        btn.textContent = 'Signing in…';
+    });
+</script>
+</body>
+</html>

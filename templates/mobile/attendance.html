@@ -1,0 +1,122 @@
+{% extends "mobile/layout.html" %}
+{% block title %}Attendance{% endblock %}
+{% block header %}Attendance{% endblock %}
+{% set active_tab = 'attendance' %}
+{% block content %}
+
+<div style="display:flex;gap:8px;margin-bottom:14px;">
+  <select style="flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:0.85rem;background:var(--card);outline:none;" onchange="window.location='?month='+this.value+'&year={{ year }}'">
+    {% for m in months %}
+    <option value="{{ m.num }}" {% if m.num == month %}selected{% endif %}>{{ m.name }}</option>
+    {% endfor %}
+  </select>
+  <select style="flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:0.85rem;background:var(--card);outline:none;" onchange="window.location='?month={{ month }}&year='+this.value">
+    {% for y in range(2023, 2031) %}
+    <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+<div class="ring-card">
+  <svg class="ring-svg" viewBox="0 0 120 120">
+    <circle cx="60" cy="60" r="52" fill="none" stroke="var(--bg)" stroke-width="8"/>
+    <circle cx="60" cy="60" r="52" fill="none" stroke="var(--success)" stroke-width="8"
+      stroke-dasharray="326.7" stroke-dashoffset="{{ 326.7 - (326.7 * pct / 100) }}"
+      stroke-linecap="round" transform="rotate(-90 60 60)"
+      class="ring-fill"/>
+  </svg>
+  <div class="ring-center">
+    <div class="ring-pct">{{ pct }}%</div>
+    <div class="ring-label">attendance</div>
+  </div>
+</div>
+
+<div class="stat-row" style="margin-bottom:14px;">
+  <div class="stat-box"><div class="stat-value" style="color:var(--success);">{{ present }}</div><div class="stat-label">Present</div></div>
+  <div class="stat-box"><div class="stat-value" style="color:var(--danger);">{{ absent }}</div><div class="stat-label">Absent</div></div>
+  <div class="stat-box"><div class="stat-value" style="color:var(--warning);">{{ half }}</div><div class="stat-label">Half</div></div>
+  <div class="stat-box"><div class="stat-value">{{ leave }}</div><div class="stat-label">Leave</div></div>
+</div>
+
+<div class="card" style="padding:10px;">
+  <div class="calendar-grid">
+    {% set days_names = ['Mo','Tu','We','Th','Fr','Sa','Su'] %}
+    {% for dname in days_names %}
+    <div class="cal-day-header">{{ dname }}</div>
+    {% endfor %}
+
+    {% set first_dow = date(year, month, 1).weekday() %}
+    {% for _ in range(first_dow) %}
+    <div></div>
+    {% endfor %}
+
+    {% for d in range(1, days_in_month + 1) %}
+    {% set dt = date(year, month, d) %}
+    {% set status = record_map.get(d) %}
+    {% set is_today = (dt == today) %}
+    {% set is_weekend = (dt.weekday() >= 5) %}
+
+    <div class="cal-day
+      {% if is_today %}cal-today{% endif %}
+      {% if status == 'present' %}cal-present{% endif %}
+      {% if status == 'absent' %}cal-absent{% endif %}
+      {% if status == 'half_day' %}cal-half{% endif %}
+      {% if status == 'leave' %}cal-leave{% endif %}
+    ">
+      <div class="cal-num">{{ d }}</div>
+      {% if status %}
+      <div class="cal-dot">
+        {% if status == 'present' %}✓{% elif status == 'absent' %}✗{% elif status == 'half_day' %}H{% else %}L{% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="legend-row">
+  <span class="legend-dot" style="background:#e6f7ef;color:var(--success);border-color:var(--success);">✓</span> Present
+  <span class="legend-dot" style="background:#fef2f2;color:var(--danger);border-color:var(--danger);">✗</span> Absent
+  <span class="legend-dot" style="background:#fff8e6;color:var(--warning);border-color:var(--warning);">H</span> Half
+  <span class="legend-dot" style="background:#f0f0f5;color:var(--muted);border-color:#ccc;">L</span> Leave
+</div>
+
+<style>
+.ring-card { display:flex;align-items:center;justify-content:center;background:var(--card);border-radius:var(--radius);padding:20px;margin-bottom:14px;position:relative;box-shadow:0 1px 6px rgba(0,0,0,0.04); }
+.ring-svg { width:120px;height:120px; }
+.ring-fill { transition: stroke-dashoffset 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+.ring-center { position:absolute;text-align:center; }
+.ring-pct { font-size:1.6rem;font-weight:800; }
+.ring-label { font-size:0.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;margin-top:-2px; }
+
+.calendar-grid { display:grid;grid-template-columns:repeat(7,1fr);gap:3px; }
+.cal-day-header { text-align:center;font-size:0.6rem;font-weight:600;color:var(--muted);padding:6px 0; }
+.cal-day { text-align:center;padding:5px 0;border-radius:8px;transition:transform 0.15s;cursor:default; }
+.cal-day:active { transform:scale(0.9); }
+.cal-num { font-size:0.85rem;font-weight:600; }
+.cal-dot { font-size:0.5rem;font-weight:700;margin-top:-1px; }
+.cal-today { background:var(--primary);color:#fff;font-weight:700;box-shadow:0 2px 8px rgba(26,26,26,0.2); }
+.cal-present { background:#e6f7ef;color:var(--success); }
+.cal-absent { background:#fef2f2;color:var(--danger); }
+.cal-half { background:#fff8e6;color:var(--warning); }
+.cal-leave { background:#f0f0f5;color:var(--muted); }
+.cal-weekend { color:var(--muted);opacity:0.4; }
+
+.legend-row { display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-top:12px;font-size:0.7rem;color:var(--muted); }
+.legend-dot { display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;font-size:0.55rem;font-weight:700;border:1px solid; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var fill = document.querySelector('.ring-fill');
+  if (fill) {
+    var offset = fill.getAttribute('stroke-dashoffset');
+    fill.style.strokeDashoffset = '326.7';
+    setTimeout(function() {
+      fill.style.strokeDashoffset = offset;
+    }, 100);
+  }
+});
+</script>
+
+{% endblock %}

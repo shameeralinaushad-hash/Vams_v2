@@ -1,0 +1,100 @@
+{% if lane == 'task' %}
+<div class="ms-card {% if item.status == 'done' %}done{% endif %}" data-id="{{ item.id }}">
+    <div class="edge {{ item.priority }}"></div>
+    <button class="ms-check {% if item.status == 'done' %}checked{% endif %}" onclick="toggleItem({{ item.id }}, this)">{% if item.status == 'done' %}<i class="bi bi-check"></i>{% endif %}</button>
+    <div class="ms-body" onclick="openDetail({{ item.id }})" style="cursor:pointer;">
+        <span class="ms-title">{{ item.title }}</span>
+        <div class="ms-badges" style="display:flex;gap:4px;flex-wrap:wrap;">
+            {% if item.category %}<span class="ms-badge cat">{{ item.category }}</span>{% endif %}
+            {% if item.estimated_minutes %}<span class="ms-badge est"><i class="bi bi-clock"></i> {{ item.estimated_minutes }}m</span>{% endif %}
+            {% if item.recurrence_rule %}<span class="ms-badge rec"><i class="bi bi-arrow-repeat"></i></span>{% endif %}
+        </div>
+    </div>
+    <div class="ms-meta">
+        {% if item.due_date %}<span class="due {% if item.due_date < today and item.status != 'done' %}overdue{% elif item.due_date == today %}today{% else %}neutral{% endif %}">{{ item.due_date }}</span>{% endif %}
+    </div>
+    <div class="ms-actions">
+        <button onclick="event.stopPropagation();openDetail({{ item.id }})" title="Details"><i class="bi bi-pencil"></i></button>
+        <button onclick="event.stopPropagation();deleteItem({{ item.id }}, this)" title="Delete"><i class="bi bi-trash3"></i></button>
+    </div>
+</div>
+
+{% elif lane == 'goal' %}
+{% set mt = item.milestones|length %}
+{% set md = item.milestones|selectattr('is_done','equalto',true)|list|length %}
+{% set pct = (md/mt*100)|round if mt > 0 else 0 %}
+{% set cc = '#1e9e63' if pct >= 100 else '#d99a2b' if pct >= 50 else '#cbd5e1' %}
+{% set pc = 'high' if item.priority == 'high' else 'medium' if item.priority == 'medium' else 'low' %}
+<div class="gp-card" data-id="{{ item.id }}" style="position:relative;overflow:hidden;">
+    <div class="edge {{ pc }}" style="position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:2px 0 0 2px;background:{% if pc == 'high' %}#d64545{% elif pc == 'medium' %}#d99a2b{% else %}#cbd5e1{% endif %};"></div>
+    <div class="gp-header">
+        <div>
+            <div class="gp-title" contenteditable="true" onblur="inlineEdit({{ item.id }},'title',this.textContent.trim())">{{ item.title }}</div>
+            <div class="gp-desc" contenteditable="true" onblur="if(this.textContent.trim())inlineEdit({{ item.id }},'description',this.textContent.trim())" style="{% if not item.description %}color:var(--text-muted);font-style:italic;{% endif %}">{% if item.description %}{{ item.description }}{% else %}Click to add description…{% endif %}</div>
+            <div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;">
+                {% if item.category %}<span class="ms-badge cat">{{ item.category }}</span>{% endif %}
+                {% if item.due_date %}<span class="ms-badge" style="{% if item.due_date < today and item.status != 'done' %}color:var(--danger);background:rgba(214,69,69,0.08);{% elif item.due_date == today %}color:var(--accent-dark);background:rgba(217,154,43,0.1);{% endif %}"><i class="bi bi-calendar"></i> {{ item.due_date }}</span>{% endif %}
+                {% if item.estimated_minutes %}<span class="ms-badge est"><i class="bi bi-clock"></i> {{ item.estimated_minutes }}m</span>{% endif %}
+                {% if mt > 0 %}<span class="ms-badge">{{ md }}/{{ mt }}</span>{% endif %}
+            </div>
+        </div>
+        <div class="circ-progress">
+            <svg width="42" height="42" viewBox="0 0 42 42"><circle cx="21" cy="21" r="17" fill="none" stroke="var(--border)" stroke-width="3.5"/><circle cx="21" cy="21" r="17" fill="none" stroke="{{ cc }}" stroke-width="3.5" stroke-dasharray="{{ pct * 1.07 }} 107" stroke-linecap="round"/></svg>
+            <div class="cp-text" style="color:{{ cc }};font-size:0.68rem;">{{ pct }}%</div>
+        </div>
+    </div>
+    {% if mt > 0 %}
+    <div style="margin-top:10px;width:100%;height:4px;background:var(--border);border-radius:2px;overflow:hidden;">
+        <div style="height:100%;width:{{ pct }}%;background:{{ cc }};border-radius:2px;transition:width 0.4s ease;"></div>
+    </div>
+    {% endif %}
+    <div class="status-chips" style="margin-top:10px;">{% for s in ['not_started','in_progress','on_hold','done'] %}<span class="sc {% if item.status == s %}active{% endif %}" onclick="updateStatus({{ item.id }},'{{ s }}')">{{ s.replace('_',' ') }}</span>{% endfor %}</div>
+    <div class="gp-progress-row" style="margin-top:8px;">
+        <div style="display:flex;gap:4px;">
+            <button class="btn btn-sm btn-outline-secondary rounded-pill" style="font-size:0.6rem;padding:2px 10px;" onclick="openDetail({{ item.id }})"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-outline-secondary rounded-pill" style="font-size:0.6rem;padding:2px 10px;" onclick="deleteItem({{ item.id }}, this)"><i class="bi bi-trash3"></i></button>
+        </div>
+    </div>
+    <div class="gp-milestones">
+        <div class="ms-toggle" onclick="this.querySelector('.arr').classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+            <span class="arr">&#9654;</span> {{ mt }} milestone{{ 's' if mt != 1 }}
+        </div>
+        <div class="ms-body">
+            {% for ms in item.milestones %}
+            <div class="ms-row {% if ms.is_done %}done{% endif %}">
+                <button class="msb {% if ms.is_done %}checked{% endif %}" onclick="toggleMs({{ ms.id }},this)">{% if ms.is_done %}<i class="bi bi-check"></i>{% endif %}</button>
+                <span>{{ ms.title }}</span>
+            </div>
+            {% endfor %}
+            <div class="ms-add"><input type="text" class="form-control form-control-sm" placeholder="Add milestone..." style="width:auto;min-width:140px;" onkeydown="if(event.key==='Enter'&&this.value.trim())addMs({{ item.id }},this)"><button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="var i=this.previousElementSibling;if(i.value.trim())addMs({{ item.id }},i)">+</button></div>
+        </div>
+    </div>
+</div>
+
+{% elif lane == 'future_plan' %}
+<div class="fp-card" style="flex-direction:column;align-items:stretch;gap:8px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+        <div class="fp-bulb"><i class="bi bi-lightbulb"></i></div>
+        <span class="fp-title" contenteditable="true" onblur="inlineEdit({{ item.id }},'title',this.textContent.trim())">{{ item.title }}</span>
+        <div class="fp-actions">
+            <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="toggleAIPanel({{ item.id }})"><i class="bi bi-stars"></i> AI</button>
+            <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="promoteItem({{ item.id }},'task')"><i class="bi bi-arrow-up-circle"></i> Task</button>
+            <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="promoteItem({{ item.id }},'goal')"><i class="bi bi-bullseye"></i> Goal</button>
+            <button class="btn btn-sm btn-outline-danger rounded-pill" onclick="deleteItem({{ item.id }},this)"><i class="bi bi-trash3"></i></button>
+        </div>
+    </div>
+    <div class="ai-panel" id="aiPanel{{ item.id }}">
+        <div class="ai-input-row">
+            <input type="text" id="aiInput{{ item.id }}" placeholder="Ask AI about this idea…" onkeydown="if(event.key==='Enter'&&this.value.trim())askAI({{ item.id }},this.value)">
+            <button class="btn btn-dark btn-sm" onclick="var i=document.getElementById('aiInput{{ item.id }}');if(i.value.trim())askAI({{ item.id }},i.value)"><i class="bi bi-send"></i></button>
+        </div>
+        <div class="ai-actions">
+            <button class="btn btn-outline-dark" onclick="askAI({{ item.id }},'Expand this idea with more details and next steps','diagram')"><i class="bi bi-diagram-3"></i> Diagram</button>
+            <button class="btn btn-outline-dark" onclick="askAI({{ item.id }},'Create a flowchart of the steps to execute this idea','flowchart')"><i class="bi bi-flow-chart"></i> Flowchart</button>
+            <button class="btn btn-outline-dark" onclick="askAI({{ item.id }},'Break this idea down into actionable tasks')"><i class="bi bi-list-check"></i> Breakdown</button>
+        </div>
+        <div class="ai-response" id="aiResp{{ item.id }}"></div>
+        <div class="ai-diagram" id="aiDiagram{{ item.id }}"></div>
+    </div>
+</div>
+{% endif %}

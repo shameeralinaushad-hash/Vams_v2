@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Efficiency{% endblock %}
+{% block pagetitle %}Efficiency{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .info-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: 0 2px 10px rgba(20,24,31,0.03); }
+    .panel-header { border-bottom: 1px dashed var(--border); padding-bottom: 14px; margin-bottom: 18px; }
+    .panel-title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1rem; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 8px; }
+    .table-custom { margin: 0; }
+    .table-custom th { border-bottom: 2px solid var(--border); color: var(--text-secondary); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 10px; }
+    .table-custom td { padding: 14px 10px; vertical-align: middle; font-size: 0.85rem; color: var(--text-primary); border-bottom: 1px solid var(--border); }
+    .table-custom tr:last-child td { border-bottom: none; }
+    .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: 0 2px 10px rgba(20,24,31,0.03); height: 100%; }
+    .kpi-card .kpi-number { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.2; }
+    .kpi-card .kpi-label { color: var(--text-secondary); font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+    .chart-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: 0 2px 10px rgba(20,24,31,0.03); }
+    .efficiency-ring { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; flex-shrink: 0; }
+    .pill-filter { display: flex; gap: 6px; background: var(--surface-soft); padding: 5px; border-radius: 14px; width: fit-content; flex-wrap: wrap; }
+    .pill-filter a { padding: 7px 16px; border-radius: 10px; font-size: 0.83rem; font-weight: 600; color: var(--text-secondary); text-decoration: none; transition: all 0.15s ease; }
+    .pill-filter a.active { background: var(--surface); color: var(--text-primary); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set avg_eff = efficiency_data | map(attribute='efficiency') | list | sum / (efficiency_data | length or 1) %}
+
+<div class="row g-4 mb-4">
+    <div class="col-xl-3 col-lg-6"><div class="kpi-card"><div class="kpi-label">Avg Efficiency</div><div class="kpi-number" style="color: {% if avg_eff >= 80 %}var(--success){% elif avg_eff >= 60 %}var(--accent-dark){% else %}var(--danger){% endif %};">{{ avg_eff | round }}%</div></div></div>
+    <div class="col-xl-3 col-lg-6"><div class="kpi-card"><div class="kpi-label">Avg Attendance</div><div class="kpi-number">{{ efficiency_data | map(attribute='attendance_pct') | list | sum / (efficiency_data | length or 1) | round }}%</div></div></div>
+    <div class="col-xl-3 col-lg-6"><div class="kpi-card"><div class="kpi-label">Active Employees</div><div class="kpi-number">{{ efficiency_data | length }}</div></div></div>
+    <div class="col-xl-3 col-lg-6"><div class="kpi-card"><div class="kpi-label">Avg Task Completion</div><div class="kpi-number">{{ efficiency_data | map(attribute='task_pct') | list | sum / (efficiency_data | length or 1) | round }}%</div></div></div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div class="d-flex gap-2">
+        <div class="pill-filter">
+            {% for m in range(1, 13) %}
+            <a href="?month={{ m }}&year={{ year }}" class="{% if m == month %}active{% endif %}">{{ ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1] }}</a>
+            {% endfor %}
+        </div>
+        <select class="form-select form-select-sm" style="width: auto;" onchange="window.location='?month={{ month }}&year='+this.value">
+            {% for y in range(2023, 2030) %}
+            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <span class="text-muted small">Efficiency = Attendance × 0.6 + Tasks × 0.4</span>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-xl-8 col-lg-12">
+        <div class="chart-panel">
+            <h6 style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 0.9rem;">Efficiency Overview</h6>
+            <div style="position: relative; height: 220px; width: 100%;"><canvas id="effChart"></canvas></div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-lg-12">
+        <div class="chart-panel">
+            <h6 style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 0.9rem;">Distribution</h6>
+            <div style="position: relative; height: 220px; width: 100%;"><canvas id="distChart"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<div class="info-panel">
+    <div class="panel-header"><h6 class="panel-title"><i class="bi bi-bar-chart-line"></i> Employee Efficiency — {{ month }}/{{ year }}</h6></div>
+    <div class="table-responsive">
+        <table class="table table-custom align-middle">
+            <thead>
+                <tr><th>#</th><th>Employee</th><th>Designation</th><th>Attendance %</th><th>Task Completion %</th><th>Efficiency</th><th class="text-end">Action</th></tr>
+            </thead>
+            <tbody>
+                {% for item in efficiency_data %}
+                <tr>
+                    <td class="text-muted small">{{ loop.index }}</td>
+                    <td class="fw-semibold">{{ item.employee.name }}</td>
+                    <td class="text-muted small">{{ item.employee.designation or '—' }}</td>
+                    <td>
+                        <span class="badge {% if item.attendance_pct >= 80 %}bg-success{% elif item.attendance_pct >= 60 %}bg-warning{% else %}bg-danger{% endif %} rounded-pill">{{ item.attendance_pct }}%</span>
+                    </td>
+                    <td>
+                        <span class="badge {% if item.task_pct >= 80 %}bg-success{% elif item.task_pct >= 60 %}bg-warning{% else %}bg-danger{% endif %} rounded-pill">{{ item.task_pct }}%</span>
+                    </td>
+                    <td>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="efficiency-ring" style="background: conic-gradient(var(--accent-dark) 0deg {{ (item.efficiency / 100 * 360) | round }}deg, var(--surface-soft) {{ (item.efficiency / 100 * 360) | round }}deg 360deg);">
+                                <span style="background: var(--surface); width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">{{ item.efficiency }}%</span>
+                            </div>
+                            <div class="flex-grow-1" style="height: 6px; border-radius: 3px; background: var(--surface-soft);">
+                                <div style="width: {{ item.efficiency }}%; height: 6px; border-radius: 3px; background: {% if item.efficiency >= 80 %}var(--success){% elif item.efficiency >= 60 %}var(--accent-dark){% else %}var(--danger){% endif %};"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="text-end"><a href="{{ url_for('hr.employee_profile', employee_id=item.employee.id) }}" class="btn btn-sm btn-outline-secondary rounded-pill">View</a></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="text-muted text-center py-4">No employee data.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+const effData = {{ chart_data | tojson }};
+const names = effData.map(d => d.name);
+const attn = effData.map(d => d.attendance_pct);
+const tasks = effData.map(d => d.task_pct);
+const eff = effData.map(d => d.efficiency);
+
+new Chart(document.getElementById('effChart'), {
+    type: 'bar',
+    data: {
+        labels: names,
+        datasets: [
+            { label: 'Attendance %', data: attn, backgroundColor: 'rgba(30, 158, 99, 0.7)', borderColor: '#1e9e63', borderWidth: 1 },
+            { label: 'Tasks %', data: tasks, backgroundColor: 'rgba(63, 142, 217, 0.7)', borderColor: '#3f8ed9', borderWidth: 1 },
+            { label: 'Efficiency', data: eff, backgroundColor: 'rgba(20, 24, 31, 0.12)', borderColor: '#14181f', borderWidth: 2, type: 'line', fill: false, tension: 0.3, pointRadius: 4 }
+        ]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'top', labels: { boxWidth: 12, padding: 12, font: { size: 10 } } } },
+        scales: { x: { grid: { display: false } }, y: { grid: { color: 'rgba(20,24,31,0.06)' }, min: 0, max: 100, ticks: { callback: (v) => `${v}%` } } }
+    }
+});
+
+new Chart(document.getElementById('distChart'), {
+    type: 'doughnut',
+    data: {
+        labels: ['Excellent (80-100%)', 'Good (60-79%)', 'Needs Improvement (<60%)'],
+        datasets: [{
+            data: [
+                effData.filter(d => d.efficiency >= 80).length,
+                effData.filter(d => d.efficiency >= 60 && d.efficiency < 80).length,
+                effData.filter(d => d.efficiency < 60).length
+            ],
+            backgroundColor: ['#1e9e63', '#d99a2b', '#d64545'],
+            borderWidth: 0
+        }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8, font: { size: 9 } } } },
+        cutout: '65%'
+    }
+});
+</script>
+{% endblock %}

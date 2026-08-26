@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+{% block title %}Human Resources{% endblock %}
+{% block pagetitle %}Human Resources{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* ---- Greeting ---- */
+    .greeting-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+    .greeting-text { font-family: 'Space Grotesk', sans-serif; font-size: 1.4rem; font-weight: 700; margin: 0; }
+    .greeting-text small { font-weight: 400; font-size: 0.9rem; color: var(--text-secondary); }
+
+    /* ---- Section Cards (equal height row) ---- */
+    .section-row { display: flex; flex-wrap: wrap; margin-bottom: 24px; }
+    .section-row .sec-col { flex: 1 1 0; min-width: 130px; padding: 6px; }
+    .section-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 20px 16px;
+        box-shadow: 0 2px 10px rgba(20,24,31,0.03);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        text-decoration: none;
+        color: var(--text-primary);
+        transition: transform 0.25s cubic-bezier(0.16,1,0.3,1), box-shadow 0.25s ease;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+    }
+    .section-card::before {
+        content: ''; position: absolute; inset: 0;
+        background: radial-gradient(circle at var(--mx,50%) var(--my,50%), rgba(20,24,31,0.04) 0%, transparent 60%);
+        opacity: 0; transition: opacity 0.3s ease;
+    }
+    .section-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 24px rgba(20,24,31,0.08);
+    }
+    .section-card:hover::before { opacity: 1; }
+    .section-card i { font-size: 1.6rem; margin-bottom: 6px; color: var(--text-primary); position: relative; }
+    .section-card .s-title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 0.85rem; position: relative; }
+    .section-card .s-desc { font-size: 0.7rem; color: var(--text-secondary); margin-top: 2px; position: relative; }
+
+    /* ---- KPI Cards ---- */
+    .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: 0 2px 10px rgba(20,24,31,0.03); height: 100%; transition: transform 0.2s ease; }
+    .kpi-card:hover { transform: translateY(-2px); }
+    .kpi-card .kpi-number { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.2; }
+    .kpi-card .kpi-label { color: var(--text-secondary); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+    .kpi-number .counter { display: inline-block; }
+    .countup { display: inline-block; }
+
+    /* ---- Activity Feed ---- */
+    .activity-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .activity-item:last-child { border-bottom: none; }
+    .activity-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .activity-text { font-size: 0.82rem; flex: 1; }
+    .activity-time { font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; }
+
+    /* ---- Info Panels ---- */
+    .info-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: 0 2px 10px rgba(20,24,31,0.03); }
+    .panel-header { border-bottom: 1px dashed var(--border); padding-bottom: 14px; margin-bottom: 18px; }
+    .panel-title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1rem; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 8px; }
+    .chart-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: 0 2px 10px rgba(20,24,31,0.03); }
+    .attention-card { background: rgba(214,69,69,0.06); border: 1px solid rgba(214,69,69,0.15); border-radius: var(--radius-lg); padding: 20px; }
+
+    /* ---- Quote Rotator ---- */
+    .quote-box {
+        background: var(--surface-soft);
+        border-radius: var(--radius-md);
+        padding: 14px 18px;
+        text-align: center;
+        font-size: 0.85rem;
+        font-style: italic;
+        color: var(--text-secondary);
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.5s ease;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+    <div class="greeting-row">
+        <div class="greeting-text" id="greeting"></div>
+    </div>
+
+    <div class="section-row">
+        <div class="sec-col"><a href="{{ url_for('hr.employee_list') }}" class="section-card"><i class="bi bi-person-badge"></i><div class="s-title">Employees</div><div class="s-desc">Manage profiles</div></a></div>
+        <div class="sec-col"><a href="{{ url_for('hr.attendance') }}" class="section-card"><i class="bi bi-calendar-check"></i><div class="s-title">Attendance</div><div class="s-desc">Mark & track</div></a></div>
+        <div class="sec-col"><a href="{{ url_for('hr.payroll') }}" class="section-card"><i class="bi bi-cash-stack"></i><div class="s-title">Payroll</div><div class="s-desc">Generate & slips</div></a></div>
+        <div class="sec-col"><a href="{{ url_for('hr.efficiency') }}" class="section-card"><i class="bi bi-speedometer2"></i><div class="s-title">Efficiency</div><div class="s-desc">Performance</div></a></div>
+        <div class="sec-col"><a href="{{ url_for('hr.list_holidays') }}" class="section-card"><i class="bi bi-calendar-heart"></i><div class="s-title">Holidays</div><div class="s-desc">Manage calendar</div></a></div>
+        <div class="sec-col"><a href="{{ url_for('hr.qr_setup') }}" class="section-card"><i class="bi bi-qr-code"></i><div class="s-title">QR Attendance</div><div class="s-desc">Scan to mark</div></a></div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-xl-3 col-lg-6 col-md-6">
+            <div class="kpi-card">
+                <div class="kpi-label">Total Employees</div>
+                <div class="kpi-number"><span class="countup" data-target="{{ total_employees }}">0</span></div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-lg-6 col-md-6">
+            <div class="kpi-card">
+                <div class="kpi-label">Avg Attendance</div>
+                <div class="kpi-number" style="color: {% if avg_attendance >= 80 %}var(--success){% else %}var(--danger){% endif %};"><span class="countup" data-target="{{ avg_attendance }}" data-suffix="%">0%</span></div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-lg-6 col-md-6">
+            <div class="kpi-card">
+                <div class="kpi-label">Payroll Status</div>
+                <div class="kpi-number" style="font-size: 1.3rem;">
+                    {% if paid_count > 0 %}Paid ({{ paid_count }}){% elif finalized_count > 0 %}Finalized ({{ finalized_count }}){% elif payroll_count > 0 %}Generated{% else %}Pending{% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-lg-6 col-md-6">
+            <div class="kpi-card">
+                <div class="kpi-label">Avg Efficiency</div>
+                <div class="kpi-number">
+                {% if efficiency_data %}
+                    {% set avg_eff = (efficiency_data | sum(attribute='efficiency') / efficiency_data | length) | round %}
+                    <span style="color: {% if avg_eff >= 70 %}var(--success){% else %}var(--danger){% endif %};"><span class="countup" data-target="{{ avg_eff }}" data-suffix="%">0%</span></span>
+                {% else %}—{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if attention %}
+    <div class="row g-4 mb-4">
+        <div class="col-12">
+            <div class="attention-card">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <i class="bi bi-exclamation-triangle" style="color: var(--danger);"></i>
+                    <strong style="font-size: 0.9rem;">Needs Attention</strong>
+                </div>
+                {% for a in attention %}
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <span class="badge bg-{{ a.severity }} rounded-pill">{{ a.severity }}</span>
+                    <span style="font-size: 0.85rem;">{{ a.text }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row g-4 mb-4">
+        <div class="col-xl-8 col-lg-12">
+            <div class="info-panel" style="height:100%;">
+                <div class="panel-header"><h6 class="panel-title"><i class="bi bi-graph-up"></i> Attendance Trend — {{ year }}</h6></div>
+                <div style="position: relative; min-height: 160px; width: 100%;"><canvas id="attnSparkline"></canvas></div>
+            </div>
+        </div>
+        <div class="col-xl-4 col-lg-12">
+            <div class="info-panel d-flex flex-column" style="height:100%;">
+                <div class="panel-header mb-2"><h6 class="panel-title"><i class="bi bi-calendar-event"></i> Upcoming Holidays</h6></div>
+                {% if upcoming_holidays %}
+                {% for h in upcoming_holidays %}
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span style="font-size:0.82rem;">{{ h.date.strftime('%d %b') }} — {{ h.name }}</span>
+                    <span class="badge bg-{% if (h.date - date.today()).days <= 3 %}danger{% elif (h.date - date.today()).days <= 7 %}warning{% else %}secondary{% endif %} rounded-pill" style="font-size:0.6rem;">{{ (h.date - date.today()).days }}d</span>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="text-muted small mb-3">No upcoming holidays.</div>
+                {% endif %}
+                {% if notifications %}
+                <div class="panel-header mb-2 mt-2"><h6 class="panel-title"><i class="bi bi-bell"></i> Notifications</h6></div>
+                <div style="flex:1;overflow-y:auto;">
+                {% for n in notifications %}
+                <div class="activity-item">
+                    <div class="activity-dot" style="background:var(--accent-dark);"></div>
+                    <div class="activity-text">
+                        {% if n.link %}<a href="{{ n.link }}" class="text-decoration-none">{% endif %}
+                        {{ n.message }}
+                        {% if n.link %}</a>{% endif %}
+                    </div>
+                    <div class="activity-time">{{ n.created_at | local_time if n.created_at else '' }}</div>
+                </div>
+                {% endfor %}
+                </div>
+                {% endif %}
+                <div class="panel-header mb-2 mt-2"><h6 class="panel-title"><i class="bi bi-activity"></i> Recent Activity</h6></div>
+                <div style="flex:1;overflow-y:auto;">
+                {% if activity %}
+                {% for a in activity %}
+                <div class="activity-item">
+                    <div class="activity-dot" style="background: {% if a.action == 'add_employee' %}var(--success){% elif a.action == 'edit_employee' %}var(--warning){% elif 'payroll' in (a.action or '') %}var(--accent-dark){% else %}var(--text-muted){% endif %};"></div>
+                    <div class="activity-text">{{ a.details or a.action }}</div>
+                    <div class="activity-time">{{ a.created_at | local_time if a.created_at else '' }}</div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="text-muted small text-center py-3">No recent HR activity.</div>
+                {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-xl-6 col-lg-12">
+            <div class="info-panel d-flex flex-column" style="height:100%;">
+                <div class="panel-header"><h6 class="panel-title"><i class="bi bi-arrow-down"></i> Lowest Efficiency</h6></div>
+                <div style="flex:1;">
+                {% if lowest %}
+                {% for item in lowest %}
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span style="font-size: 0.85rem;">{{ item.employee.name }}</span>
+                    <span class="badge {% if item.efficiency >= 70 %}bg-success{% elif item.efficiency >= 50 %}bg-warning{% else %}bg-danger{% endif %} rounded-pill">{{ item.efficiency }}%</span>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="text-muted text-center py-4 small">No efficiency data yet.</div>
+                {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-6 col-lg-12">
+            <div class="info-panel d-flex flex-column" style="height:100%;">
+                <div class="panel-header"><h6 class="panel-title"><i class="bi bi-info-circle"></i> Quick Summary</h6></div>
+                <div class="text-secondary small" style="flex:1;display:flex;flex-direction:column;justify-content:space-between;">
+                    <div><div class="mb-1">Period: {{ month }}/{{ year }}</div>
+                    <div class="mb-1">Payroll records: {{ payroll_count }}</div>
+                    <div class="mb-1">Finalized: {{ finalized_count }} | Paid: {{ paid_count }}</div></div>
+                    <div class="mt-3">
+                        <a href="{{ url_for('hr.attendance', month=month, year=year) }}" class="btn btn-sm btn-outline-secondary rounded-pill">Mark Attendance</a>
+                        <a href="{{ url_for('hr.payroll', month=month, year=year) }}" class="btn btn-sm btn-outline-secondary rounded-pill">View Payroll</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// ---- Greeting ----
+(function() {
+    var h = new Date().getHours();
+    var g = document.getElementById('greeting');
+    var name = '{{ current_user.name or "" }}';
+    var greet = h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
+    g.textContent = greet + (name ? ', ' + name : '') + ' 👋';
+})();
+
+// ---- Animated Counters ----
+function animateCounters() {
+    document.querySelectorAll('.countup').forEach(function(el) {
+        var target = parseFloat(el.getAttribute('data-target'));
+        var suffix = el.getAttribute('data-suffix') || '';
+        if (isNaN(target)) return;
+        var duration = 1200, startTime = null;
+        function step(timestamp) {
+            if (!startTime) startTime = timestamp;
+            var progress = Math.min((timestamp - startTime) / duration, 1);
+            var eased = 1 - Math.pow(1 - progress, 3);
+            var current = eased * target;
+            el.textContent = (target % 1 === 0 ? Math.round(current) : current.toFixed(1)) + suffix;
+            if (progress < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    });
+}
+setTimeout(animateCounters, 2800);
+
+// ---- Card mouse-follow glow ----
+document.querySelectorAll('.section-card').forEach(function(card) {
+    card.addEventListener('mousemove', function(e) {
+        var r = card.getBoundingClientRect();
+        card.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 100) + '%');
+        card.style.setProperty('--my', ((e.clientY - r.top) / r.height * 100) + '%');
+    });
+});
+
+// ---- Attendance Sparkline ----
+var monthlyPct = {{ monthly_attn | tojson }};
+var mLabels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+new Chart(document.getElementById('attnSparkline'), {
+    type: 'line',
+    data: {
+        labels: mLabels,
+        datasets: [{
+            label: 'Attendance %', data: monthlyPct,
+            borderColor: '#14181f', backgroundColor: function(ctx) {
+                var g = ctx.chart.ctx.createLinearGradient(0, 0, 0, 160);
+                g.addColorStop(0, 'rgba(20,24,31,0.12)');
+                g.addColorStop(1, 'rgba(20,24,31,0)');
+                return g;
+            }, fill: true,
+            borderWidth: 2.5, tension: 0.35, pointRadius: 3, pointBackgroundColor: '#14181f',
+        }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { return ctx.raw + '%'; } } } },
+        scales: { x: { grid: { display: false }, ticks: { font: { size: 9 } } }, y: { grid: { color: 'rgba(20,24,31,0.06)' }, min: 0, max: 100, ticks: { callback: function(v) { return v + '%'; }, font: { size: 9 } } } }
+    }
+});
+
+// ---- Quote Rotator ----
+var quotes = [
+    '"Take care of your employees, and they will take care of your business."',
+    '"The best investment is in the people who work for you."',
+    '"Hiring people is an art, not a science."',
+    '"Employee engagement is the key to productivity."',
+    '"Culture eats strategy for breakfast."',
+    '"A company is only as good as its people."',
+    '"Train people well enough so they can leave, treat them well enough so they don\'t."',
+    '"The biggest competitive advantage is a highly engaged workforce."',
+];
+var qi = 0, qbox = document.getElementById('quoteBox');
+function showQuote() {
+    qbox.style.opacity = 0;
+    setTimeout(function() {
+        qbox.textContent = quotes[qi];
+        qbox.style.opacity = 1;
+        qi = (qi + 1) % quotes.length;
+    }, 500);
+}
+setTimeout(showQuote, 3200);
+setInterval(function() { setTimeout(showQuote, 500); }, 7000);
+</script>
+{% endblock %}

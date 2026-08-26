@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Search{% endblock %}
+{% block pagetitle %}Search Results{% endblock %}
+{% block content %}
+<p class="text-muted">Showing results for "<strong>{{ q }}</strong>"</p>
+
+{% if results.orders %}
+<div class="card-stat p-3 mb-3">
+    <h6>Orders</h6>
+    <table class="table table-sm mb-0">
+        <tbody>
+        {% for o in results.orders %}
+        <tr><td>#{{ o.id }} — {{ o.title or "(no title)" }} · {{ o.client.name }}</td><td class="text-end"><a href="{{ url_for('orders.view_order', order_id=o.id) }}" class="btn btn-sm btn-outline-primary">Open</a></td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if results.clients %}
+<div class="card-stat p-3 mb-3">
+    <h6>Clients</h6>
+    <table class="table table-sm mb-0">
+        <tbody>
+        {% for c in results.clients %}
+        <tr><td>{{ c.name }}</td><td class="text-end"><a href="{{ url_for('clients.view_profile', client_id=c.id) }}" class="btn btn-sm btn-outline-primary">View</a></td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if results.invoices %}
+<div class="card-stat p-3 mb-3">
+    <h6>Invoices</h6>
+    <table class="table table-sm mb-0">
+        <tbody>
+        {% for inv in results.invoices %}
+        <tr><td>{{ inv.invoice_number }} · {{ inv.order.client.name }}</td><td class="text-end"><a href="{{ url_for('orders.view_order', order_id=inv.order_id) }}" class="btn btn-sm btn-outline-primary">Open</a></td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if results.quotations %}
+<div class="card-stat p-3 mb-3">
+    <h6>Quotations</h6>
+    <table class="table table-sm mb-0">
+        <tbody>
+        {% for q_item in results.quotations %}
+        <tr><td>{{ q_item.quote_number }} · {{ q_item.order.client.name }}</td><td class="text-end"><a href="{{ url_for('orders.view_order', order_id=q_item.order_id) }}" class="btn btn-sm btn-outline-primary">Open</a></td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if q and not (results.orders or results.clients or results.invoices or results.quotations) %}
+<p class="text-muted">No matches found.</p>
+{% endif %}
+{% endblock %}

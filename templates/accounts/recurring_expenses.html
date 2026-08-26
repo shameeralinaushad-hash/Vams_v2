@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Recurring Expenses{% endblock %}
+{% block pagetitle %}Recurring Expense Templates{% endblock %}
+
+{% block extra_head %}
+<style>
+    .recurring-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: 0 2px 10px rgba(20,24,31,0.03); height: 100%; }
+    .panel-header { border-bottom: 1px dashed var(--border); padding-bottom: 14px; margin-bottom: 18px; }
+    .panel-title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1rem; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 8px; }
+    .form-card { background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 20px; }
+    .form-card .form-control, .form-card .form-select { background-color: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.85rem; }
+    .table-custom { margin: 0; }
+    .table-custom th { border-bottom: 2px solid var(--border); color: var(--text-secondary); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 10px; }
+    .table-custom td { padding: 14px 10px; vertical-align: middle; font-size: 0.85rem; color: var(--text-primary); border-bottom: 1px solid var(--border); }
+    .table-custom tr:last-child td { border-bottom: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4 mb-4">
+    <div class="col-12">
+        <div class="recurring-card">
+            <div class="panel-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h6 class="panel-title"><i class="bi bi-arrow-repeat"></i> Recurring Expense Templates</h6>
+                <button type="button" class="btn btn-sm btn-primary rounded-pill" data-bs-toggle="modal" data-bs-target="#addRecurringModal"><i class="bi bi-plus-circle"></i> Add Template</button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-custom align-middle">
+                    <thead>
+                        <tr><th>Scope</th><th>Category</th><th>Amount</th><th>Payee</th><th>Payment</th><th>Day</th><th>Notes</th><th>Last Generated</th><th class="text-end">Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for t in templates %}
+                        <tr>
+                            <td><span class="badge bg-secondary rounded-pill">{{ t.scope }}</span></td>
+                            <td>{{ t.category.name if t.category else "—" }}</td>
+                            <td class="fw-bold">{{ t.amount | currency }}</td>
+                            <td class="text-muted small">{{ t.payee or "—" }}</td>
+                            <td class="text-muted small">{{ t.payment_method or "—" }}</td>
+                            <td>{{ t.day_of_month }}</td>
+                            <td class="text-muted small">{{ t.notes or "—" }}</td>
+                            <td class="text-muted small">{% if t.last_generated_month %}{{ t.last_generated_year }}-{{ '%02d' % t.last_generated_month }}{% else %}Never{% endif %}</td>
+                            <td class="text-end">
+                                <form method="POST" action="{{ delete_recurring_base }}{{ t.id }}" onsubmit="return confirm('Delete this recurring template?')" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger px-3 rounded-pill">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="9" class="text-muted text-center py-4">No recurring templates yet. Create one above.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-2 d-flex gap-2">
+                <form method="POST" action="{{ generate_recurring_url }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-sm btn-success rounded-pill"><i class="bi bi-lightning"></i> Generate All Due Now</button>
+                </form>
+                <a href="{{ dashboard_url }}" class="btn btn-sm btn-outline-secondary rounded-pill"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="addRecurringModal" tabindex="-1">
+    <div class="modal-dialog modal-sm"><div class="modal-content" style="border-radius: var(--radius-lg);">
+        <form method="POST" action="{{ add_recurring_url }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="modal-header border-0"><h6 class="modal-title fw-bold">Add Recurring Template</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Scope</label>
+                    <select name="scope" class="form-select" required>
+                        <option value="general">General</option>
+                        <option value="company">Company</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Category</label>
+                    <select name="category_id" class="form-select">
+                        <option value="">—</option>
+                        {% for c in categories %}
+                        <option value="{{ c.id }}">{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Amount</label>
+                    <input type="number" step="0.01" name="amount" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Day of Month</label>
+                    <input type="number" name="day_of_month" class="form-control" value="1" min="1" max="28" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Payee (optional)</label>
+                    <input type="text" name="payee" class="form-control" placeholder="e.g. Rent, Subscription">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Payment Method</label>
+                    <select name="payment_method" class="form-select">
+                        <option value="">—</option>
+                        <option value="cash">Cash</option>
+                        <option value="bank">Bank</option>
+                        <option value="card">Card</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Notes</label>
+                    <input type="text" name="notes" class="form-control" placeholder="Optional">
+                </div>
+            </div>
+            <div class="modal-footer border-0"><button type="submit" class="btn btn-primary rounded-pill px-4">Save Template</button></div>
+        </form>
+    </div></div>
+</div>
+{% endblock %}

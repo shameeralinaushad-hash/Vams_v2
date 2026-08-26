@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block title %}Accounts Dashboard{% endblock %}
+{% block pagetitle %}Accounts Dashboard{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/accounts.css') }}">
+<style>
+    .section-row { display: flex; flex-wrap: wrap; margin-bottom: 24px; }
+    .section-row .sec-col { flex: 1 1 0; min-width: 130px; padding: 6px; }
+    .section-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 20px 16px;
+        box-shadow: 0 2px 10px rgba(20,24,31,0.03);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        text-decoration: none;
+        color: var(--text-primary);
+        transition: transform 0.25s cubic-bezier(0.16,1,0.3,1), box-shadow 0.25s ease;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+    }
+    .section-card::before {
+        content: ''; position: absolute; inset: 0;
+        background: radial-gradient(circle at var(--mx,50%) var(--my,50%), rgba(20,24,31,0.04) 0%, transparent 60%);
+        opacity: 0; transition: opacity 0.3s ease;
+    }
+    .section-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 24px rgba(20,24,31,0.08);
+    }
+    .section-card:hover::before { opacity: 1; }
+    .section-card i { font-size: 1.6rem; margin-bottom: 6px; color: var(--text-primary); position: relative; }
+    .section-card .s-title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 0.85rem; position: relative; }
+    .section-card .s-desc { font-size: 0.7rem; color: var(--text-secondary); margin-top: 2px; position: relative; }
+    .kpi-card .kpi-number { font-size: 1.8rem; }
+    .kpi-card .kpi-label { font-size: 0.82rem; }
+    .kpi-card .sparkline-container { height: 40px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex mb-4 flex-wrap gap-2">
+    <div class="pill-filter">
+        <a href="?period=this_month" class="{% if period == 'this_month' %}active{% endif %}">This Month</a>
+        <a href="?period=last_month" class="{% if period == 'last_month' %}active{% endif %}">Last Month</a>
+        <a href="?period=quarter" class="{% if period == 'quarter' %}active{% endif %}">Quarter</a>
+        <a href="?period=year" class="{% if period == 'year' %}active{% endif %}">Year</a>
+    </div>
+</div>
+
+<div class="section-row">
+    <div class="sec-col"><a href="{{ url_for('accounts.personal_expenses') }}" class="section-card"><i class="bi bi-person"></i><div class="s-title">Personal</div><div class="s-desc">Track personal spending</div></a></div>
+    <div class="sec-col"><a href="{{ url_for('accounts.general_expenses') }}" class="section-card"><i class="bi bi-wallet2"></i><div class="s-title">General</div><div class="s-desc">Shared expenses</div></a></div>
+    <div class="sec-col"><a href="{{ url_for('accounts.company_accounts') }}" class="section-card"><i class="bi bi-briefcase"></i><div class="s-title">Companies</div><div class="s-desc">Per-company accounts</div></a></div>
+    <div class="sec-col"><a href="{{ url_for('accounts.receipt_ocr') }}" class="section-card"><i class="bi bi-camera"></i><div class="s-title">OCR</div><div class="s-desc">Scan receipts</div></a></div>
+    <div class="sec-col"><a href="{{ url_for('payments.list_payments') }}" class="section-card"><i class="bi bi-credit-card-2-front"></i><div class="s-title">Receivables & Payables</div><div class="s-desc">Track what's owed</div></a></div>
+    <div class="sec-col"><a href="{{ url_for('accounts.budgets') }}" class="section-card"><i class="bi bi-pie-chart"></i><div class="s-title">Budgets</div><div class="s-desc">Plan monthly spending</div></a></div>
+</div>
+
+{% if budget_summary is defined and budget_summary %}
+    {% if budget_summary.total_budget > 0 and budget_summary.over_count %}
+    <div class="attention-card mb-4">
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-exclamation-triangle-fill" style="color: var(--danger);"></i>
+            <strong style="font-size: 0.9rem;">{{ budget_summary.over_count }} budget category(ies) over this month</strong>
+            <a href="{{ url_for('accounts.budgets') }}" class="ms-auto btn btn-sm btn-outline-danger rounded-pill px-3">Review Budgets</a>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            {% for o in budget_summary.over %}
+            <span class="badge rounded-pill" style="background:rgba(214,69,69,0.12);color:var(--danger);font-size:0.72rem;font-weight:700;"><i class="bi bi-arrow-up-short"></i> {{ o.category }} · {{ o.pct | round(0) | int }}% used</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% elif budget_summary.total_budget == 0 and budget_summary.total_spent > 0 %}
+    <div class="attention-card healthy mb-4">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-pie-chart" style="color: var(--success);"></i>
+            <span style="font-size: 0.85rem;">You're spending without budgets set. <a href="{{ url_for('accounts.budgets') }}" style="font-weight:700;color:var(--accent);">Set monthly budgets</a> to track spending against a plan.</span>
+        </div>
+    </div>
+    {% endif %}
+
+    {% set bpct = budget_summary.pct | round(0) | int %}
+    {% set bbar = 'over' if bpct > 100 else ('warn' if bpct >= 75 else 'ok') %}
+    <div class="row g-4 mb-4">
+        <div class="col-12">
+            <div class="info-panel" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:0.9rem;"><i class="bi bi-pie-chart" style="color:var(--accent);"></i> Budget Pulse — {{ budget_month_label }}</span>
+                    <a href="{{ url_for('accounts.budgets') }}" style="font-size:0.8rem;font-weight:700;color:var(--accent);text-decoration:none;">Manage Budgets →</a>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-4 mb-3">
+                    <div><div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-secondary);">Budgeted</div><div style="font-size:1.2rem;font-weight:800;">{{ budget_summary.total_budget | currency }}</div></div>
+                    <div style="width:1px;height:32px;background:var(--border);"></div>
+                    <div><div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-secondary);">Spent</div><div style="font-size:1.2rem;font-weight:800;color:var(--danger);">{{ budget_summary.total_spent | currency }}</div></div>
+                    <div style="width:1px;height:32px;background:var(--border);"></div>
+                    <div><div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-secondary);">Remaining</div><div style="font-size:1.2rem;font-weight:800;color:{% if budget_summary.remaining >= 0 %}var(--success){% else %}var(--danger){% endif %};">{{ budget_summary.remaining | currency }}</div></div>
+                    <div style="width:1px;height:32px;background:var(--border);"></div>
+                    <div class="flex-grow-1" style="min-width:200px;">
+                        <div class="d-flex justify-content-between align-items-center mb-1" style="font-size:0.72rem;font-weight:700;color:var(--text-secondary);">
+                            <span>Utilized</span>
+                            <span style="color:{{ 'var(--danger)' if bpct > 100 else ('#b45309' if bpct >= 75 else 'var(--success)') }};">{{ bpct }}%</span>
+                        </div>
+                        <div class="budget-pulse-track"><div class="budget-pulse-fill {{ bbar }}" data-fill="{{ [bpct, 100] | min }}"></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endif %}
+
+{% set max_flow = [total_inflow, total_outflow, 1] | max %}
+{% set inflow_pct = (total_inflow / max_flow * 100) | round %}
+{% set outflow_pct = (total_outflow / max_flow * 100) | round %}
+{% set flow_net = total_inflow - total_outflow %}
+
+<div class="row g-4 mb-4">
+    <div class="col-xl-4 col-lg-6">
+        <div class="widget-card">
+            <div class="widget-head"><i class="bi bi-credit-card-2-front"></i> Receivables</div>
+            <div class="widget-body">
+                <div class="widget-main">{{ total_receivable | currency }}</div>
+                <div class="widget-sub">Outstanding from clients</div>
+                <div class="aging-row mt-3">
+                    <div class="aging-item"><span class="aging-dot" style="background:var(--success);"></span>0-30d <strong>{{ aging_receivable['0_30'] | currency }}</strong></div>
+                    <div class="aging-item"><span class="aging-dot" style="background:var(--warning);"></span>31-60d <strong>{{ aging_receivable['31_60'] | currency }}</strong></div>
+                    <div class="aging-item"><span class="aging-dot" style="background:var(--danger);"></span>60+d <strong>{{ aging_receivable['60_plus'] | currency }}</strong></div>
+                </div>
+            </div>
+            <a href="{{ url_for('payments.list_payments') }}" class="widget-cta">View Details <i class="bi bi-arrow-right"></i></a>
+        </div>
+    </div>
+    <div class="col-xl-4 col-lg-6">
+        <div class="widget-card">
+            <div class="widget-head"><i class="bi bi-arrow-left-right"></i> Cash Flow</div>
+            <div class="widget-body">
+                <div class="flow-compact">
+                    <div class="flow-compact-row">
+                        <span class="flow-compact-label inflow"><i class="bi bi-arrow-down-circle-fill"></i> Inflow</span>
+                        <span class="flow-compact-amount" style="color:var(--success);">{{ total_inflow | currency }}</span>
+                    </div>
+                    <div class="flow-compact-track"><div class="flow-compact-bar inflow" style="width:{{ inflow_pct }}%;"></div></div>
+                    <div class="flow-compact-row mt-2">
+                        <span class="flow-compact-label outflow"><i class="bi bi-arrow-up-circle-fill"></i> Outflow</span>
+                        <span class="flow-compact-amount" style="color:var(--danger);">{{ total_outflow | currency }}</span>
+                    </div>
+                    <div class="flow-compact-track"><div class="flow-compact-bar outflow" style="width:{{ outflow_pct }}%;"></div></div>
+                    <div class="flow-compact-net {% if flow_net >= 0 %}positive{% else %}negative{% endif %} mt-2">
+                        Net: {{ flow_net | currency }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-lg-6">
+        <div class="widget-card">
+            <div class="widget-head"><i class="bi bi-credit-card-2-back"></i> Payables</div>
+            <div class="widget-body">
+                <div class="widget-main">{{ total_payable | currency }}</div>
+                <div class="widget-sub">Outstanding to vendors</div>
+                <div class="row mt-3 g-2">
+                    <div class="col-6">
+                        <div class="widget-mini">
+                            <span class="widget-mini-label">Overdue</span>
+                            <span class="widget-mini-value" style="color:var(--danger);">{{ overdue_payable | currency }}</span>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="widget-mini">
+                            <span class="widget-mini-label">Current</span>
+                            <span class="widget-mini-value" style="color:var(--success);">{{ (total_payable - overdue_payable) | currency }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <a href="{{ url_for('payments.list_payments', tab='payables') }}" class="widget-cta">Manage <i class="bi bi-arrow-right"></i></a>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-xl-12">
+        <div class="mini-kpi-row">
+            <div class="mini-kpi">
+                <span class="mini-kpi-label">Revenue</span>
+                <span class="mini-kpi-value" style="color:var(--success);">{{ total_income | currency }}</span>
+            </div>
+            <div class="mini-kpi-divider"></div>
+            <div class="mini-kpi">
+                <span class="mini-kpi-label">Expenses</span>
+                <span class="mini-kpi-value" style="color:var(--danger);">{{ total_expenses | currency }}</span>
+            </div>
+            <div class="mini-kpi-divider"></div>
+            <div class="mini-kpi">
+                <span class="mini-kpi-label">Net</span>
+                <span class="mini-kpi-value" style="color:{% if net_position >= 0 %}var(--success){% else %}var(--danger){% endif %};">{{ net_position | currency }}</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.widget-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: 0 2px 10px rgba(20,24,31,0.03); height: 100%; display: flex; flex-direction: column; }
+.widget-head { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+.widget-body { flex: 1; }
+.widget-main { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.2; }
+.widget-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+.aging-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.aging-item { font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; }
+.aging-item strong { color: var(--text-primary); font-weight: 700; margin-left: 2px; }
+.aging-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.widget-cta { display: block; text-align: center; margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); font-size: 0.8rem; font-weight: 600; color: var(--text-primary); text-decoration: none; transition: color 0.15s; }
+.widget-cta:hover { color: var(--accent-dark); }
+.flow-compact-label { font-size: 0.75rem; font-weight: 600; display: flex; align-items: center; gap: 4px; }
+.flow-compact-label.inflow { color: var(--success); }
+.flow-compact-label.outflow { color: var(--danger); }
+.flow-compact-row { display: flex; justify-content: space-between; align-items: center; }
+.flow-compact-amount { font-size: 1rem; font-weight: 700; }
+.flow-compact-track { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+.flow-compact-bar { height: 100%; border-radius: 3px; transition: width 0.8s cubic-bezier(0.16,1,0.3,1); }
+.flow-compact-bar.inflow { background: linear-gradient(90deg, var(--success), #5cdb9a); }
+.flow-compact-bar.outflow { background: linear-gradient(90deg, var(--danger), #f0867e); }
+.flow-compact-net { font-size: 0.85rem; font-weight: 700; text-align: right; }
+.flow-compact-net.positive { color: var(--success); }
+.flow-compact-net.negative { color: var(--danger); }
+.widget-mini { background: var(--surface-soft); border-radius: var(--radius-md); padding: 10px; text-align: center; }
+.widget-mini-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); display: block; }
+.widget-mini-value { font-size: 1rem; font-weight: 800; display: block; margin-top: 2px; }
+.mini-kpi-row { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 24px; display: flex; align-items: center; justify-content: space-around; }
+.mini-kpi { text-align: center; }
+.mini-kpi-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); display: block; }
+.mini-kpi-value { font-size: 1.2rem; font-weight: 800; display: block; margin-top: 2px; }
+.mini-kpi-divider { width: 1px; height: 36px; background: var(--border); }
+.budget-pulse-track { height: 8px; background: var(--surface-soft); border-radius: 6px; overflow: hidden; }
+.budget-pulse-fill { height: 100%; width: 0%; border-radius: 6px; transition: width 0.9s cubic-bezier(0.16,1,0.3,1); }
+.budget-pulse-fill.ok { background: linear-gradient(90deg, #1e9e63, #5cdb9a); }
+.budget-pulse-fill.warn { background: linear-gradient(90deg, #d99a2b, #f0c060); }
+.budget-pulse-fill.over { background: linear-gradient(90deg, #d64545, #f0867e); }
+</style>
+
+{% if recurring_due %}
+<div class="row g-4 mb-4">
+    <div class="col-12">
+        <div class="attention-card healthy">
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <i class="bi bi-arrow-repeat" style="color: var(--success);"></i>
+                <strong style="font-size: 0.9rem;">Recurring Expenses Ready</strong>
+            </div>
+            <span style="font-size: 0.85rem;">{{ recurring_due }} recurring expense template(s) are due this month.</span>
+            <form action="{{ generate_recurring_url }}" method="post" class="d-inline ms-2">
+                <button class="btn btn-sm btn-success">Generate Now</button>
+            </form>
+            <a href="{{ recurring_url }}" class="btn btn-sm btn-outline-secondary ms-1">Manage Recurring</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row g-4 mb-4">
+    <div class="col-xl-8 col-lg-12">
+        <div class="chart-panel">
+            <h6>Income vs Expenses</h6>
+            <div style="position: relative; height: 220px; width: 100%;"><canvas id="incomeExpenseChart"></canvas></div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-lg-12">
+        <div class="chart-panel">
+            <h6>Top Expense Categories</h6>
+            <div style="position: relative; height: 220px; width: 100%;"><canvas id="categoryChart"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const incomeData = {{ monthly_income | tojson }};
+const expenseData = {{ monthly_expenses | tojson }};
+const labels = {{ monthly_labels | tojson }};
+const catLabels = {{ top_categories | map(attribute='name') | list | tojson }};
+const catValues = {{ top_categories | map(attribute='total') | list | tojson }};
+
+function fmt(v) {
+    if (v >= 1000000) return (v / 1000000).toFixed(2) + 'M';
+    return v.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+}
+
+new Chart(document.getElementById('incomeExpenseChart'), {
+    type: 'bar',
+    data: {
+        labels: labels,
+        datasets: [
+            { label: 'Income', data: incomeData, backgroundColor: 'rgba(30,158,99,0.15)', borderColor: 'rgba(30,158,99,0.85)', borderWidth: 1.5, borderRadius: 6 },
+            { label: 'Expenses', data: expenseData.map(v => -v), backgroundColor: 'rgba(214,69,69,0.15)', borderColor: 'rgba(214,69,69,0.85)', borderWidth: 1.5, borderRadius: 6 }
+        ]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'top', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } }, tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${fmt(Math.abs(ctx.raw))}` } } },
+        scales: { x: { grid: { display: false } }, y: { grid: { color: 'rgba(20,24,31,0.06)' }, ticks: { callback: (v) => fmt(Math.abs(v)) } } }
+    }
+});
+
+new Chart(document.getElementById('categoryChart'), {
+    type: 'doughnut',
+    data: {
+        labels: catLabels.length ? catLabels : ['No Data'],
+        datasets: [{ data: catLabels.length ? catValues : [1], backgroundColor: ['#14181f', '#d64545', '#1e9e63', '#d99a2b', '#06b6d4', '#8b5cf6'], borderWidth: 2, borderColor: 'var(--surface)' }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } }, tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${fmt(ctx.raw)}` } } },
+        cutout: '70%'
+    }
+});
+
+document.querySelectorAll('[data-fill]').forEach(function (bar) {
+    var target = parseFloat(bar.getAttribute('data-fill')) || 0;
+    setTimeout(function () { bar.style.width = target + '%'; }, 80);
+});
+</script>
+{% endblock %}

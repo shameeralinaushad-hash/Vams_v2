@@ -1,0 +1,85 @@
+﻿{% extends "base.html" %}
+{% block title %}Companies{% endblock %}
+{% block pagetitle %}Companies{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* Fade-in animation for the panel */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeIn 0.4s ease-out; }
+
+    /* Consistent Table Styling */
+    .table-custom th {
+        border-bottom: 2px solid var(--border);
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 12px 10px;
+    }
+    .table-custom td { padding: 14px 10px; vertical-align: middle; }
+
+    /* Hover effect for rows */
+    .table-hover tbody tr:hover { background-color: var(--surface-soft); transition: background 0.2s; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Header & Add Button -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h5 class="fw-bold m-0" style="font-family: 'Space Grotesk', sans-serif;">Manage Companies</h5>
+    <a href="{{ url_for('companies.add_company') }}" class="btn btn-primary rounded-pill px-4">
+        <i class="bi bi-plus-lg me-1"></i> Add Company
+    </a>
+</div>
+
+<!-- Main Panel -->
+<div class="info-panel fade-in">
+    <div class="table-responsive-mobile">
+        <table class="table table-custom table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Tax Number</th>
+                    <th>Letterhead</th>
+                    <th class="text-end">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in companies %}
+                <tr>
+                    <td class="fw-bold text-dark">{{ c.name }}</td>
+                    <td class="text-secondary">{{ c.tax_number or "—" }}</td>
+                    <td>
+                        {% if c.letterhead_filename %}
+                            <span class="badge bg-success bg-opacity-10 text-success rounded-pill px-2">Uploaded</span>
+                        {% else %}
+                            <span class="badge bg-secondary bg-opacity-10 text-secondary rounded-pill px-2">None</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        <a href="{{ url_for('companies.switch_company', company_id=c.id) }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3">Set Active</a>
+                        <a href="{{ url_for('companies.edit_company', company_id=c.id) }}" class="btn btn-sm btn-outline-primary rounded-pill px-3 ms-1">Edit</a>
+                        <form method="POST" action="{{ url_for('companies.delete_company', company_id=c.id) }}" class="d-inline"
+                              onsubmit="return confirm('Delete {{ c.name }}? This cannot be undone.')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-3 ms-1">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" class="text-center py-5 text-muted">No companies found. Create your first one to get started.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}

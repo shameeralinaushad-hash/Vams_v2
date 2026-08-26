@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Add Client{% endblock %}
+{% block pagetitle %}Add Client{% endblock %}
+{% block content %}
+<h3>Add Client</h3>
+<form method="POST" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="mb-3">
+        <label class="form-label">Client Name</label>
+        <div class="mb-3">
+        <input type="text" name="name" id="clientNameInput" class="form-control" required>
+        <div id="duplicateWarning" style="display:none;" class="alert alert-warning mt-2 py-2"></div>
+    </div>
+
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Address</label>
+        <textarea name="address" class="form-control"></textarea>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Contact Info (phone / email)</label>
+        <input type="text" name="contact_info" class="form-control">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Tax / Registration Number</label>
+        <input type="text" name="tax_number" class="form-control">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Client Logo (optional)</label>
+        <input type="file" name="logo" class="form-control" accept="image/*">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Which of your companies does this client order from?</label>
+        {% for co in companies %}
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="company_ids" value="{{ co.id }}" id="co{{ co.id }}">
+            <label class="form-check-label" for="co{{ co.id }}">{{ co.name }}</label>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Client Code (used in Invoice/Challan numbers, e.g. "IOM")</label>
+        <input type="text" name="client_code" class="form-control" placeholder="IOM">
+    </div>
+    <button type="submit" class="btn btn-success">Save Client</button>
+</form>
+<script>
+const clientNameInput = document.getElementById("clientNameInput");
+const duplicateWarning = document.getElementById("duplicateWarning");
+let debounceTimer;
+
+clientNameInput.addEventListener("input", function() {
+    clearTimeout(debounceTimer);
+    const name = clientNameInput.value.trim();
+    if (name.length < 3) {
+        duplicateWarning.style.display = "none";
+        return;
+    }
+
+    debounceTimer = setTimeout(() => {
+        fetch("{{ url_for('clients.check_duplicate_client') }}?name=" + encodeURIComponent(name))
+            .then(r => r.json())
+            .then(matches => {
+                if (matches.length === 0) {
+                    duplicateWarning.style.display = "none";
+                    return;
+                }
+                const list = matches.map(m => `${m.name} (${m.score}% similar)`).join(", ");
+                duplicateWarning.textContent = `⚠ Possible duplicate — similar client(s) already exist: ${list}. Double-check before saving.`;
+                duplicateWarning.style.display = "block";
+            });
+    }, 300);
+});
+</script>
+{% endblock %}

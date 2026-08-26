@@ -1,0 +1,3 @@
+#Use this command to create first admin user.
+
+python create_first_user.py

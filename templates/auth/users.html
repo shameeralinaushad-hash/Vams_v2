@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Users{% endblock %}
+
+{% block pagetitle %}Users{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <a href="{{ url_for('auth.add_user') }}" class="btn btn-primary">
+        <i class="bi bi-plus-lg"></i> Add User
+    </a>
+
+    <div>
+        <a href="{{ url_for('auth.audit_log') }}" class="btn btn-outline-secondary btn-sm">
+            View Audit Log
+        </a>
+        <a href="{{ url_for('backup_now') }}"
+           class="btn btn-outline-secondary btn-sm"
+           onclick="return confirm('Are you sure you want to trigger a database backup?')">
+            <i class="bi bi-download"></i> Backup Database Now
+        </a>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Linked Employee</th>
+                    <th>Status</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td>{{ u.name or "—" }}</td>
+                    <td>{{ u.email }}</td>
+                    <td>
+                        {% if u.role == 'admin' %}
+                            <span class="badge bg-warning text-dark">Admin</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Staff</span>
+                        {% endif %}
+                    </td>
+                    <td>{% if u.employee %}<a href="{{ url_for('hr.employee_profile', employee_id=u.employee.id) }}" class="text-decoration-none">{{ u.employee.name }}</a>{% else %}<span class="text-muted small">—</span>{% endif %}</td>
+                    <td>
+                        {% if u.is_active_user %}
+                            <span class="badge bg-success">Active</span>
+                        {% else %}
+                            <span class="badge bg-danger">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-nowrap text-end">
+                        <a href="{{ url_for('auth.edit_user', user_id=u.id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        {% if u.id != current_user.id %}
+                            <form method="POST" action="{{ url_for('auth.toggle_user', user_id=u.id) }}" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                    {{ "Deactivate" if u.is_active_user else "Activate" }}
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ url_for('auth.delete_user', user_id=u.id) }}" class="d-inline"
+                                  onsubmit="return confirm('Delete user {{ u.email }}? This cannot be undone.')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                            </form>
+                        {% else %}
+                            <span class="text-muted small"><em>(you)</em></span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center py-4 text-muted">No users found in the system.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}

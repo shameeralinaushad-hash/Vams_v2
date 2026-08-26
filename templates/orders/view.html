@@ -1,0 +1,906 @@
+﻿{% extends "base.html" %}
+{% from "_macros.html" import pdf_actions %}
+
+{% macro fmt_curr(val) %}
+    {% set num = (val or 0.0) | float %}
+    {% if num >= 1000000 %}
+        {{ "{:,.2f}".format(num / 1000000) }}M
+    {% else %}
+        {{ "{:,.2f}".format(num) }}
+    {% endif %}
+{% endmacro %}
+
+{% block title %}
+{% if order.purchase_order and order.purchase_order.po_number %}
+    PO {{ order.purchase_order.po_number }}
+{% else %}
+    Order #{{ order.id }}
+{% endif %}
+{% endblock %}
+
+{% block pagetitle %}
+{% if order.purchase_order and order.purchase_order.po_number %}
+    PO {{ order.purchase_order.po_number }}
+{% else %}
+    Order #{{ order.id }} (Pending)
+{% endif %}
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .order-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; box-shadow: 0 4px 18px rgba(0,0,0,0.02); margin-bottom: 24px; }
+    .panel-header { border-bottom: 1px dashed var(--border); padding-bottom: 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; }
+    .panel-title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1rem; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 8px; }
+    .metric-subcard { background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; }
+    .table-custom-sm { margin: 0; }
+    .table-custom-sm th { border-bottom: 2px solid var(--border); color: var(--text-secondary); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 10px 8px; }
+    .table-custom-sm td { padding: 12px 8px; vertical-align: middle; font-size: 0.85rem; color: var(--text-primary); border-bottom: 1px solid var(--border); }
+    .table-custom-sm tr:last-child td { border-bottom: none; }
+    .form-inline-card { background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; }
+    .form-inline-card .form-control, .form-inline-card .form-select { background-color: var(--surface); border: 1px solid var(--border); color: var(--text-primary); font-size: 0.85rem; border-radius: 8px; padding: 8px 12px; }
+    .form-inline-card .form-control:focus, .form-inline-card .form-select:focus { border-color: var(--text-secondary); box-shadow: 0 0 0 3px rgba(0,0,0,0.03); outline: none; }
+    .badge-soft { background-color: var(--surface-soft); color: var(--text-primary); border: 1px solid var(--border); font-size: 0.75rem; font-weight: 600; padding: 4px 10px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Top Controls -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <!-- Back Button on the Left -->
+    <a href="{{ url_for('orders.list_orders') }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+        <i class="bi bi-arrow-left me-1"></i> Back to Orders
+    </a>
+
+    <!-- Action Buttons Grouped on the Right -->
+    <div class="d-flex align-items-center gap-2">
+        <!-- Edit Order Button -->
+        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#editOrderModal">
+            <i class="bi bi-pencil me-1"></i> Edit Order
+        </button>
+
+        <!-- Delete Order Form -->
+        <form method="POST" action="{{ url_for('orders.delete_order', order_id=order.id) }}"
+              onsubmit="return confirm('Delete this entire order, including its quotation, PO, invoice, and delivery challan PDFs? This cannot be undone.')" class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-3">
+                <i class="bi bi-trash me-1"></i> Delete Order
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Order Summary Panel -->
+<div class="order-panel">
+    <div class="panel-header">
+        <div>
+            <h5 class="fw-bold mb-1" style="font-family: 'Space Grotesk', sans-serif;">
+                {{ order.client.name }}{% if order.title %} — {{ order.title }}{% endif %}
+                {% if order.subsidiary %}<span class="badge badge-soft rounded-pill ms-2">{{ order.subsidiary.name }}</span>{% endif %}
+            </h5>
+            <div class="text-secondary small">Company: <span class="fw-semibold text-dark">{{ order.company.name }}</span> · Inquiry: <span class="fw-semibold text-dark">{{ order.inquiry_date }}</span></div>
+        </div>
+        <div>
+            {% if order.status == 'PO Received' %}<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill fs-6 px-3 py-2">PO Received</span>
+            {% elif order.status == 'Not Received' %}<span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill fs-6 px-3 py-2">Not Received</span>
+            {% else %}<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill fs-6 px-3 py-2">Pending</span>{% endif %}
+        </div>
+    </div>
+
+    <p class="text-secondary mb-0" style="font-size: 0.9rem;">{{ order.notes or "No additional notes provided for this order." }}</p>
+
+    {% if order.status == 'Pending' %}
+    <div class="mt-3 pt-3 border-top d-flex gap-2">
+        <form method="POST" action="{{ url_for('orders.mark_status', order_id=order.id, new_status='PO Received') }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-success btn-sm rounded-pill px-3"><i class="bi bi-check-circle me-1"></i> Mark PO Received</button>
+        </form>
+        <form method="POST" action="{{ url_for('orders.mark_status', order_id=order.id, new_status='Not Received') }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3"><i class="bi bi-x-circle me-1"></i> Mark Not Received</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Commercial Offer Panel -->
+<div class="order-panel">
+    <div class="panel-header">
+        <h6 class="panel-title"><i class="bi bi-file-earmark-text text-primary"></i> Commercial Offer</h6>
+        <a href="{{ url_for('quotations.create_quotation', order_id=order.id, doc_type='commercial') }}" class="btn btn-sm btn-primary rounded-pill px-3">
+            <i class="bi bi-plus-lg me-1"></i> {{ "Create Revised Commercial" if order.commercial_quotation else "Create Commercial" }}
+        </a>
+    </div>
+    {% set coq = order.commercial_quotation %}
+    {% if coq %}
+        <div class="text-secondary small mb-3">Quote Number: <strong class="text-dark">{{ coq.quote_number }}</strong> · Date: <strong class="text-dark">{{ coq.quote_date }}</strong> · <span class="badge badge-soft">v{{ coq.pdf_version }}</span></div>
+
+        {% if coq.pdf_path %}
+            <div class="d-flex w-100 mb-3">
+                <div class="btn-group w-100">
+                    {{ pdf_actions(url_for('static', filename=coq.pdf_path)) }}
+                </div>
+            </div>
+        {% endif %}
+
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('quotations.edit_quotation', quotation_id=coq.id) }}" class="btn btn-sm btn-outline-primary rounded-pill px-3"><i class="bi bi-pencil me-1"></i> Edit</a>
+            <form method="POST" action="{{ url_for('quotations.regenerate_quotation', quotation_id=coq.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary rounded-pill px-3"><i class="bi bi-arrow-repeat me-1"></i> Regenerate PDF</button>
+            </form>
+            <form method="POST" action="{{ url_for('quotations.delete_quotation', quotation_id=coq.id) }}" class="d-inline"
+                  onsubmit="return confirm('Delete this commercial offer? This cannot be undone.')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-3"><i class="bi bi-trash me-1"></i> Delete</button>
+            </form>
+        </div>
+    {% else %}
+        <p class="text-muted small my-2">No commercial offer generated yet.</p>
+    {% endif %}
+
+    {% set coq_prev = order.quotations_of_type("commercial")[1:] %}
+    {% if coq_prev %}
+    <details class="mt-3 pt-2 border-top">
+        <summary class="text-muted small fw-semibold" style="cursor:pointer;">Show {{ coq_prev|length }} previous commercial version(s)</summary>
+        <table class="table table-custom-sm align-middle mt-2">
+            <thead><tr><th>Quote #</th><th>Date</th><th class="text-end">Actions</th></tr></thead>
+            <tbody>
+            {% for q in coq_prev %}
+                <tr>
+                    <td class="fw-semibold">{{ q.quote_number }}</td>
+                    <td class="text-secondary">{{ q.quote_date }}</td>
+                    <td class="text-end">
+                        <div class="d-inline-flex gap-2 justify-content-end">
+                            {% if q.pdf_path %}
+                                <div class="btn-group" style="max-width: 200px;">
+                                    {{ pdf_actions(url_for('static', filename=q.pdf_path), variant='secondary') }}
+                                </div>
+                            {% endif %}
+                            <form method="POST" action="{{ url_for('quotations.delete_quotation', quotation_id=q.id) }}" class="d-inline"
+                                  onsubmit="return confirm('Delete this old commercial version?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill"><i class="bi bi-trash"></i> Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </details>
+    {% endif %}
+</div>
+
+<!-- Technical Offer Panel -->
+<div class="order-panel">
+    <div class="panel-header">
+        <h6 class="panel-title"><i class="bi bi-clipboard-check text-primary"></i> Technical Offer</h6>
+        <a href="{{ url_for('quotations.create_quotation', order_id=order.id, doc_type='technical') }}" class="btn btn-sm btn-primary rounded-pill px-3">
+            <i class="bi bi-plus-lg me-1"></i> {{ "Create Revised Technical" if order.technical_quotation else "Create Technical" }}
+        </a>
+    </div>
+    {% set toq = order.technical_quotation %}
+    {% if toq %}
+        <div class="text-secondary small mb-2">Offer Number: <strong class="text-dark">{{ toq.quote_number }}</strong> · Date: <strong class="text-dark">{{ toq.quote_date }}</strong> · <span class="badge badge-soft">v{{ toq.pdf_version }}</span></div>
+
+        {% if toq.pdf_path %}
+            <div class="d-flex w-100 mb-3">
+                <div class="btn-group w-100">
+                    {{ pdf_actions(url_for('static', filename=toq.pdf_path)) }}
+                </div>
+            </div>
+        {% endif %}
+
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('quotations.edit_quotation', quotation_id=toq.id) }}" class="btn btn-sm btn-outline-primary rounded-pill px-3"><i class="bi bi-pencil me-1"></i> Edit</a>
+            <form method="POST" action="{{ url_for('quotations.regenerate_quotation', quotation_id=toq.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary rounded-pill px-3"><i class="bi bi-arrow-repeat me-1"></i> Regenerate PDF</button>
+            </form>
+            <form method="POST" action="{{ url_for('quotations.delete_quotation', quotation_id=toq.id) }}" class="d-inline"
+                  onsubmit="return confirm('Delete this technical offer? This cannot be undone.')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-3"><i class="bi bi-trash me-1"></i> Delete</button>
+            </form>
+        </div>
+    {% else %}
+        <p class="text-muted small my-2">No technical offer generated yet.</p>
+    {% endif %}
+
+    {% set toq_prev = order.quotations_of_type("technical")[1:] %}
+    {% if toq_prev %}
+    <details class="mt-3 pt-2 border-top">
+        <summary class="text-muted small fw-semibold" style="cursor:pointer;">Show {{ toq_prev|length }} previous technical version(s)</summary>
+        <table class="table table-custom-sm align-middle mt-2">
+            <thead><tr><th>Offer #</th><th>Date</th><th class="text-end">Actions</th></tr></thead>
+            <tbody>
+            {% for q in toq_prev %}
+                <tr>
+                    <td class="fw-semibold">{{ q.quote_number }}</td>
+                    <td class="text-secondary">{{ q.quote_date }}</td>
+                    <td class="text-end">
+                        <div class="d-inline-flex gap-2 justify-content-end">
+                            {% if q.pdf_path %}
+                                <div class="btn-group" style="max-width: 200px;">
+                                    {{ pdf_actions(url_for('static', filename=q.pdf_path), variant='secondary') }}
+                                </div>
+                            {% endif %}
+                            <form method="POST" action="{{ url_for('quotations.delete_quotation', quotation_id=q.id) }}" class="d-inline"
+                                  onsubmit="return confirm('Delete this old technical version?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill"><i class="bi bi-trash"></i> Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </details>
+    {% endif %}
+</div>
+
+<!-- Purchase Order Panel -->
+<div class="order-panel">
+    <div class="panel-header">
+        <h6 class="panel-title"><i class="bi bi-bag-check text-primary"></i> Purchase Order</h6>
+    </div>
+    {% if order.purchase_order and order.purchase_order.attachment_path %}
+        <div class="text-secondary small mb-3">PO Number: <strong class="text-dark">{{ order.purchase_order.po_number }}</strong> · Date: <strong class="text-dark">{{ order.purchase_order.po_date }}</strong> · Status: <strong class="text-dark">{{ order.purchase_order.status }}</strong></div>
+        <div class="d-flex gap-2 mb-3">
+            <a href="{{ url_for('static', filename=order.purchase_order.attachment_path) }}" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill px-3"><i class="bi bi-file-earmark-pdf me-1"></i> View PO</a>
+            <form method="POST" action="{{ url_for('orders.re_stamp_po', order_id=order.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+                    <i class="bi bi-pencil-square me-1"></i> Stamp PDF
+                </button>
+            </form>
+            <form method="POST" action="{{ url_for('orders.delete_po', order_id=order.id) }}" class="d-inline"
+                  onsubmit="return confirm('Delete this PO and its attachment? This cannot be undone.')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-3">
+                    <i class="bi bi-trash me-1"></i> Delete PO
+                </button>
+            </form>
+        </div>
+
+        {% if order.purchase_order.line_items %}
+        <div class="table-responsive mb-3">
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Description</th>
+                        <th>Part No</th>
+                        <th>Unit</th>
+                        <th class="text-end">Qty</th>
+                        <th class="text-end">Unit Price</th>
+                        <th class="text-end">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in order.purchase_order.line_items %}
+                    <tr>
+                        <td>{{ item.description }}</td>
+                        <td>{{ item.part_no or '—' }}</td>
+                        <td>{{ item.unit or '—' }}</td>
+                        <td class="text-end">{{ item.qty }}</td>
+                        <td class="text-end">{{ "{:,.2f}".format(item.unit_price) }}</td>
+                        <td class="text-end fw-semibold">{{ "{:,.2f}".format(item.qty * item.unit_price) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-light">
+                        <td colspan="5" class="text-end fw-bold">Total:</td>
+                        <td class="text-end fw-bold">{{ "{:,.2f}".format(order.purchase_order.total_amount) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% endif %}
+    {% else %}
+        <p class="text-muted small my-2">No PO uploaded yet.</p>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('orders.upload_po', order_id=order.id) }}" enctype="multipart/form-data" class="mt-3" id="poForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-2 mb-3">
+            <div class="col-md-3">
+                <label class="form-label small text-muted">PO Number</label>
+                <input type="text" name="po_number" class="form-control form-control-sm" placeholder="PO Number" value="{{ order.purchase_order.po_number if order.purchase_order else '' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">PO Date</label>
+                <input type="date" name="po_date" class="form-control form-control-sm" value="{{ order.purchase_order.po_date.isoformat() if order.purchase_order and order.purchase_order.po_date else '' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">Status</label>
+                <select name="po_status" class="form-select form-select-sm">
+                    {% set current_status = order.purchase_order.status if order.purchase_order else 'Pending' %}
+                    {% for s in ['Pending', 'Received', 'Delivered', 'Partially Delivered', 'Cancelled'] %}
+                    <option value="{{ s }}" {{ 'selected' if current_status == s }}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">PO File (PDF, JPG, PNG)</label>
+                <input type="file" name="po_file" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png">
+            </div>
+        </div>
+
+        <!-- Line Items -->
+        <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="form-label small text-muted mb-0">Line Items</label>
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="extractPoBtn">
+                    <i class="bi bi-stars me-1"></i> Extract with AI
+                </button>
+            </div>
+            <div id="poItemsContainer">
+                {% if order.purchase_order and order.purchase_order.line_items %}
+                    {% for item in order.purchase_order.line_items %}
+                    <div class="row g-1 mb-1 po-item-row">
+                        <div class="col-md-4"><input type="text" name="items-{{ loop.index0 }}-description" class="form-control form-control-sm" placeholder="Description" value="{{ item.description }}"></div>
+                        <div class="col-md-2"><input type="text" name="items-{{ loop.index0 }}-part_no" class="form-control form-control-sm" placeholder="Part No" value="{{ item.part_no or '' }}"></div>
+                        <div class="col-md-1"><input type="text" name="items-{{ loop.index0 }}-unit" class="form-control form-control-sm" placeholder="Unit" value="{{ item.unit or '' }}"></div>
+                        <div class="col-md-2"><input type="number" name="items-{{ loop.index0 }}-qty" class="form-control form-control-sm" placeholder="Qty" value="{{ item.qty }}" step="any"></div>
+                        <div class="col-md-2"><input type="number" name="items-{{ loop.index0 }}-unit_price" class="form-control form-control-sm" placeholder="Unit Price" value="{{ item.unit_price }}" step="any"></div>
+                        <div class="col-md-1"><button type="button" class="btn btn-sm btn-outline-danger remove-item w-100">&times;</button></div>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 mt-2" id="addPoItemBtn">
+                <i class="bi bi-plus-lg me-1"></i> Add Item
+            </button>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="text-muted small" id="poTotalDisplay">
+                {% if order.purchase_order and order.purchase_order.total_amount %}
+                Total: <strong>{{ "{:,.2f}".format(order.purchase_order.total_amount) }}</strong>
+                {% endif %}
+            </div>
+            <button type="submit" class="btn btn-primary rounded-pill fw-semibold px-4">Save Purchase Order</button>
+        </div>
+    </form>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const container = document.getElementById('poItemsContainer');
+    const addBtn = document.getElementById('addPoItemBtn');
+    const extractBtn = document.getElementById('extractPoBtn');
+    let itemIndex = container.querySelectorAll('.po-item-row').length;
+
+    addBtn.addEventListener('click', function() {
+        addPoItemRow('', '', '', 1, 0);
+    });
+
+    container.addEventListener('click', function(e) {
+        if (e.target.classList.contains('remove-item')) {
+            e.target.closest('.po-item-row').remove();
+            reindexPoItems();
+        }
+    });
+
+    function addPoItemRow(desc, partNo, unit, qty, price) {
+        const row = document.createElement('div');
+        row.className = 'row g-1 mb-1 po-item-row';
+        row.innerHTML = `
+            <div class="col-md-4"><input type="text" name="items-${itemIndex}-description" class="form-control form-control-sm" placeholder="Description" value="${desc}"></div>
+            <div class="col-md-2"><input type="text" name="items-${itemIndex}-part_no" class="form-control form-control-sm" placeholder="Part No" value="${partNo}"></div>
+            <div class="col-md-1"><input type="text" name="items-${itemIndex}-unit" class="form-control form-control-sm" placeholder="Unit" value="${unit}"></div>
+            <div class="col-md-2"><input type="number" name="items-${itemIndex}-qty" class="form-control form-control-sm" placeholder="Qty" value="${qty}" step="any"></div>
+            <div class="col-md-2"><input type="number" name="items-${itemIndex}-unit_price" class="form-control form-control-sm" placeholder="Unit Price" value="${price}" step="any"></div>
+            <div class="col-md-1"><button type="button" class="btn btn-sm btn-outline-danger remove-item w-100">&times;</button></div>
+        `;
+        container.appendChild(row);
+        itemIndex++;
+    }
+
+    function reindexPoItems() {
+        const rows = container.querySelectorAll('.po-item-row');
+        rows.forEach(function(row, i) {
+            row.querySelectorAll('input').forEach(function(inp) {
+                const name = inp.name.replace(/items-\d+/, 'items-' + i);
+                inp.name = name;
+            });
+        });
+        itemIndex = rows.length;
+    }
+
+    extractBtn.addEventListener('click', function() {
+        const fileInput = document.querySelector('input[name="po_file"]');
+        if (!fileInput.files.length) {
+            alert('Please select a PO file first.');
+            return;
+        }
+        const formData = new FormData();
+        formData.append('po_file', fileInput.files[0]);
+        formData.append('csrf_token', '{{ csrf_token() }}');
+
+        extractBtn.disabled = true;
+        extractBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Extracting...';
+
+        fetch('{{ url_for("orders.extract_po", order_id=order.id) }}', {
+            method: 'POST',
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                alert('Extraction failed: ' + data.error);
+                return;
+            }
+            container.innerHTML = '';
+            itemIndex = 0;
+            (data.items || []).forEach(function(item) {
+                addPoItemRow(item.description || '', item.part_no || '', item.unit || '', item.qty || 1, item.unit_price || 0);
+            });
+            if (!data.items || !data.items.length) {
+                alert('No items could be extracted. Please add them manually.');
+            }
+        })
+        .catch(err => alert('Extraction failed: ' + err))
+        .finally(() => {
+            extractBtn.disabled = false;
+            extractBtn.innerHTML = '<i class="bi bi-stars me-1"></i> Extract with AI';
+        });
+    });
+});
+</script>
+
+<!-- Invoice Panel -->
+<div class="order-panel">
+    <div class="panel-header">
+        <h6 class="panel-title"><i class="bi bi-receipt text-primary"></i> Invoice</h6>
+        <a href="{{ url_for('invoices.create_invoice', order_id=order.id) }}" class="btn btn-sm btn-primary rounded-pill px-3">
+            <i class="bi bi-plus-lg me-1"></i> {{ "Create Revised Invoice" if order.invoice else "Create Invoice" }}
+        </a>
+    </div>
+    {% if order.invoice %}
+        <div class="text-secondary small mb-3">
+            Invoice Number: <strong class="text-dark">{{ order.invoice.invoice_number }}</strong> · Date: <strong class="text-dark">{{ order.invoice.invoice_date }}</strong> · Total: <strong class="text-dark">{{ fmt_curr(order.invoice.total_amount) }}</strong> · <span class="badge badge-soft">v{{ order.invoice.pdf_version }}</span>
+            {% if order.invoice.is_cancelled() %}<span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill ms-2">Cancelled</span>{% endif %}
+        </div>
+
+        {% if order.invoice.pdf_path %}
+        <div class="d-flex w-100 mb-3">
+            <div class="btn-group w-100">
+                {{ pdf_actions(url_for('static', filename=order.invoice.pdf_path)) }}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            <a href="{{ url_for('invoices.edit_invoice', invoice_id=order.invoice.id) }}" class="btn btn-sm btn-outline-primary rounded-pill px-3"><i class="bi bi-pencil me-1"></i> Edit</a>
+            <form method="POST" action="{{ url_for('invoices.regenerate_invoice', invoice_id=order.invoice.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary rounded-pill px-3"><i class="bi bi-arrow-repeat me-1"></i> Regenerate PDF</button>
+            </form>
+            <form method="POST" action="{{ url_for('invoices.delete_invoice', invoice_id=order.invoice.id) }}" class="d-inline"
+                  onsubmit="return confirm('Delete this invoice? This cannot be undone.')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-3"><i class="bi bi-trash me-1"></i> Delete</button>
+            </form>
+
+            {% if order.invoice.is_cancelled() %}
+            <form method="POST" action="{{ url_for('invoices.reactivate_invoice', invoice_id=order.invoice.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-success rounded-pill px-3"><i class="bi bi-check-circle me-1"></i> Reactivate Invoice</button>
+            </form>
+            {% else %}
+            <form method="POST" action="{{ url_for('invoices.cancel_invoice', invoice_id=order.invoice.id) }}" class="d-inline"
+                  onsubmit="return confirm('Cancel this invoice? It will stay in your records but no longer count toward active receivables.')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-warning rounded-pill px-3"><i class="bi bi-slash-circle me-1"></i> Cancel Invoice</button>
+            </form>
+            {% endif %}
+        </div>
+
+        <div class="metric-subcard mb-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <span class="text-secondary small">Total Paid: <strong class="text-dark fs-6 ms-1">{{ fmt_curr(order.invoice.total_paid()) }}</strong></span>
+                <span class="text-secondary small">Balance Due: <strong class="{{ 'text-success' if order.invoice.is_fully_paid() else 'text-danger' }} fs-6 ms-1">{{ fmt_curr(order.invoice.balance_due()) }}</strong></span>
+            </div>
+        </div>
+
+       {% if order.invoice.payments %}
+        <div class="table-responsive mb-3">
+            <table class="table table-custom-sm align-middle">
+                <thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Notes</th><th class="text-end">Actions</th></tr></thead>
+                <tbody>
+                {% for p in order.invoice.payments %}
+                    <tr>
+                        <td class="text-secondary">{{ p.paid_date }}</td>
+                        <td class="fw-bold text-success">{{ fmt_curr(p.amount) }}</td>
+                        <td><span class="badge badge-soft rounded-pill">{{ p.method }}</span></td>
+                        <td class="text-muted small">{{ p.notes or "—" }}</td>
+                        <td class="text-end">
+                            <form method="POST" action="{{ url_for('payments.delete_payment', payment_id=p.id) }}"
+                                  onsubmit="return confirm('Remove this payment of {{ fmt_curr(p.amount) }}? This cannot be undone.')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill"><i class="bi bi-trash"></i> Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if order.invoice.credit_notes %}
+        <div class="mb-3">
+            <div class="fw-bold small mb-2 text-secondary"><i class="bi bi-journal-minus me-1"></i> Credit Notes</div>
+            <div class="table-responsive">
+                <table class="table table-custom-sm align-middle">
+                    <thead><tr><th>Credit #</th><th>Date</th><th>Amount</th><th>Reason</th></tr></thead>
+                    <tbody>
+                    {% for cn in order.invoice.credit_notes %}
+                        <tr><td class="fw-semibold">{{ cn.credit_number }}</td><td class="text-secondary">{{ cn.credit_date }}</td><td class="fw-bold text-warning-emphasis">{{ fmt_curr(cn.amount) }}</td><td class="text-muted small">{{ cn.reason or "—" }}</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Issue Credit Form -->
+        <form method="POST" action="{{ url_for('invoices.add_credit_note', invoice_id=order.invoice.id) }}" class="form-inline-card mb-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <input type="number" step="0.01" name="amount" class="form-control" placeholder="Credit Amount" required>
+                </div>
+                <div class="col-md-3">
+                    <input type="date" name="credit_date" class="form-control">
+                </div>
+                <div class="col-md-4">
+                    <input type="text" name="reason" class="form-control" placeholder="Reason (e.g. returned item, pricing error)">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-outline-secondary w-100 rounded-pill fw-semibold">Issue Credit</button>
+                </div>
+            </div>
+        </form>
+
+        {% if not order.invoice.is_fully_paid() and not order.invoice.is_cancelled() %}
+        <!-- Log Payment Form -->
+        <form method="POST" action="{{ url_for('payments.add_payment', invoice_id=order.invoice.id) }}" class="form-inline-card">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="fw-bold small mb-2 text-secondary"><i class="bi bi-cash-stack me-1"></i> Log Payment</div>
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <input type="number" step="0.01" name="amount" class="form-control" placeholder="Amount" required>
+                </div>
+                <div class="col-md-3">
+                    <input type="date" name="paid_date" class="form-control">
+                </div>
+                <div class="col-md-3">
+                    <select name="method" class="form-select">
+                        <option value="Bank Transfer">Bank Transfer</option>
+                        <option value="Cheque">Cheque</option>
+                        <option value="Cash">Cash</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <input type="text" name="notes" class="form-control" placeholder="Notes">
+                </div>
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-primary w-100 rounded-pill fw-semibold">Log</button>
+                </div>
+            </div>
+        </form>
+        {% endif %}
+    {% else %}
+        <p class="text-muted small my-2">No invoice generated yet.</p>
+    {% endif %}
+
+    {% if order.invoices|length > 1 %}
+    <details class="mt-3 pt-2 border-top">
+        <summary class="text-muted small fw-semibold" style="cursor:pointer;">Show {{ order.invoices|length - 1 }} previous invoice version(s)</summary>
+        <table class="table table-custom-sm align-middle mt-2">
+            <thead><tr><th>Invoice #</th><th>Date</th><th>Total</th><th class="text-end">Actions</th></tr></thead>
+            <tbody>
+            {% for inv in order.invoices %}
+                {% if not inv.is_current %}
+                <tr>
+                    <td class="fw-semibold">{{ inv.invoice_number }}</td>
+                    <td class="text-secondary">{{ inv.invoice_date }}</td>
+                    <td class="fw-bold">{{ fmt_curr(inv.total_amount) }}</td>
+                    <td class="text-end">
+                        <div class="d-inline-flex gap-2 justify-content-end">
+                            {% if inv.pdf_path %}
+                                <div class="btn-group" style="max-width: 200px;">
+                                    {{ pdf_actions(url_for('static', filename=inv.pdf_path), variant='secondary') }}
+                                </div>
+                            {% endif %}
+                            {% if not inv.payments %}
+                            <form method="POST" action="{{ url_for('invoices.delete_invoice', invoice_id=inv.id) }}" class="d-inline"
+                                  onsubmit="return confirm('Delete this old invoice version?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill"><i class="bi bi-trash"></i> Delete</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+            {% endfor %}
+            </tbody>
+        </table>
+    </details>
+    {% endif %}
+</div>
+
+<!-- Order Expenses & Profit Panel -->
+<div class="order-panel">
+    <div class="panel-header">
+        <h6 class="panel-title"><i class="bi bi-graph-up-arrow text-primary"></i> Order Expenses & Profit</h6>
+        {% if order.invoice and order.invoice.is_cancelled() %}<span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill">Invoice Cancelled — excluded from profit</span>{% endif %}
+    </div>
+    {% set order_expenses_total = order.expenses|sum(attribute='amount') if order.expenses else 0.0 %}
+    {% set order_net_revenue = order.invoice.net_revenue() if (order.invoice and not order.invoice.is_cancelled()) else 0.0 %}
+    {% set order_profit = order_net_revenue - order_expenses_total %}
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-4">
+            <div class="metric-subcard">
+                <div class="text-secondary small fw-semibold mb-1">Net Revenue {% if order.invoice and order.invoice.total_credited() > 0 %}(after {{ fmt_curr(order.invoice.total_credited()) }} credited){% endif %}</div>
+                <div class="fs-4 fw-bold text-dark">{{ fmt_curr(order_net_revenue) }}</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="metric-subcard">
+                <div class="text-secondary small fw-semibold mb-1">Expenses</div>
+                <div class="fs-4 fw-bold text-danger">{{ fmt_curr(order_expenses_total) }}</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="metric-subcard">
+                <div class="text-secondary small fw-semibold mb-1">Estimated Profit</div>
+                <div class="fs-4 fw-bold {{ 'text-success' if order_profit >= 0 else 'text-danger' }}">{{ fmt_curr(order_profit) }}</div>
+            </div>
+        </div>
+    </div>
+
+    {% if order.expenses %}
+    <div class="table-responsive mb-3">
+        <table class="table table-custom-sm align-middle">
+            <thead><tr><th>Date</th><th>Category</th><th>Amount</th><th>Notes</th><th class="text-end">Actions</th></tr></thead>
+            <tbody>
+            {% for e in order.expenses %}
+                <tr>
+                    <td class="text-secondary">{{ e.expense_date }}</td>
+                    <td><span class="badge badge-soft rounded-pill">{{ e.category }}</span></td>
+                    <td class="fw-bold text-danger">{{ fmt_curr(e.amount) }}</td>
+                    <td class="text-muted small">{{ e.notes or "—" }}</td>
+                    <td class="text-end">
+                        <form method="POST" action="{{ url_for('expenses.delete_expense', expense_id=e.id) }}" class="d-inline"
+                              onsubmit="return confirm('Delete this expense?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill"><i class="bi bi-trash"></i> Delete</button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+        <p class="text-muted small my-2">No expenses logged for this order yet.</p>
+    {% endif %}
+
+    <!-- Inline Log Expense Form -->
+    <form method="POST" action="{{ url_for('expenses.add_expense') }}" class="form-inline-card">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="order_id" value="{{ order.id }}">
+
+        <div class="fw-bold small mb-2 text-secondary"><i class="bi bi-plus-circle me-1"></i> Log Expense for Order #{{ order.id }}</div>
+        <div class="row g-2">
+            <div class="col-md-3">
+                <select name="category" class="form-select form-select-sm" required>
+                    <option value="" disabled selected>Select Category</option>
+                    {% for c in categories %}
+                        <option value="{{ c }}">{{ c }}</option>
+                    {% else %}
+                        <option value="Shipping">Shipping</option>
+                        <option value="Materials">Materials</option>
+                        <option value="Labor">Labor</option>
+                        <option value="Office">Office</option>
+                        <option value="Utilities">Utilities</option>
+                        <option value="Other">Other</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <input type="number" step="0.01" name="amount" class="form-control form-control-sm" placeholder="Amount" required>
+            </div>
+            <div class="col-md-3">
+                <input type="date" name="expense_date" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+                <input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes (optional)">
+            </div>
+            <div class="col-md-1">
+                <button type="submit" class="btn btn-primary btn-sm w-100 rounded-pill fw-semibold">Add</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Delivery Challan Panel -->
+<div class="order-panel">
+    <div class="panel-header">
+        <h6 class="panel-title"><i class="bi bi-truck text-primary"></i> Delivery Challan</h6>
+        {% if order.invoice %}
+        <a href="{{ url_for('challans.create_challan', order_id=order.id) }}" class="btn btn-sm btn-primary rounded-pill px-3">
+            <i class="bi bi-plus-lg me-1"></i> {{ "Create Revised Challan" if order.delivery_challan else "Create Delivery Challan" }}
+        </a>
+        {% endif %}
+    </div>
+    {% if order.delivery_challan %}
+        <div class="text-secondary small mb-3">Challan Number: <strong class="text-dark">{{ order.delivery_challan.challan_number }}</strong> · Dispatch Date: <strong class="text-dark">{{ order.delivery_challan.dispatch_date }}</strong> · <span class="badge badge-soft">v{{ order.delivery_challan.pdf_version }}</span></div>
+
+        {% if order.delivery_challan.pdf_path %}
+        <div class="d-flex w-100 mb-3">
+            <div class="btn-group w-100">
+                {{ pdf_actions(url_for('static', filename=order.delivery_challan.pdf_path)) }}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('challans.edit_challan', challan_id=order.delivery_challan.id) }}" class="btn btn-sm btn-outline-primary rounded-pill px-3"><i class="bi bi-pencil me-1"></i> Edit</a>
+            <form method="POST" action="{{ url_for('challans.regenerate_challan', challan_id=order.delivery_challan.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary rounded-pill px-3"><i class="bi bi-arrow-repeat me-1"></i> Regenerate PDF</button>
+            </form>
+            <form method="POST" action="{{ url_for('challans.delete_challan', challan_id=order.delivery_challan.id) }}" class="d-inline"
+                  onsubmit="return confirm('Delete this delivery challan? This cannot be undone.')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-3"><i class="bi bi-trash me-1"></i> Delete</button>
+            </form>
+        </div>
+    {% elif order.invoice %}
+        <p class="text-muted small my-2">No delivery challan generated yet.</p>
+    {% else %}
+        <p class="text-muted small my-2">Create the Invoice first to generate a delivery challan.</p>
+    {% endif %}
+
+    {% if order.delivery_challans|length > 1 %}
+    <details class="mt-3 pt-2 border-top">
+        <summary class="text-muted small fw-semibold" style="cursor:pointer;">Show {{ order.delivery_challans|length - 1 }} previous challan version(s)</summary>
+        <table class="table table-custom-sm align-middle mt-2">
+            <thead><tr><th>Challan #</th><th>Date</th><th class="text-end">Actions</th></tr></thead>
+            <tbody>
+            {% for ch in order.delivery_challans %}
+                {% if not ch.is_current %}
+                <tr>
+                    <td class="fw-semibold">{{ ch.challan_number }}</td>
+                    <td class="text-secondary">{{ ch.dispatch_date }}</td>
+                    <td class="text-end">
+                        <div class="d-inline-flex gap-2 justify-content-end">
+                            {% if ch.pdf_path %}
+                                <div class="btn-group" style="max-width: 200px;">
+                                    {{ pdf_actions(url_for('static', filename=ch.pdf_path), variant='secondary') }}
+                                </div>
+                            {% endif %}
+                            <form method="POST" action="{{ url_for('challans.delete_challan', challan_id=ch.id) }}" class="d-inline"
+                                  onsubmit="return confirm('Delete this old challan version?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill"><i class="bi bi-trash"></i> Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+            {% endfor %}
+            </tbody>
+        </table>
+    </details>
+    {% endif %}
+</div>
+
+<!-- Order Documents Panel -->
+<div class="order-panel">
+    <div class="panel-header">
+        <h6 class="panel-title"><i class="bi bi-folder2-open text-primary"></i> Order Documents</h6>
+    </div>
+    {% if order.documents %}
+        <div class="table-responsive mb-3">
+            <table class="table table-custom-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>Document Name</th>
+                        <th>Date</th>
+                        <th>Notes</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for doc in order.documents %}
+                    <tr>
+                        <td class="fw-semibold">{{ doc.name }}</td>
+                        <td class="text-secondary">{{ doc.doc_date if doc.doc_date else "-" }}</td>
+                        <td class="text-muted small">{{ doc.notes or "-" }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('static', filename=doc.filename) }}" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill me-1">
+                                <i class="bi bi-box-arrow-up-right me-1"></i> View
+                            </a>
+                            <form method="POST" action="{{ url_for('orders.delete_document', order_id=order.id, doc_id=doc.id) }}" class="d-inline"
+                                  onsubmit="return confirm('Delete this document? This cannot be undone.')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill">
+                                    <i class="bi bi-trash"></i> Delete
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="text-muted small my-2">No additional documents uploaded yet.</p>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('orders.upload_document', order_id=order.id) }}" enctype="multipart/form-data" class="form-inline-card mt-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-2">
+            <div class="col-md-3">
+                <input type="text" name="doc_name" class="form-control" placeholder="Document Name (e.g. Agreement)" required>
+            </div>
+            <div class="col-md-2">
+                <input type="date" name="doc_date" class="form-control">
+            </div>
+            <div class="col-md-3">
+                <input type="file" name="doc_file" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+                <input type="text" name="notes" class="form-control" placeholder="Notes (optional)">
+            </div>
+            <div class="col-md-1">
+                <button type="submit" class="btn btn-primary w-100 rounded-pill fw-semibold">Upload</button>
+            </div>
+        </div>
+    </form>
+</div>
+<!-- Edit Order Modal -->
+<div class="modal fade" id="editOrderModal" tabindex="-1" aria-labelledby="editOrderModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content" style="background: var(--surface); color: var(--text-primary); border: 1px solid var(--border);">
+            <form method="POST" action="{{ url_for('orders.edit_order', order_id=order.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header border-bottom border-secondary border-opacity-10">
+                    <h5 class="modal-title fw-bold" id="editOrderModalLabel">Edit Order Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Order Number</label>
+                        <input type="text" name="order_number" class="form-control" value="{{ order.order_number or order.id }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Title</label>
+                        <input type="text" name="title" class="form-control" value="{{ order.title or '' }}" placeholder="Short description of this order">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Notes</label>
+                        <textarea name="notes" class="form-control" rows="3" placeholder="Order notes...">{{ order.notes or '' }}</textarea>
+                    </div>
+                </div>
+                <div class="modal-footer border-top border-secondary border-opacity-10">
+                    <button type="button" class="btn btn-outline-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary rounded-pill px-4">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+{% endblock %}

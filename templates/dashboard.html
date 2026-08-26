@@ -1,0 +1,1904 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block pagetitle %}Dashboard{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* ========== ZENTRA DESIGN SYSTEM & MODERN BENTO LAYOUT ========== */
+    :root {
+        --zentra-bg: #eef1f5;
+        --zentra-card-bg: #ffffff;
+        --zentra-border: #e2e8f0;
+        --zentra-radius: 20px;
+        --zentra-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.03), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        --text-dark: #0f172a;
+        --text-muted: #64748b;
+        --accent-blue: #2563eb;
+        --zentra-hero-gradient: linear-gradient(135deg, #fdf3e7 0%, #ffe9cf 25%, #ffd9ab 45%, #dbeafe 75%, #eef4ff 100%);
+    }
+
+    body {
+        background-color: var(--zentra-bg) !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    .zentra-dashboard {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    /* Hero: greeting + important actions */
+    .zentra-hero {
+        background: var(--zentra-hero-gradient);
+        background-size: 200% 200%;
+        animation: heroGradientShift 14s ease-in-out infinite;
+        border: 1px solid var(--zentra-border);
+        border-radius: var(--zentra-radius);
+        box-shadow: var(--zentra-shadow);
+        padding: 34px 38px;
+    }
+    @keyframes heroGradientShift {
+        0% { background-position: 0% 0%; }
+        50% { background-position: 100% 100%; }
+        100% { background-position: 0% 0%; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .zentra-hero, .no-company-card { animation: none; }
+    }
+    .zentra-hero-greeting {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+    .zentra-hero-title {
+        margin: 0;
+        font-family: var(--font-display);
+        font-weight: 800;
+        font-size: 2.1rem;
+        color: var(--text-dark);
+        letter-spacing: -0.01em;
+    }
+    .zentra-hero-subtitle {
+        margin: 6px 0 0;
+        color: var(--text-muted);
+        font-size: 1rem;
+        font-weight: 500;
+    }
+    .zentra-hero-profile-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--accent-blue);
+        color: #ffffff;
+        font-weight: 700;
+        font-size: 0.9rem;
+        padding: 12px 22px;
+        border-radius: 12px;
+        text-decoration: none;
+        box-shadow: 0 6px 14px -6px rgba(37, 99, 235, 0.5);
+        transition: background 0.2s, transform 0.2s;
+    }
+    .zentra-hero-profile-btn:hover {
+        background: #1d4ed8;
+        color: #ffffff;
+        transform: translateY(-1px);
+    }
+    .zentra-hero-actions {
+        margin-top: 22px;
+        background: rgba(255, 255, 255, 0.86);
+        border: 1px solid var(--zentra-border);
+        border-radius: 16px;
+        padding: 16px 18px;
+    }
+    .zentra-hero-actions-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+    .zentra-hero-actions-title {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 0.95rem;
+        color: var(--text-dark);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .zentra-hero-actions-count {
+        background: var(--accent-blue);
+        color: #ffffff;
+        font-weight: 700;
+        font-size: 0.75rem;
+        min-width: 22px;
+        height: 22px;
+        padding: 0 7px;
+        border-radius: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .zentra-action-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 264px;
+        overflow-y: auto;
+    }
+    .zentra-action-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border: 1px solid var(--zentra-border);
+        border-radius: 12px;
+        padding: 10px 12px;
+        background: #ffffff;
+        transition: background 0.2s, border-color 0.2s, transform 0.2s;
+    }
+    .zentra-action-row:hover {
+        background: var(--surface-soft);
+        transform: translateX(2px);
+    }
+    .zentra-action-critical {
+        border-left: 4px solid #d64545;
+    }
+    .zentra-action-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #eff6ff;
+        color: var(--accent-blue);
+        flex-shrink: 0;
+        font-size: 1rem;
+    }
+    .zentra-action-icon-critical {
+        background: #fee2e2;
+        color: #b91c1c;
+    }
+    .zentra-action-body {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        text-decoration: none;
+        color: var(--text-dark);
+    }
+    .zentra-action-title {
+        font-weight: 600;
+        font-size: 0.85rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .zentra-action-time {
+        font-size: 0.74rem;
+        color: var(--text-muted);
+        font-weight: 600;
+    }
+    .zentra-action-critical .zentra-action-time {
+        color: #b91c1c;
+    }
+    .zentra-action-chevron {
+        color: #cbd5e1;
+        flex-shrink: 0;
+    }
+    .zentra-action-dismiss {
+        width: 26px;
+        height: 26px;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--text-muted);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition: background 0.2s, color 0.2s;
+    }
+    .zentra-action-dismiss:hover {
+        background: #fee2e2;
+        color: #b91c1c;
+    }
+    .zentra-hero-empty {
+        padding: 18px 10px;
+        text-align: center;
+        color: #15803d;
+        font-weight: 700;
+        font-size: 0.9rem;
+    }
+    .zentra-action-row-dismissed {
+        animation: heroActionOut 0.3s ease forwards;
+    }
+    @keyframes heroActionOut {
+        to { opacity: 0; transform: translateX(12px); }
+    }
+
+    /* Hero: Assigned-to-Me task panel (persistent, urgent-first visual) */
+    .zentra-hero-tasks {
+        margin-top: 16px;
+        background: rgba(255, 255, 255, 0.86);
+        border: 1px solid var(--zentra-border);
+        border-radius: 16px;
+        padding: 16px 18px;
+        animation: ncFade 0.5s ease both;
+    }
+    .zentra-hero-tasks-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+    .zentra-hero-tasks-title {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 0.95rem;
+        color: var(--text-dark);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .zentra-hero-tasks-badges { display: flex; align-items: center; gap: 8px; }
+    .zentra-hero-tasks-badge {
+        font-weight: 700;
+        font-size: 0.72rem;
+        padding: 4px 10px;
+        border-radius: 20px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+    .zentra-hero-tasks-badge.overdue {
+        background: #fee2e2;
+        color: #b91c1c;
+        animation: ncDotPulse 2s ease-out infinite;
+    }
+    .zentra-hero-tasks-badge.today { background: #fef3c7; color: #b45309; }
+    .zentra-hero-task-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 252px;
+        overflow-y: auto;
+    }
+    .zentra-hero-task {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        background: #ffffff;
+        border: 1px solid var(--zentra-border);
+        border-left: 3px solid #cbd5e1;
+        border-radius: 12px;
+        text-decoration: none;
+        transition: background 0.2s, transform 0.2s, border-color 0.2s;
+    }
+    .zentra-hero-task:hover {
+        background: var(--surface-soft);
+        border-color: var(--accent-blue);
+        transform: translateX(2px);
+    }
+    .zentra-hero-task.urgent { border-left-color: #dc2626; }
+    .zentra-hero-task.today { border-left-color: #f59e0b; }
+    .zentra-hero-task.upcoming { border-left-color: var(--accent-blue); }
+    .zentra-hero-task-main {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+    }
+    .zentra-hero-task-title {
+        font-size: 0.86rem;
+        font-weight: 600;
+        color: var(--text-dark);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .zentra-hero-task-due {
+        font-size: 0.74rem;
+        font-weight: 600;
+        margin-top: 2px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .zentra-hero-task-due.overdue { color: #dc2626; }
+    .zentra-hero-task-due.today { color: #b45309; }
+    .zentra-hero-task-due.upcoming { color: var(--text-muted); }
+    .zentra-hero-task-empty {
+        text-align: center;
+        padding: 16px 10px;
+        color: #15803d;
+        font-weight: 700;
+        font-size: 0.9rem;
+        background: rgba(255, 255, 255, 0.5);
+        border: 1px dashed var(--zentra-border);
+        border-radius: 12px;
+    }
+
+    /* ========== No-Company Workspace Picker (welcome) ========== */
+    .no-company-wrapper {
+        position: relative;
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 48px 20px 56px;
+    }
+    .ambient-glow {
+        position: absolute;
+        border-radius: 50%;
+        pointer-events: none;
+        z-index: 0;
+    }
+    .glow-1 {
+        width: 420px;
+        height: 420px;
+        top: -160px;
+        right: -100px;
+        background: radial-gradient(circle, rgba(147, 197, 253, 0.7) 0%, transparent 70%);
+        filter: blur(70px);
+    }
+    .glow-2 {
+        width: 400px;
+        height: 400px;
+        bottom: -160px;
+        left: -120px;
+        background: radial-gradient(circle, rgba(252, 211, 160, 0.65) 0%, transparent 70%);
+        filter: blur(70px);
+    }
+    .no-company-card {
+        position: relative;
+        z-index: 1;
+        background: var(--zentra-hero-gradient);
+        background-size: 200% 200%;
+        animation: heroGradientShift 14s ease-in-out infinite, ncRise 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+        border: 1px solid var(--zentra-border);
+        border-radius: var(--zentra-radius);
+        box-shadow: var(--zentra-shadow);
+        padding: 42px 44px;
+    }
+    @keyframes ncRise {
+        from { opacity: 0; transform: translateY(18px) scale(0.98); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .nc-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-family: var(--font-mono);
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #1d4ed8;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid var(--zentra-border);
+        padding: 6px 12px;
+        border-radius: 999px;
+        margin-bottom: 20px;
+    }
+    .nc-eyebrow-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--accent-blue);
+        animation: ncDotPulse 2s ease-out infinite;
+    }
+    @keyframes ncDotPulse {
+        0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.45); }
+        70% { box-shadow: 0 0 0 9px rgba(37, 99, 235, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+    }
+    .no-company-title {
+        margin: 0;
+        font-family: var(--font-display);
+        font-weight: 800;
+        font-size: 2.35rem;
+        letter-spacing: -0.02em;
+        color: var(--text-dark);
+    }
+    .no-company-subtitle {
+        margin: 12px 0 0;
+        max-width: 520px;
+        font-size: 1rem;
+        font-weight: 500;
+        line-height: 1.65;
+        color: var(--text-muted);
+    }
+    .nc-company-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+        gap: 14px;
+        margin-top: 30px;
+    }
+    .nc-company-card {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 16px;
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid var(--zentra-border);
+        border-radius: 16px;
+        box-shadow: 0 4px 12px -8px rgba(15, 23, 42, 0.08);
+        text-decoration: none;
+        transition: transform 0.22s, box-shadow 0.22s, border-color 0.22s;
+        animation: ncFade 0.5s ease both;
+    }
+    .nc-company-card:nth-child(2) { animation-delay: 0.06s; }
+    .nc-company-card:nth-child(3) { animation-delay: 0.12s; }
+    .nc-company-card:nth-child(4) { animation-delay: 0.18s; }
+    .nc-company-card:nth-child(5) { animation-delay: 0.24s; }
+    .nc-company-card:nth-child(6) { animation-delay: 0.3s; }
+    .nc-company-card:nth-child(7) { animation-delay: 0.36s; }
+    .nc-company-card:nth-child(8) { animation-delay: 0.42s; }
+    @keyframes ncFade {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    .nc-company-card:hover {
+        border-color: var(--accent-blue);
+        transform: translateY(-2px);
+        box-shadow: 0 16px 28px -12px rgba(37, 99, 235, 0.3);
+    }
+    .nc-company-logo {
+        width: 40px;
+        height: 40px;
+        flex-shrink: 0;
+        border-radius: 12px;
+        background: #eff6ff;
+        border: 1px solid #dbeafe;
+        color: var(--accent-blue);
+        font-size: 1.1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+    .nc-company-logo img { width: 100%; height: 100%; object-fit: cover; }
+    .nc-company-name {
+        flex: 1;
+        min-width: 0;
+        font-weight: 700;
+        font-size: 0.9rem;
+        color: var(--text-dark);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .nc-company-open {
+        flex-shrink: 0;
+        color: #94a3b8;
+        font-size: 0.9rem;
+        transition: color 0.2s, transform 0.2s;
+    }
+    .nc-company-card:hover .nc-company-open {
+        color: var(--accent-blue);
+        transform: translateX(3px);
+    }
+    .nc-manage-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 20px;
+        font-weight: 700;
+        font-size: 0.85rem;
+        color: var(--accent-blue);
+        text-decoration: none;
+    }
+    .nc-manage-link:hover { text-decoration: underline; }
+    .nc-no-companies {
+        margin-top: 28px;
+        padding: 22px 24px;
+        background: rgba(255, 255, 255, 0.86);
+        border: 1px dashed #cbd5e1;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+    .nc-no-companies p {
+        margin: 0;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: var(--text-muted);
+    }
+    .nc-add-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--accent-blue);
+        color: #ffffff;
+        font-weight: 700;
+        font-size: 0.88rem;
+        padding: 10px 18px;
+        border-radius: 12px;
+        text-decoration: none;
+        box-shadow: 0 6px 14px -6px rgba(37, 99, 235, 0.5);
+        transition: background 0.2s, transform 0.2s;
+    }
+    .nc-add-btn:hover { background: #1d4ed8; transform: translateY(-1px); }
+    @media (max-width: 640px) {
+        .no-company-wrapper { padding: 28px 14px 40px; }
+        .no-company-card { padding: 28px 22px; }
+        .no-company-title { font-size: 1.7rem; }
+        .nc-company-grid { grid-template-columns: 1fr; }
+    }
+
+    /* Top Control & Filter Header */
+    .zentra-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+
+    .zentra-title-area {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .zentra-page-title {
+        font-size: 1.85rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        color: var(--text-dark);
+        margin: 0;
+    }
+
+    .zentra-link-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: #ffffff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-muted);
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        font-size: 0.85rem;
+    }
+
+    .zentra-filters {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .zentra-pill-select {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: #ffffff;
+        border: 1px solid var(--zentra-border);
+        border-radius: 30px;
+        padding: 6px 14px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--text-dark);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+
+    .zentra-btn-primary {
+        background: #0f172a;
+        color: #ffffff;
+        border: none;
+        border-radius: 30px;
+        padding: 8px 18px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    /* Cards System */
+    .zentra-card {
+        background: var(--zentra-card-bg);
+        border-radius: var(--zentra-radius);
+        border: 1px solid rgba(226, 232, 240, 0.8);
+        padding: 24px;
+        box-shadow: var(--zentra-shadow);
+        position: relative;
+    }
+
+    .zentra-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 18px;
+    }
+
+    .zentra-card-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--text-dark);
+        margin: 0;
+    }
+
+    .zentra-dots-btn {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: #f8fafc;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-muted);
+        cursor: pointer;
+        font-size: 0.9rem;
+    }
+
+    /* Grid Layout */
+    .zentra-grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 20px;
+    }
+
+    .span-4 { grid-column: span 4; }
+    .span-5 { grid-column: span 5; }
+    .span-7 { grid-column: span 7; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+
+    /* Top Left: Pipeline Flow Card (Replicating Payments Chart) */
+    .pipeline-flow-header {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+
+    .flow-step-item {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .flow-step-label {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        font-weight: 500;
+    }
+
+    .flow-step-value {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: var(--text-dark);
+        margin-top: 2px;
+    }
+
+    .ai-prompt-bar {
+        background: linear-gradient(180deg, rgba(239, 246, 255, 0.6) 0%, rgba(219, 234, 254, 0.4) 100%);
+        border: 1px solid #dbeafe;
+        border-radius: 14px;
+        padding: 10px 14px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 15px;
+    }
+
+    .ai-prompt-bar input {
+        border: none;
+        background: transparent;
+        width: 100%;
+        outline: none;
+        font-size: 0.82rem;
+        color: var(--text-dark);
+    }
+
+    /* Top Right: Gross Volume Card */
+    .big-stat-number {
+        font-size: 2.6rem;
+        font-weight: 800;
+        color: var(--text-dark);
+        letter-spacing: -0.03em;
+        line-height: 1;
+    }
+
+    .badge-pill-green {
+        background: #dcfce7;
+        color: #15803d;
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 20px;
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+    }
+
+    .stat-progress-list {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        margin-top: 20px;
+    }
+
+    .stat-progress-item {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .stat-progress-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.83rem;
+        font-weight: 600;
+    }
+
+    .stat-bar-track {
+        height: 6px;
+        background: #f1f5f9;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    .stat-bar-fill {
+        height: 100%;
+        border-radius: 10px;
+        width: 0%;
+        --w: 0%;
+        background: linear-gradient(90deg, var(--c1, #2563eb), var(--c2, #3b82f6));
+        position: relative;
+        overflow: hidden;
+        animation: statBarGrow 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        animation-delay: calc(var(--i, 0) * 0.14s);
+    }
+    .stat-bar-fill::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 45%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+        animation: statShimmer 2.6s ease-in-out infinite;
+        animation-delay: calc(var(--i, 0) * 0.14s);
+    }
+    @keyframes statBarGrow { to { width: var(--w); } }
+    @keyframes statShimmer {
+        0% { left: -45%; }
+        60% { left: 100%; }
+        100% { left: 100%; }
+    }
+
+    /* Bottom Middle: Dual Stat Card */
+    .dual-stat-block {
+        padding: 12px 0;
+    }
+
+    .dual-stat-value {
+        font-size: 2rem;
+        font-weight: 800;
+        color: var(--text-dark);
+    }
+
+    /* Gradient Insights Banner (Bottom Right Card) */
+    .zentra-gradient-card {
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 40%, #ea580c 100%);
+        color: #ffffff;
+        border: none;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .zentra-gradient-card .zentra-card-title,
+    .zentra-gradient-card .zentra-dots-btn {
+        color: #ffffff;
+    }
+
+    .zentra-gradient-card .zentra-dots-btn {
+        background: rgba(255,255,255,0.2);
+    }
+
+    /* Insights rotation */
+    .insight-tag {
+        font-size: 0.75rem;
+        font-weight: 700;
+        background: rgba(255,255,255,0.25);
+        padding: 4px 12px;
+        border-radius: 20px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .insight-tag-mini {
+        background: rgba(255,255,255,0.2);
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.66rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+    .insight-active {
+        display: flex;
+        flex-direction: column;
+    }
+    .insight-dots {
+        display: flex;
+        gap: 6px;
+        margin-top: 12px;
+    }
+    .insight-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.35);
+        cursor: pointer;
+        transition: all 0.25s;
+    }
+    .insight-dot.on {
+        background: #ffffff;
+        width: 18px;
+        border-radius: 4px;
+    }
+    .fade-swap {
+        animation: fadeSwap 0.5s ease;
+    }
+    @keyframes fadeSwap {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Responsive */
+    @media (max-width: 1100px) {
+        .span-7, .span-5, .span-4, .span-8 { grid-column: span 12; }
+        .pipeline-flow-header { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .dash-tasks-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ========== DATE RANGE DROPDOWN MENU ========== */
+    .zentra-range-menu {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        z-index: 30;
+        background: #ffffff;
+        border: 1px solid var(--zentra-border);
+        border-radius: 14px;
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+        padding: 6px;
+        min-width: 190px;
+    }
+    .zentra-range-menu button {
+        display: block;
+        width: 100%;
+        text-align: left;
+        padding: 9px 12px;
+        border: none;
+        background: transparent;
+        border-radius: 9px;
+        font-size: 0.83rem;
+        font-weight: 600;
+        color: var(--text-dark);
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .zentra-range-menu button:hover {
+        background: #f1f5f9;
+    }
+    .zentra-custom-range {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 8px 4px 4px;
+    }
+    .zentra-custom-range input {
+        border: 1px solid var(--zentra-border);
+        border-radius: 9px;
+        padding: 7px 10px;
+        font-size: 0.8rem;
+        color: var(--text-dark);
+    }
+    .zentra-custom-range button {
+        background: #0f172a;
+        color: #ffffff;
+        text-align: center;
+    }
+
+    /* ========== MY TASKS & TO-DOS CARD ========== */
+    .badge-pill-red {
+        background: #fee2e2;
+        color: #b91c1c;
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 20px;
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+    }
+    .dash-tasks-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+    }
+    .dash-task-col {
+        min-width: 0;
+    }
+    .dash-col-title {
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        margin-bottom: 12px;
+    }
+    .dash-task-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 320px;
+        overflow-y: auto;
+    }
+    .dash-todo-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 8px;
+    }
+    .dash-task-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 11px 14px;
+        background: #f8fafc;
+        border: 1px solid var(--zentra-border);
+        border-radius: 12px;
+        transition: all 0.2s;
+    }
+    .dash-task-item:hover {
+        background: #ffffff;
+        border-color: #cbd5e1;
+        box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+    }
+    .dash-task-main {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+    }
+    .dash-task-title {
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: var(--text-dark);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .dash-task-meta {
+        font-size: 0.74rem;
+        color: var(--text-muted);
+        margin-top: 2px;
+    }
+    .dash-overdue {
+        color: #dc2626;
+        font-weight: 700;
+    }
+    .dash-priority-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    .p-high { background: #ef4444; }
+    .p-med { background: #f59e0b; }
+    .p-low { background: #94a3b8; }
+    .dash-status-pill {
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        background: #eff6ff;
+        color: #2563eb;
+        flex-shrink: 0;
+        text-transform: capitalize;
+    }
+    .dash-todo-check {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: 2px solid var(--zentra-border);
+        background: #ffffff;
+        color: transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: all 0.2s;
+    }
+    .dash-todo-check:hover {
+        border-color: var(--accent-blue);
+        color: var(--accent-blue);
+    }
+    .dash-todo-check.checked {
+        background: var(--accent-blue);
+        border-color: var(--accent-blue);
+        color: #ffffff;
+    }
+    .dash-todo-del {
+        width: 26px;
+        height: 26px;
+        border: none;
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 0.85rem;
+        border-radius: 7px;
+        cursor: pointer;
+        flex-shrink: 0;
+        opacity: 0;
+        transition: all 0.2s;
+    }
+    .dash-task-item:hover .dash-todo-del { opacity: 1; }
+    .dash-todo-del:hover { color: #dc2626; background: #fee2e2; }
+    .dash-empty {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        background: #f8fafc;
+        border: 1px dashed var(--zentra-border);
+        border-radius: 12px;
+        padding: 18px;
+        text-align: center;
+    }
+    .dash-todo-add {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 14px;
+    }
+    .dash-todo-add input[type="text"] {
+        flex: 1;
+        min-width: 0;
+        border: 1px solid var(--zentra-border);
+        border-radius: 10px;
+        padding: 9px 12px;
+        font-size: 0.85rem;
+        color: var(--text-dark);
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .dash-todo-add input[type="text"]:focus {
+        outline: none;
+        border-color: var(--accent-blue);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+    .dash-todo-add select,
+    .dash-todo-add input[type="date"] {
+        border: 1px solid var(--zentra-border);
+        border-radius: 10px;
+        padding: 8px 10px;
+        font-size: 0.78rem;
+        color: var(--text-dark);
+        background: #ffffff;
+    }
+    .dash-todo-add button {
+        width: 40px;
+        height: 40px;
+        border: none;
+        border-radius: 10px;
+        background: var(--accent-blue);
+        color: #ffffff;
+        font-size: 1rem;
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: all 0.2s;
+    }
+    .dash-todo-add button:hover {
+        background: #1d4ed8;
+        transform: translateY(-1px);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% if not session.get('active_company_id') %}
+<div class="no-company-wrapper">
+    <div class="ambient-glow glow-1"></div>
+    <div class="ambient-glow glow-2"></div>
+    <div class="no-company-card">
+        <div class="nc-eyebrow"><span class="nc-eyebrow-dot"></span> VAMS Business System</div>
+        <h2 class="no-company-title">{{ greeting }}, {{ first_name }}</h2>
+        <p class="no-company-subtitle">Choose a company workspace to open your command center — orders, invoices, and insights live inside each one.</p>
+        {% if all_companies %}
+        <div class="nc-company-grid">
+            {% for c in all_companies %}
+            <a href="{{ url_for('companies.switch_company', company_id=c.id) }}" class="nc-company-card">
+                <span class="nc-company-logo">
+                    {% if c.logo_filename %}
+                        <img src="{{ url_for('static', filename='company_logos/' ~ c.logo_filename) }}" alt="{{ c.name }}">
+                    {% else %}
+                        <i class="bi bi-buildings"></i>
+                    {% endif %}
+                </span>
+                <span class="nc-company-name">{{ c.name }}</span>
+                <span class="nc-company-open"><i class="bi bi-arrow-right"></i></span>
+            </a>
+            {% endfor %}
+        </div>
+        <a href="{{ url_for('companies.list_companies') }}" class="nc-manage-link">Manage companies <i class="bi bi-chevron-right"></i></a>
+        {% else %}
+        <div class="nc-no-companies">
+            <p>You haven't created a workspace yet. Add your first company to get started.</p>
+            <a href="{{ url_for('companies.add_company') }}" class="nc-add-btn"><i class="bi bi-plus-lg"></i> Add Company</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% else %}
+
+<div class="zentra-dashboard">
+    {% set dash_today = date.today() %}
+
+    <!-- ===== HERO: GREETING + IMPORTANT ACTIONS ===== -->
+    <div class="zentra-hero">
+        <div class="zentra-hero-greeting">
+            <div>
+                <h1 class="zentra-hero-title">{{ greeting }}, {{ first_name }} 👋</h1>
+                <p class="zentra-hero-subtitle">Take a look into {{ active_company.name }}</p>
+            </div>
+            <a href="{{ url_for('companies.company_profile', company_id=active_company.id) }}" class="zentra-hero-profile-btn">
+                <i class="bi bi-buildings"></i> Entity Profile
+            </a>
+        </div>
+
+        <div class="zentra-hero-actions">
+            <div class="zentra-hero-actions-head">
+                <span class="zentra-hero-actions-title"><i class="bi bi-bell" style="color: var(--accent-blue);"></i> Important Actions</span>
+                <span class="zentra-hero-actions-count" id="heroActionCount">{{ actions|length }}</span>
+            </div>
+            {% if actions %}
+            <div class="zentra-action-list" id="heroActionList">
+                {% for a in actions %}
+                <div class="zentra-action-row {{ 'zentra-action-critical' if a.severity == 'critical' else '' }}" data-source="{{ a.source }}" data-source-id="{{ a.source_id or '' }}">
+                    <span class="zentra-action-icon {{ 'zentra-action-icon-critical' if a.severity == 'critical' else '' }}">
+                        {% if a.type == 'deadline' %}<i class="bi bi-clock"></i>{% else %}<i class="bi bi-flag"></i>{% endif %}
+                    </span>
+                    <a href="{{ a.link }}" class="zentra-action-body">
+                        <span class="zentra-action-title">{{ a.title }}</span>
+                        <span class="zentra-action-time">{{ a.time_label }}</span>
+                    </a>
+                    <span class="zentra-action-chevron"><i class="bi bi-chevron-right"></i></span>
+                    <button type="button" class="zentra-action-dismiss" title="Snooze for 24 hours" data-source="{{ a.source }}" data-source-id="{{ a.source_id or '' }}">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="zentra-hero-empty" id="heroActionEmpty">You're all caught up ✅</div>
+            {% endif %}
+        </div>
+
+        <div class="zentra-hero-tasks">
+            <div class="zentra-hero-tasks-head">
+                <span class="zentra-hero-tasks-title"><i class="bi bi-list-task" style="color: var(--accent-blue);"></i> Assigned to Me</span>
+                <div class="zentra-hero-tasks-badges">
+                    {% if task_overdue_count %}
+                    <span class="zentra-hero-tasks-badge overdue"><i class="bi bi-alarm"></i> {{ task_overdue_count }} overdue</span>
+                    {% endif %}
+                    {% if task_due_today_count %}
+                    <span class="zentra-hero-tasks-badge today"><i class="bi bi-hourglass-split"></i> {{ task_due_today_count }} due today</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% if my_team_tasks %}
+            <div class="zentra-hero-task-list">
+                {% for t in my_team_tasks %}
+                {% set tc = 'urgent' if (t.due_date and t.due_date < dash_today) else ('today' if (t.due_date and t.due_date == dash_today) else 'upcoming') %}
+                <a href="{{ url_for('tasks.team_tasks') }}" class="zentra-hero-task {{ tc }}">
+                    <span class="dash-priority-dot {{ 'p-high' if t.priority == 'high' else ('p-med' if t.priority == 'medium' else 'p-low') }}"></span>
+                    <span class="zentra-hero-task-main">
+                        <span class="zentra-hero-task-title">{{ t.title }}</span>
+                        {% if t.due_date %}
+                        <span class="zentra-hero-task-due {{ tc }}"><i class="bi bi-alarm"></i> Due {{ t.due_date.strftime('%b %d') }}</span>
+                        {% endif %}
+                    </span>
+                    <span class="dash-status-pill">{{ t.status|replace('_', ' ')|title }}</span>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="zentra-hero-task-empty"><i class="bi bi-check-circle"></i> You're all clear — no tasks assigned to you.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ===== TOP HEADER & FILTERS ===== -->
+    <div class="zentra-header">
+        <div class="zentra-title-area">
+            <h1 class="zentra-page-title">Overview</h1>
+            <div class="zentra-link-icon" title="{{ active_company.name }}">
+                <i class="bi bi-link-45deg"></i>
+            </div>
+        </div>
+
+        <div class="zentra-filters">
+            <div class="zentra-pill-select" id="dateRangePill" style="cursor:pointer; position:relative;">
+                <i class="bi bi-calendar3 text-muted"></i>
+                <span id="dateRangeLabel">{{ (date_from.strftime('%b %d, %Y') if date_from else 'All Time') ~ ' – ' ~ (date_to.strftime('%b %d, %Y') if date_to else '') }}</span>
+                <i class="bi bi-chevron-down ms-1 text-muted" style="font-size: 0.7rem;"></i>
+                <div class="zentra-range-menu" id="rangeMenu" hidden>
+                    <button type="button" data-preset="ytd">This Year</button>
+                    <button type="button" data-preset="30d">Last 30 Days</button>
+                    <button type="button" data-preset="180d">Last 6 Months</button>
+                    <button type="button" data-preset="365d">Last 12 Months</button>
+                    <button type="button" data-preset="all">All Time</button>
+                    <button type="button" data-preset="custom">Custom…</button>
+                    <div class="zentra-custom-range" id="customRange" hidden>
+                        <input type="date" id="customFrom">
+                        <input type="date" id="customTo">
+                        <button type="button" id="customApply">Apply</button>
+                    </div>
+                </div>
+            </div>
+            <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">compared to</span>
+            <div class="zentra-pill-select" id="comparePill" style="cursor:pointer;">
+                <i class="bi bi-arrow-left-right text-muted"></i>
+                <span>{{ 'Prior Period' if compare else 'Off' }}</span>
+            </div>
+            <div class="zentra-pill-select" id="periodPill" style="cursor:pointer;">
+                <span>{{ period|capitalize }}</span>
+                <i class="bi bi-chevron-down ms-1 text-muted" style="font-size: 0.7rem;"></i>
+            </div>
+            <button class="zentra-btn-primary">
+                Add widget <i class="bi bi-plus-lg"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- ===== MAIN BENTO GRID ===== -->
+    <div class="zentra-grid">
+
+        <!-- CARD 1: Payments / Pipeline Funnel (Span 7 Top Left) -->
+        {% set p = doc_pipeline or {} %}
+        <div class="zentra-card span-7">
+            <div class="zentra-card-header">
+                <h3 class="zentra-card-title">Payments</h3>
+                <div class="zentra-dots-btn"><i class="bi bi-three-dots"></i></div>
+            </div>
+
+            <!-- Pipeline Header Metrics -->
+            <div class="pipeline-flow-header">
+                <div class="flow-step-item">
+                    <span class="flow-step-label">Quotes</span>
+                    <span class="flow-step-value">{{ p.get('quotes', 0) }}</span>
+                </div>
+                <div class="flow-step-item">
+                    <span class="flow-step-label">Unpaid</span>
+                    <span class="flow-step-value">{{ p.get('unpaid', 0) }}</span>
+                </div>
+                <div class="flow-step-item">
+                    <span class="flow-step-label">Overdue</span>
+                    <span class="flow-step-value">{{ p.get('overdue', 0) }}</span>
+                </div>
+                <div class="flow-step-item">
+                    <span class="flow-step-label">Challans</span>
+                    <span class="flow-step-value">{{ p.get('challans', 0) }}</span>
+                </div>
+                <div class="flow-step-item">
+                    <span class="flow-step-label">Completed</span>
+                    <span class="flow-step-value">{{ stats.won_count if stats is defined else 0 }}</span>
+                </div>
+            </div>
+
+            <!-- Funnel / Chart Graphic Canvas -->
+            <div style="height: 190px; position: relative;">
+                <canvas id="revenueChart"></canvas>
+            </div>
+
+            <!-- AI Prompt Bar Footnote -->
+            <div class="ai-prompt-bar">
+                <i class="bi bi-stars" style="color: #2563eb;"></i>
+                <input type="text" placeholder="What would you like to explore next?" value="Analyze outstanding receivables vs total invoiced revenue |">
+                <i class="bi bi-chevron-up text-muted" style="font-size: 0.8rem;"></i>
+            </div>
+        </div>
+
+        <!-- CARD 2: Revenue / Financial Pulse (Span 5 Top Right) -->
+        {% set fin_revenue = stats.total_invoiced if stats is defined else 0 %}
+        {% set fin_receivables = stats.outstanding if stats is defined else 0 %}
+        {% set fin_profit = stats.estimated_profit if stats is defined else 0 %}
+        {% set fin_scale_nums = [fin_revenue, fin_receivables] + ([fin_profit] if fin_profit and fin_profit > 0 else []) %}
+        {% set fin_scale = (fin_scale_nums | max) if fin_scale_nums else 1 %}
+        {% set fin_rev_w = (100 * fin_revenue / fin_scale) if fin_revenue > 0 else 0 %}
+        {% set fin_rec_w = (100 * fin_receivables / fin_scale) if fin_receivables > 0 else 0 %}
+        {% set fin_prof_w = (100 * fin_profit / fin_scale) if fin_profit > 0 else 0 %}
+        <div class="zentra-card span-5">
+            <div class="zentra-card-header">
+                <h3 class="zentra-card-title">Revenue</h3>
+                <div class="zentra-dots-btn"><i class="bi bi-three-dots"></i></div>
+            </div>
+
+            <div class="d-flex align-items-baseline gap-3">
+                <div class="big-stat-number" id="statRevenue">0</div>
+                {% if deltas and deltas.revenue is not none %}
+                <span class="badge-pill {{ 'badge-pill-green' if deltas.revenue >= 0 else 'badge-pill-red' }}">
+                    <i class="bi bi-{{ 'arrow-up-short' if deltas.revenue >= 0 else 'arrow-down-short' }}"></i> {{ deltas.revenue|abs }}%
+                </span>
+                {% else %}
+                <span class="badge-pill" style="background:#f1f5f9; color:#64748b;">—</span>
+                {% endif %}
+            </div>
+
+            <!-- Financial Pulse Progress Bars (live, scaled to real figures) -->
+            <div class="stat-progress-list">
+                <div class="stat-progress-item">
+                    <div class="stat-progress-meta">
+                        <span style="color: var(--text-muted);">Receivables</span>
+                        <span id="statReceivables">0</span>
+                    </div>
+                    <div class="stat-bar-track">
+                        <div class="stat-bar-fill" style="--i: 0; --w: {{ fin_rec_w }}%; --c1: #22c55e; --c2: #16a34a;"></div>
+                    </div>
+                </div>
+
+                <div class="stat-progress-item">
+                    <div class="stat-progress-meta">
+                        <span style="color: var(--text-muted);">Revenue</span>
+                        <span id="statBarRevenue">0</span>
+                    </div>
+                    <div class="stat-bar-track">
+                        <div class="stat-bar-fill" style="--i: 1; --w: {{ fin_rev_w }}%; --c1: #2563eb; --c2: #3b82f6;"></div>
+                    </div>
+                </div>
+
+                <div class="stat-progress-item">
+                    <div class="stat-progress-meta">
+                        <span style="color: var(--text-muted);">{{ 'Est. Profit' if fin_profit >= 0 else 'Net Loss' }}</span>
+                        <span id="statProfit" style="{{ 'color: #dc2626;' if fin_profit < 0 else '' }}">0</span>
+                    </div>
+                    <div class="stat-bar-track">
+                        <div class="stat-bar-fill" style="--i: 2; --w: {{ fin_prof_w }}%; --c1: #a855f7; --c2: #ec4899;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CARD 3: Retention / Order Status (Span 4 Bottom Left) -->
+        <div class="zentra-card span-4">
+            <div class="zentra-card-header">
+                <h3 class="zentra-card-title">Order Distribution</h3>
+                <div class="zentra-dots-btn"><i class="bi bi-three-dots"></i></div>
+            </div>
+            <div style="height: 210px;">
+                <canvas id="statusChart"></canvas>
+            </div>
+        </div>
+
+        <!-- CARD 4: Dual Metrics: Transactions & Customers (Span 4 Bottom Middle) -->
+        <div class="zentra-card span-4 d-flex flex-column justify-content-between">
+            <div class="dual-stat-block">
+                <div class="d-flex align-items-center justify-content-between">
+                    <span style="font-weight: 700; color: var(--text-dark); font-size: 0.95rem;">Total Orders</span>
+                    <div class="zentra-dots-btn"><i class="bi bi-three-dots"></i></div>
+                </div>
+                <div class="d-flex align-items-center justify-content-between mt-2">
+                    <div class="dual-stat-value">{{ recent_orders|length if recent_orders else 0 }}</div>
+                    <div class="text-end">
+                        <span style="font-size: 0.72rem; color: var(--text-muted); display: block;">vs prior period</span>
+                        {% if deltas and deltas.orders is not none %}
+                        <span style="font-size: 0.85rem; font-weight: 700; color: {{ '#16a34a' if deltas.orders >= 0 else '#dc2626' }};">
+                            {{ '+' if deltas.orders >= 0 else '' }}{{ deltas.orders }}%
+                        </span>
+                        {% else %}
+                        <span style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted);">—</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <hr style="margin: 8px 0; border-color: var(--zentra-border);">
+
+            <div class="dual-stat-block">
+                <div class="d-flex align-items-center justify-content-between">
+                    <span style="font-weight: 700; color: var(--text-dark); font-size: 0.95rem;">Active Workspace</span>
+                    <div class="zentra-dots-btn"><i class="bi bi-three-dots"></i></div>
+                </div>
+                <div class="d-flex align-items-center justify-content-between mt-2">
+                    <div class="dual-stat-value" style="font-size: 1.4rem;">{{ active_company.name }}</div>
+                    <div class="text-end">
+                        <span style="font-size: 0.72rem; color: var(--text-muted); display: block;">Status</span>
+                        <span style="font-size: 0.85rem; font-weight: 700; color: #16a34a;">Active</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CARD 5: Dynamic Insights Gradient Card (Span 4 Bottom Right) -->
+        <!-- CARD 5: Dynamic Insights Gradient Card (Span 4 Bottom Right) -->
+        <div class="zentra-card span-4 zentra-gradient-card">
+            <div class="zentra-card-header">
+                <span class="insight-tag">
+                    <i class="bi bi-lightbulb"></i> Insights &amp; News
+                </span>
+                <div class="zentra-dots-btn"><i class="bi bi-three-dots"></i></div>
+            </div>
+
+            <div id="insightRotator" style="margin: 12px 0 0;"></div>
+            <div class="insight-dots" id="insightDots"></div>
+        </div>
+
+        <!-- CARD 6: Recent Orders Data Table (Span 12) -->
+        <div class="zentra-card span-12">
+            <div class="zentra-card-header">
+                <h3 class="zentra-card-title">Recent Orders</h3>
+                <a href="{{ url_for('orders.list_orders') }}" style="font-size: 0.82rem; font-weight: 700; color: var(--accent-blue); text-decoration: none;">View All Orders →</a>
+            </div>
+
+            {% if recent_orders %}
+            <div style="overflow-x: auto;">
+                <table class="table table-borderless align-middle" style="margin: 0; font-size: 0.88rem;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--zentra-border); color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                            <th style="padding-bottom: 12px;">Ref #</th>
+                            <th style="padding-bottom: 12px;">Client Name</th>
+                            <th style="padding-bottom: 12px;">Status</th>
+                            <th style="padding-bottom: 12px;">Inquiry Date</th>
+                            <th style="padding-bottom: 12px; text-align: right;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for o in recent_orders %}
+                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                        <td style="font-weight: 700; color: var(--text-dark);">{{ o.order_number or ('ORD-' ~ o.id) }}</td>
+                        <td style="font-weight: 600; color: var(--text-dark);">{{ o.client.name if o.client else '—' }}</td>
+                        <td>
+                            <span style="padding: 4px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; background: {{ '#dcfce7; color: #15803d;' if o.status == 'PO Received' else '#fee2e2; color: #b91c1c;' }}">
+                                {{ o.status }}
+                            </span>
+                        </td>
+                        <td style="color: var(--text-muted);">{{ o.inquiry_date }}</td>
+                        <td style="text-align: right;">
+                            <a href="{{ url_for('orders.view_order', order_id=o.id) }}" class="btn btn-sm btn-light" style="border-radius: 20px; font-weight: 600; font-size: 0.78rem;">
+                                Open Order
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p style="text-align: center; color: var(--text-muted); padding: 20px 0; margin: 0;">No recent orders recorded.</p>
+            {% endif %}
+        </div>
+
+        <!-- CARD 7: My To-Dos (quick personal scratchpad) -->
+        <div class="zentra-card span-12">
+            <div class="zentra-card-header">
+                <h3 class="zentra-card-title"><i class="bi bi-check2-square me-2" style="color: var(--accent-blue);"></i>My To-Dos</h3>
+                <a href="{{ url_for('tasks.my_space') }}" style="font-size: 0.82rem; font-weight: 700; color: var(--accent-blue); text-decoration: none;">Open My Space →</a>
+            </div>
+
+            <form class="dash-todo-add" id="dashTodoForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="text" id="dashTodoText" placeholder="Add a quick to-do…" required>
+                <select id="dashTodoPriority">
+                    <option value="high">High</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="low">Low</option>
+                </select>
+                <input type="date" id="dashTodoDue">
+                <button type="submit" title="Add to-do"><i class="bi bi-plus-lg"></i></button>
+            </form>
+            {% if my_personal_todos %}
+            <div class="dash-todo-grid" id="dashTodoList">
+                {% for t in my_personal_todos %}
+                <div class="dash-task-item" data-id="{{ t.id }}">
+                    <button type="button" class="dash-todo-check" onclick="dashToggleTodo({{ t.id }}, this)"><i class="bi bi-check-lg"></i></button>
+                    <div class="dash-task-main">
+                        <span class="dash-task-title">{{ t.title }}</span>
+                        <span class="dash-task-meta">
+                            {% if t.due_date %}
+                            <span class="{{ 'dash-overdue' if t.due_date < dash_today else '' }}">Due {{ t.due_date.strftime('%b %d') }}</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                    <span class="dash-priority-dot {{ 'p-high' if t.priority == 'high' else ('p-med' if t.priority == 'medium' else 'p-low') }}"></span>
+                    <button type="button" class="dash-todo-del" onclick="dashDeleteTodo({{ t.id }}, this)"><i class="bi bi-x-lg"></i></button>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="dash-empty" id="dashTodoEmpty">No to-dos yet. Add one above!</p>
+            {% endif %}
+        </div>
+
+    </div>
+
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+function formatStatValue(value) {
+    const abs = Math.abs(value);
+    if (abs >= 1000000) return (value / 1000000).toFixed(2) + 'M';
+    return value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function animateStatValue(el, target) {
+    if (!el) return;
+    let current = 0;
+    const steps = 25;
+    const increment = target / steps;
+    const interval = setInterval(() => {
+        current += increment;
+        if ((increment >= 0 && current >= target) || (increment < 0 && current <= target)) {
+            current = target;
+            clearInterval(interval);
+        }
+        el.textContent = formatStatValue(current);
+    }, 20);
+}
+
+animateStatValue(document.getElementById("statRevenue"), {{ stats.total_invoiced if stats is defined else 0 }});
+animateStatValue(document.getElementById("statReceivables"), {{ stats.outstanding if stats is defined else 0 }});
+animateStatValue(document.getElementById("statBarRevenue"), {{ stats.total_invoiced if stats is defined else 0 }});
+animateStatValue(document.getElementById("statProfit"), {{ stats.estimated_profit if stats is defined else 0 }});
+
+document.addEventListener("DOMContentLoaded", () => {
+    // Flow/Revenue Chart
+    const revCtx = document.getElementById("revenueChart");
+    if (revCtx) {
+        const gradient = revCtx.getContext('2d').createLinearGradient(0, 0, 0, 200);
+        gradient.addColorStop(0, 'rgba(37, 99, 235, 0.4)');
+        gradient.addColorStop(1, 'rgba(37, 99, 235, 0.0)');
+
+        new Chart(revCtx, {
+            type: "line",
+            data: {
+                labels: {{ chart_labels|tojson if chart_labels is defined else "['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun']" }},
+                datasets: [{
+                    data: {{ chart_revenue|tojson if chart_revenue is defined else "[65, 54, 48, 38, 32, 45]" }},
+                    borderColor: "#2563eb",
+                    borderWidth: 3,
+                    fill: true,
+                    backgroundColor: gradient,
+                    tension: 0.35,
+                    pointRadius: 4,
+                    pointBackgroundColor: "#2563eb"
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: "#94a3b8", font: { size: 10 } } },
+                    y: { grid: { color: "#f1f5f9" }, ticks: { color: "#94a3b8", font: { size: 10 } } }
+                }
+            }
+        });
+    }
+
+    // Status Donut Chart
+    const statusCtx = document.getElementById("statusChart");
+    if (statusCtx) {
+        new Chart(statusCtx, {
+            type: "doughnut",
+            data: {
+                labels: ["PO Received", "Not Received", "Pending"],
+                datasets: [{
+                    data: [
+                        {{ stats.won_count if stats is defined else 1 }},
+                        {{ stats.not_received_count if stats is defined else 1 }},
+                        {{ stats.pending_count if stats is defined else 1 }}
+                    ],
+                    backgroundColor: ["#22c55e", "#ef4444", "#f59e0b"],
+                    borderWidth: 0,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: "80%",
+                plugins: {
+                    legend: { position: "bottom", labels: { color: "#64748b", boxWidth: 8, font: { size: 11 } } }
+                }
+            }
+        });
+    }
+
+    // ========== DATE / PERIOD FILTER ==========
+    const rangePill = document.getElementById("dateRangePill");
+    const rangeMenu = document.getElementById("rangeMenu");
+    const customRange = document.getElementById("customRange");
+
+    function currentParams() {
+        const p = new URLSearchParams(window.location.search);
+        const base = { range: p.get("range") || "ytd", period: p.get("period") || "monthly", compare: p.get("compare") || "1" };
+        return base;
+    }
+
+    function iso(d) {
+        return d.toISOString().slice(0, 10);
+    }
+
+    function applyFilter(params) {
+        const q = new URLSearchParams();
+        if (params.range) q.set("range", params.range);
+        if (params.from) q.set("from", params.from);
+        if (params.to) q.set("to", params.to);
+        if (params.period) q.set("period", params.period);
+        if (params.compare !== undefined) q.set("compare", params.compare);
+        window.location.search = q.toString();
+    }
+
+    if (rangePill && rangeMenu) {
+        rangePill.addEventListener("click", (e) => {
+            e.stopPropagation();
+            rangeMenu.hidden = !rangeMenu.hidden;
+            if (!rangeMenu.hidden && rangeMenu.querySelector('[data-preset="custom"]')) {
+                // keep custom inputs in sync with current range
+                const qs = new URLSearchParams(window.location.search);
+                const fromEl = document.getElementById("customFrom");
+                const toEl = document.getElementById("customTo");
+                if (qs.get("from")) fromEl.value = qs.get("from");
+                if (qs.get("to")) toEl.value = qs.get("to");
+            }
+        });
+
+        rangeMenu.querySelectorAll("button[data-preset]").forEach((btn) => {
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const preset = btn.dataset.preset;
+                const base = currentParams();
+                if (preset === "all") {
+                    applyFilter({ range: "all", period: base.period, compare: base.compare });
+                } else if (preset === "custom") {
+                    customRange.hidden = !customRange.hidden;
+                    return;
+                } else {
+                    const today = new Date();
+                    today.setHours(23, 59, 59, 999);
+                    const days = preset === "ytd" ? null : parseInt(preset);
+                    let from, to = today;
+                    if (preset === "ytd") {
+                        from = new Date(today.getFullYear(), 0, 1);
+                    } else {
+                        from = new Date(today);
+                        from.setDate(from.getDate() - (days - 1));
+                        from.setHours(0, 0, 0, 0);
+                    }
+                    applyFilter({ range: "custom", from: iso(from), to: iso(to), period: base.period, compare: base.compare });
+                }
+            });
+        });
+
+        document.getElementById("customApply")?.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const from = document.getElementById("customFrom").value;
+            const to = document.getElementById("customTo").value;
+            if (!from || !to) return;
+            const base = currentParams();
+            applyFilter({ range: "custom", from, to, period: base.period, compare: base.compare });
+        });
+
+        document.addEventListener("click", (e) => {
+            if (!rangePill.contains(e.target)) rangeMenu.hidden = true;
+        });
+    }
+
+    // Prior-period comparison toggle
+    const comparePill = document.getElementById("comparePill");
+    if (comparePill) {
+        comparePill.addEventListener("click", () => {
+            const base = currentParams();
+            applyFilter({ range: base.range, period: base.period, compare: base.compare === "1" ? "0" : "1" });
+        });
+    }
+
+    // Period granularity toggle (daily / monthly / yearly)
+    const periodPill = document.getElementById("periodPill");
+    if (periodPill) {
+        periodPill.addEventListener("click", () => {
+            const order = ["daily", "monthly", "yearly"];
+            const base = currentParams();
+            const next = order[(order.indexOf(base.period) + 1) % order.length];
+            applyFilter({ range: base.range, period: next, compare: base.compare });
+        });
+    }
+
+    // ========== MY TO-DOS (wired to Tasks tab) ==========
+    const DASH_CSRF = "{{ csrf_token() }}";
+
+    async function dashPost(url, data) {
+        const fd = new FormData();
+        fd.append("csrf_token", DASH_CSRF);
+        if (data) Object.entries(data).forEach(([k, v]) => fd.append(k, v));
+        const res = await fetch(url, {
+            method: "POST",
+            headers: { "X-CSRFToken": DASH_CSRF, "X-Requested-With": "XMLHttpRequest" },
+            body: fd,
+        });
+        return res.json();
+    }
+
+    async function dashToggleTodo(id, el) {
+        try {
+            const data = await dashPost(`/tasks/mine/toggle/${id}`);
+            if (data.ok) {
+                el.classList.toggle("checked");
+                const item = el.closest(".dash-task-item");
+                const title = item.querySelector(".dash-task-title");
+                if (data.status === "done") {
+                    title.style.textDecoration = "line-through";
+                    title.style.color = "#94a3b8";
+                } else {
+                    title.style.textDecoration = "";
+                    title.style.color = "";
+                }
+            }
+        } catch (err) { /* ignore */ }
+    }
+
+    async function dashDeleteTodo(id, el) {
+        try {
+            const data = await dashPost(`/tasks/mine/delete/${id}`);
+            if (data.ok) {
+                el.closest(".dash-task-item").remove();
+                const list = document.getElementById("dashTodoList");
+                const empty = document.getElementById("dashTodoEmpty");
+                if (list && !list.querySelector(".dash-task-item") && empty) {
+                    empty.style.display = "block";
+                }
+            }
+        } catch (err) { /* ignore */ }
+    }
+
+    window.dashPost = dashPost;
+    window.dashToggleTodo = dashToggleTodo;
+    window.dashDeleteTodo = dashDeleteTodo;
+
+    const dashTodoForm = document.getElementById("dashTodoForm");
+    if (dashTodoForm) {
+        dashTodoForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const text = document.getElementById("dashTodoText").value.trim();
+            if (!text) return;
+            await dashPost("{{ url_for('tasks.add_personal') }}", {
+                lane: "task",
+                title: text,
+                priority: document.getElementById("dashTodoPriority").value,
+                due_date: document.getElementById("dashTodoDue").value,
+            });
+            window.location.reload();
+        });
+    }
+
+    // ========== DYNAMIC INSIGHTS ROTATION ==========
+    const INSIGHT_ITEMS = {{ insight_items | tojson }};
+
+    function shuffleArray(a) {
+        for (let i = a.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+    }
+
+    let insightIdx = 0;
+    let insightTimer = null;
+
+    function renderInsight(idx) {
+        const it = INSIGHT_ITEMS[idx];
+        const rot = document.getElementById("insightRotator");
+        const dots = document.getElementById("insightDots");
+        if (!rot || !it) return;
+        const hasBar = it.bar && it.bar > 0;
+        rot.innerHTML = `
+            <div class="insight-active fade-swap">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                    <i class="bi ${it.icon}" style="font-size: 1.05rem;"></i>
+                    <span class="insight-tag-mini">${it.tag}</span>
+                </div>
+                <div style="font-size: 2rem; font-weight: 800; line-height: 1;">${it.value}</div>
+                <h4 style="font-size: 1rem; font-weight: 700; margin-top: 6px;">${it.title}</h4>
+                <p style="font-size: 0.8rem; opacity: 0.9; margin: 4px 0 0; line-height: 1.4;">${it.body}</p>
+                ${hasBar ? `<div style="height: 4px; background: rgba(255,255,255,0.3); border-radius: 10px; overflow: hidden; margin-top: 12px;">
+                    <div class="insight-bar-fill" style="width: 0%; height: 100%; background: #ffffff;"></div>
+                </div>` : ""}
+            </div>`;
+        setTimeout(() => {
+            const bar = rot.querySelector(".insight-bar-fill");
+            if (bar) bar.style.width = (hasBar ? it.bar : 0) + "%";
+        }, 40);
+        if (dots) {
+            dots.innerHTML = INSIGHT_ITEMS.map((_, di) =>
+                `<span class="insight-dot ${di === idx ? "on" : ""}" data-i="${di}"></span>`
+            ).join("");
+        }
+    }
+
+    function nextInsight() {
+        insightIdx = (insightIdx + 1) % INSIGHT_ITEMS.length;
+        renderInsight(insightIdx);
+    }
+
+    function initInsights() {
+        if (!INSIGHT_ITEMS.length) return;
+        shuffleArray(INSIGHT_ITEMS);
+        const dots = document.getElementById("insightDots");
+        if (dots) {
+            dots.addEventListener("click", (e) => {
+                const dot = e.target.closest(".insight-dot");
+                if (!dot) return;
+                clearInterval(insightTimer);
+                insightIdx = parseInt(dot.dataset.i, 10);
+                renderInsight(insightIdx);
+                insightTimer = setInterval(nextInsight, 5000);
+            });
+        }
+        renderInsight(0);
+        insightTimer = setInterval(nextInsight, 5000);
+    }
+    initInsights();
+
+    // ========== HERO IMPORTANT ACTIONS: DISMISS / SNOOZE ==========
+    function updateHeroActionCount() {
+        const list = document.getElementById("heroActionList");
+        const empty = document.getElementById("heroActionEmpty");
+        const count = document.getElementById("heroActionCount");
+        if (!count) return;
+        const remaining = list ? list.querySelectorAll(".zentra-action-row").length : 0;
+        count.textContent = remaining;
+        if (remaining === 0 && list) {
+            list.remove();
+            if (empty) empty.style.display = "block";
+        }
+    }
+
+    document.querySelectorAll(".zentra-action-dismiss").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const row = btn.closest(".zentra-action-row");
+            const fd = new FormData();
+            fd.append("csrf_token", DASH_CSRF);
+            fd.append("source", btn.dataset.source);
+            if (btn.dataset.sourceId) fd.append("source_id", btn.dataset.sourceId);
+            fd.append("snooze_hours", 24);
+            try {
+                const res = await fetch("{{ url_for('dismiss_action') }}", {
+                    method: "POST",
+                    headers: { "X-CSRFToken": DASH_CSRF, "X-Requested-With": "XMLHttpRequest" },
+                    body: fd,
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    row.classList.add("zentra-action-row-dismissed");
+                    setTimeout(() => {
+                        row.remove();
+                        updateHeroActionCount();
+                    }, 280);
+                }
+            } catch (err) { /* ignore */ }
+        });
+    });
+});
+</script>
+{% endblock %}

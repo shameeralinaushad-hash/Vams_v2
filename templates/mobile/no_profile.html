@@ -1,0 +1,19 @@
+{% extends "mobile/layout.html" %}
+{% block title %}No Profile — VAMS{% endblock %}
+{% block header %}VAMS{% endblock %}
+{% block content %}
+
+<div style="text-align:center;padding:48px 16px;">
+  <div style="font-size:3rem;margin-bottom:12px;"><i class="bi bi-person-x"></i></div>
+  <div style="font-size:1.05rem;font-weight:700;margin-bottom:6px;">No employee profile linked</div>
+  <div style="font-size:0.85rem;color:var(--muted);line-height:1.5;margin-bottom:20px;">
+    You're signed in, but this account isn't linked to an employee profile yet.<br>
+    Link one from the desktop version to use the mobile portal.
+  </div>
+  <div style="display:flex;flex-direction:column;gap:10px;max-width:280px;margin:0 auto;">
+    <a href="/?desktop=1" class="btn btn-primary btn-block">Go to Desktop</a>
+    <a href="{{ url_for('mobile.logout') }}" class="btn btn-outline btn-block">Logout</a>
+  </div>
+</div>
+
+{% endblock %}

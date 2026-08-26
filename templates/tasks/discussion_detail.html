@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}{{ discussion.title }} — Discussion{% endblock %}
+{% block pagetitle %}
+<a href="{{ list_url }}" class="text-decoration-none text-reset me-2 transition-hover"><i class="bi bi-arrow-left"></i></a>
+<span class="text-truncate" style="max-width: 70vw; display: inline-block; vertical-align: bottom;">{{ discussion.title }}</span>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    :root { --dd-radius: 16px; }
+    .dd-container { max-width: 840px; margin: 0 auto; }
+
+    .dd-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--dd-radius); overflow: hidden; margin-bottom: 20px; box-shadow: 0 4px 24px rgba(0,0,0,0.02); }
+
+    .dd-card-header { display: flex; align-items: flex-start; gap: 16px; padding: 24px; border-bottom: 1px solid var(--border); background: var(--surface-soft); }
+    .dd-card-header .dd-avatar { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; font-weight: 700; color: #fff; flex-shrink: 0; box-shadow: inset 0 1px 2px rgba(255,255,255,0.2); }
+    .dd-card-header .dd-info { flex: 1; min-width: 0; }
+    .dd-card-header .dd-info .dd-author { font-weight: 600; font-size: 0.96rem; color: var(--text-primary); }
+    .dd-card-header .dd-info .dd-meta { font-size: 0.76rem; color: var(--text-secondary); margin-top: 4px; display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+    .dd-card-header .dd-info .dd-meta span { display: flex; align-items: center; gap: 5px; }
+    .dd-card-header .dd-status { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+
+    .dd-card-body { padding: 24px; font-size: 0.92rem; line-height: 1.7; white-space: pre-wrap; word-break: break-word; color: var(--text-primary); }
+    .dd-card-body:empty:after { content: '(no content provided)'; color: var(--text-secondary); font-style: italic; }
+
+    .dd-replies-header { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); padding: 20px 24px 10px; border-bottom: 1px solid var(--border); background: var(--surface-soft); }
+
+    .dd-reply { display: flex; gap: 16px; padding: 18px 24px; transition: background 0.15s ease; }
+    .dd-reply + .dd-reply { border-top: 1px solid var(--border); }
+    .dd-reply:hover { background: var(--surface-soft); }
+    .dd-reply .dr-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; color: #fff; flex-shrink: 0; margin-top: 2px; }
+    .dd-reply .dr-body { flex: 1; min-width: 0; }
+    .dd-reply .dr-body .dr-head { font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+    .dd-reply .dr-body .dr-head .dr-time { font-weight: 400; color: var(--text-secondary); font-size: 0.72rem; }
+    .dd-reply .dr-body .dr-text { font-size: 0.88rem; margin-top: 4px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: var(--text-primary); }
+
+    .dd-replies-empty { text-align: center; padding: 48px 24px; color: var(--text-secondary); }
+    .dd-replies-empty i { font-size: 2.2rem; display: block; margin-bottom: 10px; opacity: 0.3; }
+
+    .dd-reply-form { padding: 20px 24px; border-top: 1px solid var(--border); background: var(--surface); }
+    .dd-reply-form textarea { width: 100%; resize: vertical; min-height: 90px; border-radius: 12px; padding: 12px 16px; font-size: 0.88rem; border: 1px solid var(--border); background: var(--surface-soft); transition: all 0.15s ease; }
+    .dd-reply-form textarea:focus { outline: none; border-color: var(--text-primary); background: var(--surface); box-shadow: 0 0 0 3px rgba(0,0,0,0.04); }
+    .dd-reply-form .drf-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; gap: 12px; flex-wrap: wrap; }
+    .dd-reply-form .drf-actions .drf-status { font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 5px; font-weight: 500; }
+
+    .dd-admin-bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 24px; background: var(--surface-soft); border-top: 1px solid var(--border); align-items: center; }
+    .dd-admin-bar span { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-secondary); margin-right: 8px; }
+
+    .badge-custom { font-size: 0.65rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.03em; display: inline-flex; align-items: center; gap: 4px; }
+    .badge-custom.pinned { background: rgba(217,154,43,0.15); color: var(--accent-dark); }
+    .badge-custom.closed { background: var(--border); color: var(--text-secondary); }
+
+    @media (max-width: 600px) {
+        .dd-card-header { flex-direction: column; padding: 16px; gap: 12px; }
+        .dd-card-body { padding: 16px; }
+        .dd-reply { padding: 14px 16px; gap: 12px; }
+        .dd-replies-header { padding: 14px 16px 8px; }
+        .dd-reply-form { padding: 16px; }
+        .dd-admin-bar { padding: 12px 16px; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dd-container">
+    {% set a_color = discussion.author.name | avatar_color if discussion.author else '' %}
+    {% set a_initial = discussion.author.name[:1] | upper if discussion.author else '?' %}
+
+    <div class="dd-card">
+        <div class="dd-card-header">
+            <div class="dd-avatar" style="background:{{ a_color }};">{{ a_initial }}</div>
+            <div class="dd-info">
+                <div class="dd-author">{{ discussion.author.name if discussion.author else 'Unknown' }}</div>
+                <div class="dd-meta">
+                    <span><i class="bi bi-clock"></i> {{ time_ago(discussion.created_at) if discussion.created_at else '' }}</span>
+                    {% if discussion.updated_at and discussion.updated_at != discussion.created_at %}
+                    <span><i class="bi bi-arrow-repeat"></i> Updated {{ time_ago(discussion.updated_at) }}</span>
+                    {% endif %}
+                    <span><i class="bi bi-chat"></i> {{ discussion.replies | length }} repl{{ 'ies' if (discussion.replies | length) != 1 else 'y' }}</span>
+                </div>
+            </div>
+            <div class="dd-status">
+                {% if discussion.is_pinned %}<span class="badge-custom pinned"><i class="bi bi-pin-angle-fill"></i> Pinned</span>{% endif %}
+                {% if discussion.is_closed %}<span class="badge-custom closed"><i class="bi bi-check2"></i> Closed</span>{% endif %}
+            </div>
+        </div>
+        <div class="dd-card-body">{{ discussion.body or '' }}</div>
+    </div>
+
+    <div class="dd-card">
+        <div class="dd-replies-header">
+            <i class="bi bi-chat-text"></i> Conversation Replies ({{ discussion.replies | length }})
+        </div>
+
+        {% set replies = discussion.replies | list %}
+        {% if replies %}
+        <div class="dd-replies-list">
+            {% for r in replies %}
+            {% set r_color = r.author.name | avatar_color if r.author else '' %}
+            {% set r_initial = r.author.name[:1] | upper if r.author else '?' %}
+            <div class="dd-reply">
+                <div class="dr-avatar" style="background:{{ r_color }};">{{ r_initial }}</div>
+                <div class="dr-body">
+                    <div class="dr-head">
+                        <span>{{ r.author.name if r.author else 'Unknown' }}</span>
+                        <span class="dr-time"><i class="bi bi-clock me-1"></i>{{ time_ago(r.created_at) if r.created_at else '' }}</span>
+                    </div>
+                    <div class="dr-text">{{ r.body }}</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="dd-replies-empty">
+            <i class="bi bi-chat-dots"></i>
+            <h6 class="fw-bold mb-1">No replies yet</h6>
+            <p class="small text-muted mb-0">Be the first to share your thoughts on this topic.</p>
+        </div>
+        {% endif %}
+
+        <div class="dd-reply-form" id="replyForm"{% if discussion.is_closed %} style="opacity:0.6; pointer-events:none;"{% endif %}>
+            <textarea id="replyInput" placeholder="Write a response... (Press Enter to submit, Shift+Enter for a new line)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();postReply();}"></textarea>
+            <div class="drf-actions">
+                <span class="drf-status">
+                    {% if discussion.is_closed %}
+                    <i class="bi bi-lock-fill text-danger"></i> Thread is closed — no new replies permitted
+                    {% else %}
+                    <i class="bi bi-unlock-fill text-success"></i> Active thread — open for collaboration
+                    {% endif %}
+                </span>
+                <button class="btn btn-dark btn-sm rounded-pill px-4 shadow-sm" onclick="postReply()">
+                    <i class="bi bi-send me-1"></i> Send Reply
+                </button>
+            </div>
+        </div>
+
+        {% if is_admin %}
+        <div class="dd-admin-bar">
+            <span><i class="bi bi-shield-lock me-1"></i> Moderation:</span>
+            <button class="btn btn-sm btn-outline-secondary rounded-pill px-3" onclick="togglePin()">
+                <i class="bi bi-pin-angle{% if discussion.is_pinned %}-fill text-warning{% endif %} me-1"></i> {{ 'Unpin Thread' if discussion.is_pinned else 'Pin Thread' }}
+            </button>
+            <button class="btn btn-sm btn-outline-secondary rounded-pill px-3" onclick="toggleClose()">
+                <i class="bi bi-{% if discussion.is_closed %}unlock{% else %}check2-circle{% endif %} me-1"></i> {{ 'Reopen Thread' if discussion.is_closed else 'Close Thread' }}
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+var csrf = '{{ csrf_token() }}';
+var replyUrl = '{{ reply_url }}';
+var closeUrl = '{{ close_url }}';
+var pinUrl = '{{ pin_url }}';
+var discussionId = {{ discussion.id }};
+
+function postReply() {
+    var input = document.getElementById('replyInput');
+    var body = input.value.trim();
+    if (!body) return;
+    var fd = new FormData();
+    fd.append('body', body);
+    fetch(replyUrl, {method:'POST', headers:{'X-CSRFToken':csrf}, body:fd})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) { location.reload(); }
+            else { alert(d.error || 'Failed to post reply'); }
+        });
+}
+
+function togglePin() {
+    fetch(pinUrl, {method:'POST', headers:{'X-CSRFToken':csrf}})
+        .then(function(r){return r.json()}).then(function(d){if(d.ok)location.reload();});
+}
+
+function toggleClose() {
+    fetch(closeUrl, {method:'POST', headers:{'X-CSRFToken':csrf}})
+        .then(function(r){return r.json()}).then(function(d){if(d.ok)location.reload();});
+}
+</script>
+{% endblock %}

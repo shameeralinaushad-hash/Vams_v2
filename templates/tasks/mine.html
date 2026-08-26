@@ -1,0 +1,1133 @@
+{% extends "base.html" %}
+{% block title %}My Space{% endblock %}
+{% block pagetitle %}{% if lane == 'task' %}Tasks{% elif lane == 'goal' %}Aspirations{% else %}Ideas{% endif %}{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+:root {
+    --ms-card-radius: 14px;
+    --transition-smooth: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes fadeSlide { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+
+/* Compact stats row */
+.ms-stats { display:flex; gap:10px; margin-bottom:14px; overflow-x:auto; padding:2px 0 6px; scrollbar-width:none; }
+.ms-stats::-webkit-scrollbar { display: none; }
+.ms-stats .s { display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:8px 14px; white-space:nowrap; cursor:pointer; transition:var(--transition-smooth); flex-shrink:0; box-shadow:0 1px 2px rgba(0,0,0,0.02); }
+.ms-stats .s:hover { border-color:var(--text-primary); transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,0.04); }
+.ms-stats .s .si { width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:0.8rem; flex-shrink:0; }
+.ms-stats .s .sn { font-size:0.9rem; font-weight:700; line-height:1.2; }
+.ms-stats .s .sl { font-size:0.6rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.04em; }
+
+/* Urgent bar */
+.urgent-bar { background:rgba(214,69,69,0.04); border:1px solid rgba(214,69,69,0.12); border-radius:var(--ms-card-radius); padding:10px 14px; margin-bottom:14px; display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:0.82rem; animation:fadeSlide 0.25s ease; }
+.urgent-bar .ub-label { font-weight:700; font-size:0.7rem; color:var(--danger); text-transform:uppercase; letter-spacing:0.03em; display:flex; align-items:center; gap:5px; }
+.urgent-bar .ub-pill { background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:3px 10px; font-size:0.72rem; display:inline-flex; align-items:center; gap:6px; box-shadow:0 1px 2px rgba(0,0,0,0.02); }
+
+/* Filter row */
+.filter-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+.pill-filter { display:flex; gap:4px; background:var(--surface-soft); padding:5px; border-radius:14px; width:fit-content; flex-wrap:wrap; border:1px solid var(--border); }
+.pill-filter a { padding:7px 16px; border-radius:10px; font-size:0.8rem; font-weight:600; color:var(--text-secondary); text-decoration:none; transition:var(--transition-smooth); display:flex; align-items:center; gap:6px; }
+.pill-filter a:hover { color:var(--text-primary); }
+.pill-filter a.active { background:var(--surface); color:var(--text-primary); box-shadow:0 2px 6px rgba(0,0,0,0.06); }
+.pill-filter a .count { font-size:0.65rem; font-weight:700; background:var(--border); border-radius:999px; padding:1px 7px; transition:var(--transition-smooth); }
+.pill-filter a.active .count { background:var(--surface-soft); }
+
+.view-switch { display:flex; gap:3px; background:var(--surface-soft); padding:4px; border-radius:10px; border:1px solid var(--border); }
+.view-switch a { padding:5px 10px; border-radius:7px; font-size:0.75rem; font-weight:600; color:var(--text-secondary); text-decoration:none; line-height:1; transition:var(--transition-smooth); }
+.view-switch a:hover { color:var(--text-primary); }
+.view-switch a.active { background:var(--surface); color:var(--text-primary); box-shadow:0 1px 3px rgba(0,0,0,0.05); }
+
+.search-box { display:flex; align-items:center; gap:8px; background:var(--surface-soft); border-radius:10px; padding:6px 12px; flex:1; min-width:140px; max-width:220px; border:1px solid var(--border); transition:var(--transition-smooth); }
+.search-box:focus-within { border-color:var(--text-primary); background:var(--surface); box-shadow:0 0 0 3px rgba(0,0,0,0.03); }
+.search-box input { border:none; background:transparent; font-size:0.78rem; outline:none; width:100%; color:var(--text-primary); }
+.search-box .sclear { font-size:0.7rem; cursor:pointer; color:var(--text-secondary); padding:2px; display:none; }
+.search-box .sclear.show { display:block; }
+
+/* Quick-add bar */
+.qadd-bar { position:relative; margin-bottom:14px; border-radius:var(--ms-card-radius); border:1px solid var(--border); transition:var(--transition-smooth); background:var(--surface); box-shadow:0 2px 4px rgba(0,0,0,0.01); }
+.qadd-bar.collapsed { background:var(--surface-soft); cursor:text; }
+.qadd-bar.collapsed:hover { border-color:var(--text-primary); }
+.qadd-bar.expanded { border-color:var(--text-primary); box-shadow:0 8px 24px rgba(0,0,0,0.06); }
+.qadd-bar .qi { padding:12px 16px; }
+.qadd-bar.collapsed .qi { display:flex; align-items:center; gap:10px; }
+.qadd-bar.collapsed .qe { display:none; }
+.qadd-bar.expanded .qe { display:block; padding-top:10px; }
+.qadd-bar .qinput { flex:1; border:none; background:transparent; font-size:0.88rem; font-weight:500; outline:none; width:100%; color:var(--text-primary); }
+.qadd-bar .qinput::placeholder { color:var(--text-secondary); font-weight:400; }
+.qadd-bar .qhint { font-size:0.6rem; color:var(--text-muted); background:var(--surface); padding:3px 8px; border-radius:6px; white-space:nowrap; border:1px solid var(--border); }
+.qe .row { margin:0 -4px; }
+.qe .row > div { padding:0 4px; }
+.qe .form-select, .qe .form-control { font-size:0.76rem; border-radius:8px; border:1px solid var(--border); background:var(--surface); padding:6px 10px; transition:var(--transition-smooth); }
+.qe .form-control:focus, .qe .form-select:focus { border-color:var(--text-primary); box-shadow:0 0 0 3px rgba(0,0,0,0.03); }
+.qe .qsub { margin-top:10px; display:flex; gap:8px; justify-content:flex-end; align-items:center; }
+.qe .qsub .btn { padding:4px 18px; font-size:0.76rem; border-radius:999px; font-weight:600; }
+.qe .qsub .hint { font-size:0.6rem; color:var(--text-muted); }
+
+/* Items — List view */
+.ms-list { display:flex; flex-direction:column; gap:6px; }
+.ms-card { position:relative; display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:var(--ms-card-radius); padding:10px 14px; transition:var(--transition-smooth); overflow:hidden; cursor:default; box-shadow:0 1px 2px rgba(0,0,0,0.01); }
+.ms-card:hover { box-shadow:0 4px 12px rgba(0,0,0,0.04); border-color:var(--text-primary); }
+.ms-card .edge { position:absolute; left:0; top:2px; bottom:2px; width:4px; border-radius:2px; }
+.ms-card .edge.high { background:#d64545; }
+.ms-card .edge.medium { background:#d99a2b; }
+.ms-card .edge.low { background:#cbd5e1; }
+.ms-card.done { opacity:0.5; background:var(--surface-soft); }
+.ms-card.done .ms-title { text-decoration:line-through; color:var(--text-secondary); }
+
+.ms-check { width:22px; height:22px; border-radius:50%; border:2px solid var(--border); display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:var(--transition-smooth); background:none; padding:0; font-size:0.6rem; color:transparent; }
+.ms-check:hover { border-color:var(--text-primary); transform:scale(1.1); background:var(--surface-soft); }
+.ms-check.checked { background:#1e9e63; border-color:#1e9e63; color:#fff; }
+
+.ms-body { flex:1; min-width:0; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ms-title { font-size:0.85rem; font-weight:500; color:var(--text-primary); }
+.ms-meta { display:flex; align-items:center; gap:6px; font-size:0.68rem; color:var(--text-secondary); flex-shrink:0; }
+.ms-meta .due { padding:2px 8px; border-radius:999px; font-weight:600; font-size:0.65rem; }
+.ms-meta .due.neutral { background:var(--surface-soft); }
+.ms-meta .due.overdue { background:rgba(214,69,69,0.1); color:var(--danger); }
+.ms-meta .due.today { background:rgba(217,154,43,0.12); color:var(--accent-dark); }
+
+.ms-badge { font-size:0.6rem; font-weight:700; padding:2px 8px; border-radius:999px; text-transform:uppercase; letter-spacing:0.03em; background:var(--surface-soft); color:var(--text-secondary); border:1px solid var(--border); }
+.ms-badge.cat { background:rgba(139,92,246,0.06); color:#8b5cf6; border-color:rgba(139,92,246,0.15); }
+.ms-badge.est { background:rgba(54,162,235,0.06); color:#36a2eb; border-color:rgba(54,162,235,0.15); }
+.ms-badge.rec { background:rgba(54,162,235,0.06); color:#36a2eb; border-color:rgba(54,162,235,0.15); }
+
+.ms-actions { display:none; align-items:center; gap:4px; flex-shrink:0; }
+.ms-card:hover .ms-actions { display:flex; }
+.ms-actions button { background:none; border:none; padding:4px; color:var(--text-secondary); font-size:0.75rem; cursor:pointer; border-radius:6px; transition:var(--transition-smooth); line-height:1; }
+.ms-actions button:hover { background:var(--surface-soft); color:var(--text-primary); }
+
+/* Goal cards */
+.gp-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--ms-card-radius); padding:16px; padding-left:18px; margin-bottom:10px; transition:var(--transition-smooth); box-shadow:0 1px 3px rgba(0,0,0,0.02); }
+.gp-card:hover { box-shadow:0 8px 24px rgba(0,0,0,0.05); border-color:var(--text-primary); transform:translateY(-1px); }
+.gp-header { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+.gp-header .gp-title { font-weight:600; font-size:0.92rem; cursor:text; }
+.gp-header .gp-title:focus { outline:none; background:var(--surface-soft); border-radius:4px; padding:0 4px; }
+.gp-desc { font-size:0.78rem; color:var(--text-secondary); margin-top:4px; cursor:text; padding:2px 4px; border-radius:4px; transition:var(--transition-smooth); }
+.gp-desc:focus { outline:none; background:var(--surface-soft); }
+.gp-desc:hover { background:var(--surface-soft); }
+
+.circ-progress { width:42px; height:42px; position:relative; flex-shrink:0; }
+.circ-progress svg { transform:rotate(-90deg); }
+.circ-progress .cp-text { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:0.68rem; font-weight:700; }
+
+.gp-progress-row { display:flex; align-items:center; gap:10px; }
+.gp-progress-row .gp-pi { font-size:0.72rem; color:var(--text-secondary); font-weight:500; }
+
+.gp-milestones { margin-top:8px; border-top:1px solid var(--border); padding-top:8px; }
+.gp-milestones .ms-toggle { display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.72rem; font-weight:600; color:var(--text-secondary); padding:3px 0; user-select:none; }
+.gp-milestones .ms-toggle:hover { color:var(--text-primary); }
+.gp-milestones .ms-toggle .arr { transition:transform 0.15s; font-size:0.65rem; }
+.gp-milestones .ms-toggle .arr.open { transform:rotate(90deg); }
+.gp-milestones .ms-body { display:none; padding-top:6px; }
+.gp-milestones .ms-body.open { display:block; }
+.gp-milestones .ms-row { display:flex; align-items:center; gap:6px; padding:3px 0; font-size:0.78rem; }
+.gp-milestones .ms-row.done { text-decoration:line-through; opacity:0.5; }
+.gp-milestones .ms-row .msb { width:15px; height:15px; border-radius:4px; border:2px solid var(--border); cursor:pointer; background:none; padding:0; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:0.45rem; color:transparent; transition:var(--transition-smooth); }
+.gp-milestones .ms-row .msb.checked { background:#1e9e63; border-color:#1e9e63; color:#fff; }
+.gp-milestones .ms-add { display:flex; gap:6px; margin-top:6px; }
+.gp-milestones .ms-add input { font-size:0.76rem; border-radius:8px; }
+
+.status-chips { display:flex; gap:4px; flex-wrap:wrap; margin-top:8px; }
+.status-chips .sc { font-size:0.6rem; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; padding:3px 9px; border-radius:999px; border:1px solid var(--border); cursor:pointer; transition:var(--transition-smooth); background:var(--surface); color:var(--text-secondary); }
+.status-chips .sc:hover { border-color:var(--text-primary); color:var(--text-primary); }
+.status-chips .sc.active { background:var(--text-primary); color:var(--surface); border-color:var(--text-primary); }
+
+/* Ideas */
+.fp-card { display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:var(--ms-card-radius); padding:12px 14px; margin-bottom:6px; transition:var(--transition-smooth); box-shadow:0 1px 2px rgba(0,0,0,0.01); }
+.fp-card:hover { box-shadow:0 4px 12px rgba(0,0,0,0.04); border-color:var(--text-primary); }
+.fp-card .fp-bulb { width:28px; height:28px; border-radius:50%; background:rgba(217,154,43,0.1); color:var(--accent-dark); display:flex; align-items:center; justify-content:center; font-size:0.8rem; flex-shrink:0; }
+.fp-card .fp-title { flex:1; font-size:0.85rem; cursor:text; }
+.fp-card .fp-title:focus { outline:none; background:var(--surface-soft); border-radius:4px; padding:0 4px; }
+.fp-card .fp-actions { display:flex; gap:4px; flex-shrink:0; }
+.fp-card .fp-actions button { font-size:0.62rem; padding:3px 9px; border-radius:999px; font-weight:600; }
+
+/* Board view */
+.kanban-ms { display:flex; gap:12px; overflow-x:auto; padding-bottom:12px; }
+.kanban-ms-col { flex:1; min-width:240px; background:var(--surface-soft); border-radius:var(--ms-card-radius); padding:10px; border:1px solid var(--border); }
+.kanban-ms-col h6 { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-secondary); margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+.kanban-ms-col h6 .count { background:var(--surface); border-radius:999px; padding:1px 8px; font-size:0.65rem; border:1px solid var(--border); }
+.kanban-ms-col .kcard { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:6px; cursor:pointer; transition:var(--transition-smooth); box-shadow:0 1px 2px rgba(0,0,0,0.02); }
+.kanban-ms-col .kcard:hover { box-shadow:0 4px 12px rgba(0,0,0,0.05); border-color:var(--text-primary); transform:translateY(-1px); }
+.kanban-ms-col .kcard .kcard-title { font-size:0.8rem; font-weight:500; }
+.kanban-ms-col .kcard .kcard-meta { font-size:0.62rem; color:var(--text-secondary); margin-top:4px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+
+/* Calendar */
+.cal-nav { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.cal-nav .cal-title { font-weight:700; font-size:1rem; flex:1; text-align:center; }
+.cal-nav a.btn, .cal-nav button { font-size:0.75rem; padding:4px 12px; }
+.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:var(--ms-card-radius); overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.03); }
+.cal-grid .cal-hdr { background:var(--surface-soft); padding:8px 4px; text-align:center; font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-secondary); }
+.cal-grid .cal-day { background:var(--surface); min-height:72px; padding:5px; font-size:0.68rem; position:relative; transition:background 0.1s; cursor:pointer; }
+.cal-grid .cal-day:hover { background:var(--surface-soft); }
+.cal-grid .cal-day .day-num { font-weight:600; color:var(--text-secondary); font-size:0.65rem; margin-bottom:3px; }
+.cal-grid .cal-day.today { background:rgba(30,158,99,0.04); }
+.cal-grid .cal-day.today .day-num { color:var(--success); font-weight:800; }
+.cal-grid .cal-day.other-month { opacity:0.3; background:var(--surface-soft); }
+.cal-grid .cal-day .cal-dot { display:inline-block; width:6px; height:6px; border-radius:50%; margin:1px; }
+.cal-grid .cal-day .cal-dot.high { background:#d64545; }
+.cal-grid .cal-day .cal-dot.medium { background:#d99a2b; }
+.cal-grid .cal-day .cal-dot.low { background:#cbd5e1; }
+.cal-grid .cal-day .cal-more { font-size:0.52rem; color:var(--text-secondary); font-weight:600; display:block; }
+.cal-tooltip { display:none; position:absolute; bottom:100%; left:50%; transform:translateX(-50%); z-index:100; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:6px 10px; font-size:0.68rem; white-space:nowrap; box-shadow:0 8px 24px rgba(0,0,0,0.12); pointer-events:none; }
+.cal-day:hover .cal-tooltip { display:block; }
+.cal-tooltip .ct-item { display:flex; align-items:center; gap:5px; padding:2px 0; }
+
+/* Empty state */
+.empty-state { text-align:center; padding:40px 20px; color:var(--text-secondary); }
+.empty-state i { font-size:2rem; display:block; margin-bottom:8px; opacity:0.25; }
+
+/* Suggestion dropdown */
+.qsuggest { position:absolute; top:100%; left:0; right:0; z-index:100; background:var(--surface); border:1px solid var(--border); border-radius:0 0 var(--ms-card-radius) var(--ms-card-radius); box-shadow:0 12px 36px rgba(20,24,31,0.12); max-height:260px; overflow-y:auto; display:none; animation:fadeSlide 0.12s ease; }
+.qsuggest.show { display:block; }
+.qsuggest .qs-item { display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; transition:background 0.08s; font-size:0.8rem; }
+.qsuggest .qs-item:hover, .qsuggest .qs-item.highlight { background:var(--surface-soft); }
+.qsuggest .qs-item .qs-icon { width:22px; height:22px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:0.6rem; flex-shrink:0; }
+.qsuggest .qs-item .qs-label { flex:1; }
+.qsuggest .qs-item .qs-hint { font-size:0.65rem; color:var(--text-muted); }
+
+/* AI idea panel */
+.ai-panel { display:none; margin-top:10px; padding:12px; background:var(--surface-soft); border-radius:12px; border:1px solid var(--border); animation:fadeSlide 0.15s ease; }
+.ai-panel.open { display:block; }
+.ai-panel .ai-input-row { display:flex; gap:6px; }
+.ai-panel .ai-input-row input { flex:1; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-size:0.78rem; outline:none; }
+.ai-panel .ai-input-row input:focus { border-color:var(--text-primary); }
+.ai-panel .ai-input-row button { border-radius:8px; font-size:0.72rem; padding:4px 12px; }
+.ai-panel .ai-actions { display:flex; gap:4px; margin-top:8px; flex-wrap:wrap; }
+.ai-panel .ai-actions button { font-size:0.65rem; padding:3px 10px; border-radius:999px; font-weight:600; }
+.ai-panel .ai-response { background:var(--surface); border-radius:10px; padding:10px 12px; margin-top:8px; font-size:0.78rem; line-height:1.5; white-space:pre-wrap; max-height:300px; overflow-y:auto; display:none; }
+.ai-panel .ai-response.show { display:block; }
+.ai-panel .ai-diagram { margin-top:10px; padding:8px; background:#fff; border-radius:10px; border:1px solid var(--border); overflow-x:auto; display:none; }
+.ai-panel .ai-diagram.show { display:block; }
+.ai-panel .ai-spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--text-primary); border-radius:50%; animation:spin 0.6s linear infinite; margin-right:6px; vertical-align:middle; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* Focus timer pill */
+.ft-pill { display:inline-flex; align-items:center; gap:6px; background:var(--surface-soft); border:1px solid var(--border); border-radius:999px; padding:4px 12px; font-size:0.68rem; font-weight:600; color:var(--text-secondary); cursor:pointer; transition:var(--transition-smooth); white-space:nowrap; }
+.ft-pill:hover { border-color:var(--text-primary); color:var(--text-primary); }
+.ft-pill.active { background:rgba(30,158,99,0.08); border-color:var(--success); color:var(--success); }
+.ft-dropdown { display:none; position:absolute; top:calc(100% + 6px); right:0; z-index:50; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:16px; box-shadow:0 12px 36px rgba(0,0,0,0.12); width:240px; animation:fadeSlide 0.2s ease; }
+.ft-dropdown.open { display:block; }
+.ft-dropdown .ft-display { font-size:2.2rem; font-weight:800; text-align:center; line-height:1; font-variant-numeric:tabular-nums; letter-spacing:-0.03em; margin:8px 0; }
+.ft-dropdown .ft-mode { display:flex; gap:4px; justify-content:center; background:var(--surface-soft); border-radius:999px; padding:3px; width:fit-content; margin:0 auto; border:1px solid var(--border); }
+.ft-dropdown .ft-mode span { padding:3px 12px; border-radius:999px; font-size:0.65rem; font-weight:600; cursor:pointer; color:var(--text-secondary); transition:var(--transition-smooth); }
+.ft-dropdown .ft-mode span.active { background:var(--surface); color:var(--text-primary); box-shadow:0 2px 4px rgba(0,0,0,0.06); }
+.ft-dropdown .ft-ctrls { display:flex; gap:6px; justify-content:center; margin-top:10px; }
+.ft-dropdown .ft-ctrls button { font-size:0.68rem; padding:4px 14px; border-radius:999px; font-weight:600; }
+.ft-ringing { animation:ftPulse 0.5s ease 3; }
+@keyframes ftPulse { 0%,100%{border-color:var(--border)} 50%{border-color:#1e9e63;box-shadow:0 0 0 4px rgba(30,158,99,0.15)} }
+
+/* Detail modal */
+.detail-section { margin-bottom:14px; }
+.detail-section label { font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-secondary); margin-bottom:4px; display:block; }
+.detail-section .form-control, .detail-section .form-select { font-size:0.85rem; border-radius:10px; border:1px solid var(--border); padding:8px 12px; transition:var(--transition-smooth); }
+.detail-section .form-control:focus, .detail-section .form-select:focus { border-color:var(--text-primary); box-shadow:0 0 0 3px rgba(0,0,0,0.03); }
+
+@media (max-width:600px) {
+    .ms-stats .s { padding:6px 10px; }
+    .ms-stats .s .sn { font-size:0.8rem; }
+    .ms-stats .s .sl { display:none; }
+    .ms-card { padding:8px 12px; gap:8px; }
+    .gp-card { padding:12px; }
+    .kanban-ms-col { min-width:200px; }
+    .qadd-bar .qhint { display:none; }
+    .search-box { max-width:140px; min-width:90px; }
+    .pill-filter a { padding:6px 12px; font-size:0.75rem; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Stats bar -->
+<div class="ms-stats" id="msStats">
+    <div class="s" onclick="location.href='?lane=task'" title="Tasks"><div class="si" style="background:rgba(20,24,31,0.06);color:var(--text-primary);"><i class="bi bi-list-task"></i></div><div><div class="sn">{{ stats.done_tasks }}/{{ stats.total_tasks }}</div><div class="sl">Tasks</div></div></div>
+    <div class="s" onclick="location.href='?lane=task'" title="Overdue tasks"><div class="si" style="background:rgba(214,69,69,0.08);color:var(--danger);"><i class="bi bi-exclamation-triangle"></i></div><div><div class="sn">{{ stats.overdue_tasks }}</div><div class="sl">Overdue</div></div></div>
+    <div class="s" onclick="location.href='?lane=goal'" title="Goals"><div class="si" style="background:rgba(30,158,99,0.08);color:var(--success);"><i class="bi bi-bullseye"></i></div><div><div class="sn">{{ stats.total_goals }}</div><div class="sl">Goals</div></div></div>
+    <div class="s" onclick="location.href='?lane=future_plan'" title="Ideas"><div class="si" style="background:rgba(217,154,43,0.08);color:var(--accent-dark);"><i class="bi bi-lightbulb"></i></div><div><div class="sn">{{ stats.total_ideas }}</div><div class="sl">Ideas</div></div></div>
+    <div class="s" id="focusTimerPill" onclick="toggleFocusTimer(event)" style="cursor:pointer;" title="Focus Timer"><div class="si" style="background:rgba(54,162,235,0.08);color:#36a2eb;"><i class="bi bi-clock"></i></div><div><div class="sn" id="ftDisplayPill">25:00</div><div class="sl">Focus</div></div></div>
+</div>
+
+<!-- Focus Timer Dropdown -->
+<div class="ft-dropdown" id="ftDropdown">
+    <div class="ft-mode">
+        <span class="active" data-mins="25" onclick="setFTMode(this,25)">Focus</span>
+        <span data-mins="5" onclick="setFTMode(this,5)">Break</span>
+        <span data-mins="15" onclick="setFTMode(this,15)">Short</span>
+    </div>
+    <div class="ft-display" id="ftDisplay">25:00</div>
+    <div class="ft-ctrls">
+        <button class="btn btn-dark" id="ftStartBtn" onclick="startFT()"><i class="bi bi-play-fill"></i></button>
+        <button class="btn btn-outline-secondary" id="ftPauseBtn" style="display:none" onclick="pauseFT()"><i class="bi bi-pause-fill"></i></button>
+        <button class="btn btn-outline-secondary" id="ftResetBtn" onclick="resetFT()"><i class="bi bi-arrow-counterclockwise"></i></button>
+    </div>
+</div>
+
+<!-- Urgent bar: combine reminders + this-week -->
+{% set show_urgent = due_today_count > 0 or this_week %}
+{% if show_urgent %}
+<div class="urgent-bar">
+    <span class="ub-label"><i class="bi bi-bell"></i>
+        {%- if due_today_count > 0 %}{{ due_today_count }} due today{% if this_week %} &bull; {% endif %}{% endif -%}
+        {%- if this_week %}{{ this_week|length }} overdue{% endif -%}
+    </span>
+    {% for item in (this_week[:5] if this_week else []) %}
+    <span class="ub-pill"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:{% if item.priority == 'high' %}#d64545{% elif item.priority == 'medium' %}#d99a2b{% else %}#cbd5e1{% endif %};flex-shrink:0;"></span>{{ item.title }}</span>
+    {% endfor %}
+    {% if due_today_count > 0 and not this_week %}
+    <span class="ub-pill"><a href="?lane=task" style="text-decoration:underline;color:inherit;">View tasks</a></span>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Lane nav + View + Search -->
+<div class="filter-row">
+    <div class="pill-filter">
+        {% set cts = {'task':stats.total_tasks,'goal':stats.total_goals,'future_plan':stats.total_ideas} %}
+        <a href="?lane=task{% if view == 'board' %}&view=board{% endif %}" class="{% if lane == 'task' %}active{% endif %}"><i class="bi bi-check-circle"></i> Tasks <span class="count">{{ cts.task }}</span></a>
+        <a href="?lane=goal" class="{% if lane == 'goal' %}active{% endif %}"><i class="bi bi-bullseye"></i> Goal <span class="count">{{ cts.goal }}</span></a>
+        <a href="?lane=future_plan" class="{% if lane == 'future_plan' %}active{% endif %}"><i class="bi bi-lightbulb"></i> Ideas <span class="count">{{ cts.future_plan }}</span></a>
+    </div>
+    {% if lane == 'task' %}
+    <div class="view-switch">
+        <a href="?lane={{ lane }}&view=list" class="{% if view == 'list' %}active{% endif %}" title="List"><i class="bi bi-list-ul"></i></a>
+        <a href="?lane={{ lane }}&view=board" class="{% if view == 'board' %}active{% endif %}" title="Board"><i class="bi bi-kanban"></i></a>
+        {% if lane == 'task' %}<a href="?lane=task&view=calendar" class="{% if view == 'calendar' %}active{% endif %}" title="Calendar"><i class="bi bi-calendar3"></i></a>{% endif %}
+    </div>
+    {% endif %}
+    <div class="search-box">
+        <i class="bi bi-search" style="font-size:0.75rem;color:var(--text-secondary);"></i>
+        <input type="text" id="searchInput" placeholder="Search..." value="{{ q }}" oninput="onSearch(this.value)">
+        <span class="sclear" id="searchClear" onclick="onSearch('')"><i class="bi bi-x"></i></span>
+    </div>
+</div>
+
+<!-- Quick-add Bar -->
+<div class="qadd-bar collapsed" id="qaddBar">
+    <div class="qi">
+        <span style="font-size:0.9rem;color:var(--text-secondary);flex-shrink:0;"><i class="bi bi-plus-circle"></i></span>
+        <input class="qinput" id="qinput" placeholder="{% if lane == 'task' %}Add task — type & press Enter, or click to expand{% elif lane == 'goal' %}What's your goal?{% else %}What's the idea?{% endif %}" autocomplete="off">
+        <span class="qhint"><i class="bi bi-key"></i> N</span>
+    </div>
+    <form id="addForm" data-lane="{{ lane }}" style="display:none;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="q" id="formQ" value="">
+        <input type="hidden" name="title" id="formTitle" value="">
+        <div class="qi" style="padding-top:0;">
+            <div class="qe">
+                <div class="row g-2">
+                    <div class="col-4 col-md"><select name="priority" class="form-select"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></div>
+                    <div class="col-4 col-md"><input type="date" name="due_date" class="form-control"></div>
+                    {% if lane == 'goal' %}<div class="col-4 col-md"><input type="text" name="description" class="form-control" placeholder="Desc"></div>{% endif %}
+                    <div class="col-4 col-md"><input type="text" name="category" class="form-control" placeholder="Tag"></div>
+                    <div class="col-4 col-md"><input type="number" name="estimated_minutes" class="form-control" placeholder="Min" min="0"></div>
+                    <div class="col-4 col-md">
+                        <select name="recurrence_rule" class="form-select">
+                            <option value="">Once</option><option value="daily">Daily</option><option value="every_2_days">2 days</option>
+                            <option value="weekly">Weekly</option><option value="every_2_weeks">2 weeks</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="qsub">
+                    <span class="hint"><i class="bi bi-escape"></i> Esc close &bull; Enter quick-add</span>
+                    <button type="submit" class="btn btn-dark rounded-pill">Add</button>
+                </div>
+            </div>
+        </div>
+    </form>
+    <div class="qsuggest" id="qSuggest"></div>
+</div>
+
+<!-- Calendar view -->
+{% if view == 'calendar' and lane == 'task' %}
+{% set first_day, days_in_month = monthrange(cal_year, cal_month) %}
+{% set pm = 12 if cal_month == 1 else cal_month - 1 %}
+{% set py = cal_year - 1 if cal_month == 1 else cal_year %}
+{% set nm = 1 if cal_month == 12 else cal_month + 1 %}
+{% set ny = cal_year + 1 if cal_month == 12 else cal_year %}
+<div>
+    <div class="cal-nav">
+        <a href="?lane=task&view=calendar&cal_month={{ pm }}&cal_year={{ py }}" class="btn btn-outline-secondary rounded-pill"><i class="bi bi-chevron-left"></i></a>
+        <span class="cal-title">{{ month_name[cal_month] }} {{ cal_year }}</span>
+        <div style="display:flex;gap:4px;">
+            <button class="btn btn-outline-secondary rounded-pill" onclick="location.href='?lane=task&view=calendar&cal_month={{ date.today().month }}&cal_year={{ date.today().year }}'">Today</button>
+            <a href="?lane=task&view=calendar&cal_month={{ nm }}&cal_year={{ ny }}" class="btn btn-outline-secondary rounded-pill"><i class="bi bi-chevron-right"></i></a>
+        </div>
+    </div>
+    <div class="cal-grid">
+        {% for di in range(7) %}<div class="cal-hdr">{{ day_name[di][:3] }}</div>{% endfor %}
+        {% for c in range(first_day) %}<div class="cal-day other-month"></div>{% endfor %}
+        {% for day in range(1, days_in_month + 1) %}
+        {% set td = date.today() %}
+        {% set is_td = (cal_year == td.year and cal_month == td.month and day == td.day) %}
+        {% set dt = cal_map.get(day, []) %}
+        <div class="cal-day{% if is_td %} today{% endif %}" onclick="{% if dt %}openDetail({{ dt[0].id }}){% endif %}">
+            <div class="day-num">{{ day }}</div>
+            <div style="display:flex;gap:2px;flex-wrap:wrap;max-width:100%;">
+                {% for t in dt[:3] %}
+                <span class="cal-dot {{ t.priority }}" title="{{ t.title }}"></span>
+                {% endfor %}
+            </div>
+            {% if dt|length > 3 %}
+            <span class="cal-more" title="{% for t in dt %}{{ t.title }}{% if not loop.last %}&#10;{% endif %}{% endfor %}">+{{ dt|length - 3 }} more</span>
+            {% endif %}
+            <div class="cal-tooltip">{% for t in dt %}<div class="ct-item{% if t.status == 'done' %}" style="opacity:0.4;text-decoration:line-through;{% endif %}"><span class="ct-dot" style="display:inline-block;width:5px;height:5px;border-radius:50%;background:{% if t.priority == 'high' %}#d64545{% elif t.priority == 'medium' %}#d99a2b{% else %}#cbd5e1{% endif %};"></span> {{ t.title }}</div>{% endfor %}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+{% elif view == 'board' and lane == 'task' %}
+<div class="kanban-ms" id="itemList">
+    {% set labels = {'to_do':'To Do','in_progress':'In Progress','done':'Done'} %}
+    {% for st in ['to_do','in_progress','done'] %}
+    <div class="kanban-ms-col">
+        <h6>{{ labels[st] }} <span class="count">{{ items[st]|length }}</span></h6>
+        {% for item in items[st] %}
+        <div class="kcard" onclick="openDetail({{ item.id }})">
+            <div class="kcard-title">{{ item.title }}</div>
+            <div class="kcard-meta">
+                {% if item.due_date %}<span style="font-size:0.6rem;padding:1px 7px;border-radius:999px;background:var(--surface-soft);color:{% if item.due_date < date.today() %}var(--danger){% elif item.due_date == date.today() %}var(--accent-dark){% else %}var(--text-secondary){% endif %}">{{ item.due_date }}</span>{% endif %}
+                {% if item.category %}<span class="ms-badge cat">{{ item.category }}</span>{% endif %}
+                {% if item.recurrence_rule %}<span class="ms-badge rec"><i class="bi bi-arrow-repeat"></i></span>{% endif %}
+                {% set mt = item.milestones|length %}
+                {% if mt > 0 %}<span class="ms-badge">{{ item.milestones|selectattr('is_done','equalto',true)|list|length }}/{{ mt }}</span>{% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="text-muted small text-center py-4">Empty</div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</div>
+
+{% elif lane == "task" %}
+<div class="ms-list" id="itemList">
+{% for item in items %}
+<div class="ms-card {% if item.status == 'done' %}done{% endif %}" data-id="{{ item.id }}">
+    <div class="edge {{ item.priority }}"></div>
+    <button class="ms-check {% if item.status == 'done' %}checked{% endif %}" onclick="toggleItem({{ item.id }}, this)">{% if item.status == 'done' %}<i class="bi bi-check"></i>{% endif %}</button>
+    <div class="ms-body" onclick="openDetail({{ item.id }})" style="cursor:pointer;">
+        <span class="ms-title">{{ item.title }}</span>
+        <div class="ms-badges" style="display:flex;gap:4px;flex-wrap:wrap;">
+            {% if item.category %}<span class="ms-badge cat">{{ item.category }}</span>{% endif %}
+            {% if item.estimated_minutes %}<span class="ms-badge est"><i class="bi bi-clock"></i> {{ item.estimated_minutes }}m</span>{% endif %}
+            {% if item.recurrence_rule %}<span class="ms-badge rec"><i class="bi bi-arrow-repeat"></i></span>{% endif %}
+        </div>
+    </div>
+    <div class="ms-meta">
+        {% if item.due_date %}<span class="due {% if item.due_date < date.today() and item.status != 'done' %}overdue{% elif item.due_date == date.today() %}today{% else %}neutral{% endif %}">{{ item.due_date }}</span>{% endif %}
+    </div>
+    <div class="ms-actions">
+        <button onclick="event.stopPropagation();openDetail({{ item.id }})" title="Details"><i class="bi bi-pencil"></i></button>
+        <button onclick="event.stopPropagation();deleteItem({{ item.id }}, this)" title="Delete"><i class="bi bi-trash3"></i></button>
+    </div>
+</div>
+{% else %}
+<div class="empty-state"><i class="bi bi-inbox"></i><h6 class="fw-bold">All clear</h6><p class="small">No {{ lane }}s yet. Type above to add one.</p></div>
+{% endfor %}
+</div>
+
+{% elif lane == "goal" %}
+<div style="margin-bottom:14px;display:flex;align-items:center;gap:12px;">
+    <h5 style="margin:0;font-weight:700;font-size:1.1rem;"><i class="bi bi-bullseye" style="color:var(--success);"></i> Goals</h5>
+    <span style="font-size:0.72rem;color:var(--text-secondary);background:var(--surface-soft);padding:3px 12px;border-radius:999px;">{{ stats.done_goals }}/{{ stats.total_goals }} done</span>
+</div>
+<div id="itemList">
+{% for item in items %}
+{% set mt = item.milestones|length %}
+{% set md = item.milestones|selectattr('is_done','equalto',true)|list|length %}
+{% set pct = (md/mt*100)|round if mt > 0 else 0 %}
+{% set cc = '#1e9e63' if pct >= 100 else '#d99a2b' if pct >= 50 else '#cbd5e1' %}
+{% set pc = 'high' if item.priority == 'high' else 'medium' if item.priority == 'medium' else 'low' %}
+<div class="gp-card" data-id="{{ item.id }}" style="position:relative;overflow:hidden;">
+    <div class="edge {{ pc }}" style="position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:2px 0 0 2px;background:{% if pc == 'high' %}#d64545{% elif pc == 'medium' %}#d99a2b{% else %}#cbd5e1{% endif %};"></div>
+    <div class="gp-header">
+        <div>
+            <div class="gp-title" contenteditable="true" onblur="inlineEdit({{ item.id }},'title',this.textContent.trim())">{{ item.title }}</div>
+            <div class="gp-desc" contenteditable="true" onblur="if(this.textContent.trim())inlineEdit({{ item.id }},'description',this.textContent.trim())" style="{% if not item.description %}color:var(--text-muted);font-style:italic;{% endif %}">{% if item.description %}{{ item.description }}{% else %}Click to add description…{% endif %}</div>
+            <div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;">
+                {% if item.category %}<span class="ms-badge cat">{{ item.category }}</span>{% endif %}
+                {% if item.due_date %}<span class="ms-badge" style="{% if item.due_date < date.today() and item.status != 'done' %}color:var(--danger);background:rgba(214,69,69,0.08);{% elif item.due_date == date.today() %}color:var(--accent-dark);background:rgba(217,154,43,0.1);{% endif %}"><i class="bi bi-calendar"></i> {{ item.due_date }}</span>{% endif %}
+                {% if item.estimated_minutes %}<span class="ms-badge est"><i class="bi bi-clock"></i> {{ item.estimated_minutes }}m</span>{% endif %}
+                {% if mt > 0 %}<span class="ms-badge">{{ md }}/{{ mt }}</span>{% endif %}
+            </div>
+        </div>
+        <div class="circ-progress">
+            <svg width="42" height="42" viewBox="0 0 42 42"><circle cx="21" cy="21" r="17" fill="none" stroke="var(--border)" stroke-width="3.5"/><circle cx="21" cy="21" r="17" fill="none" stroke="{{ cc }}" stroke-width="3.5" stroke-dasharray="{{ pct * 1.07 }} 107" stroke-linecap="round"/></svg>
+            <div class="cp-text" style="color:{{ cc }};font-size:0.68rem;">{{ pct }}%</div>
+        </div>
+    </div>
+    {% if mt > 0 %}
+    <div style="margin-top:10px;width:100%;height:4px;background:var(--border);border-radius:2px;overflow:hidden;">
+        <div style="height:100%;width:{{ pct }}%;background:{{ cc }};border-radius:2px;transition:width 0.4s ease;"></div>
+    </div>
+    {% endif %}
+    <div class="status-chips" style="margin-top:10px;">{% for s in ['not_started','in_progress','on_hold','done'] %}<span class="sc {% if item.status == s %}active{% endif %}" onclick="updateStatus({{ item.id }},'{{ s }}')">{{ s.replace('_',' ') }}</span>{% endfor %}</div>
+    <div class="gp-progress-row" style="margin-top:8px;">
+        <div style="display:flex;gap:4px;">
+            <button class="btn btn-sm btn-outline-secondary rounded-pill" style="font-size:0.6rem;padding:2px 10px;" onclick="openDetail({{ item.id }})"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-outline-secondary rounded-pill" style="font-size:0.6rem;padding:2px 10px;" onclick="deleteItem({{ item.id }}, this)"><i class="bi bi-trash3"></i></button>
+        </div>
+    </div>
+    <div class="gp-milestones">
+        <div class="ms-toggle" onclick="this.querySelector('.arr').classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+            <span class="arr">&#9654;</span> {{ mt }} milestone{{ 's' if mt != 1 }}
+        </div>
+        <div class="ms-body">
+            {% for ms in item.milestones %}
+            <div class="ms-row {% if ms.is_done %}done{% endif %}">
+                <button class="msb {% if ms.is_done %}checked{% endif %}" onclick="toggleMs({{ ms.id }},this)">{% if ms.is_done %}<i class="bi bi-check"></i>{% endif %}</button>
+                <span>{{ ms.title }}</span>
+            </div>
+            {% endfor %}
+            <div class="ms-add"><input type="text" class="form-control form-control-sm" placeholder="Add milestone..." style="width:auto;min-width:140px;" onkeydown="if(event.key==='Enter'&&this.value.trim())addMs({{ item.id }},this)"><button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="var i=this.previousElementSibling;if(i.value.trim())addMs({{ item.id }},i)">+</button></div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="empty-state"><i class="bi bi-bullseye"></i><h6 class="fw-bold">No goals yet</h6><p class="small">Set a goal and break it into milestones. What matters to you right now?</p></div>
+{% endfor %}
+</div>
+
+{% elif lane == "future_plan" %}
+<div id="itemList">
+{% for item in items %}
+<div class="fp-card" style="flex-direction:column;align-items:stretch;gap:8px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+        <div class="fp-bulb"><i class="bi bi-lightbulb"></i></div>
+        <span class="fp-title" contenteditable="true" onblur="inlineEdit({{ item.id }},'title',this.textContent.trim())">{{ item.title }}</span>
+        <div class="fp-actions">
+            <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="toggleAIPanel({{ item.id }})"><i class="bi bi-stars"></i> AI</button>
+            <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="promoteItem({{ item.id }},'task')"><i class="bi bi-arrow-up-circle"></i> Task</button>
+            <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="promoteItem({{ item.id }},'goal')"><i class="bi bi-bullseye"></i> Goal</button>
+            <button class="btn btn-sm btn-outline-danger rounded-pill" onclick="deleteItem({{ item.id }},this)"><i class="bi bi-trash3"></i></button>
+        </div>
+    </div>
+    <div class="ai-panel" id="aiPanel{{ item.id }}">
+        <div class="ai-input-row">
+            <input type="text" id="aiInput{{ item.id }}" placeholder="Ask AI about this idea…" onkeydown="if(event.key==='Enter'&&this.value.trim())askAI({{ item.id }},this.value)">
+            <button class="btn btn-dark btn-sm" onclick="var i=document.getElementById('aiInput{{ item.id }}');if(i.value.trim())askAI({{ item.id }},i.value)"><i class="bi bi-send"></i></button>
+        </div>
+        <div class="ai-actions">
+            <button class="btn btn-outline-dark" onclick="askAI({{ item.id }},'Expand this idea with more details and next steps','diagram')"><i class="bi bi-diagram-3"></i> Diagram</button>
+            <button class="btn btn-outline-dark" onclick="askAI({{ item.id }},'Create a flowchart of the steps to execute this idea','flowchart')"><i class="bi bi-flow-chart"></i> Flowchart</button>
+            <button class="btn btn-outline-dark" onclick="askAI({{ item.id }},'Break this idea down into actionable tasks')"><i class="bi bi-list-check"></i> Breakdown</button>
+        </div>
+        <div class="ai-response" id="aiResp{{ item.id }}"></div>
+        <div class="ai-diagram" id="aiDiagram{{ item.id }}"></div>
+    </div>
+</div>
+{% else %}
+<div class="empty-state"><i class="bi bi-lightbulb"></i><h6 class="fw-bold">No ideas yet</h6><p class="small">Capture your ideas here. Promote them later.</p></div>
+{% endfor %}
+</div>
+{% endif %}
+
+<!-- Detail Modal -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+<div class="modal-dialog modal-lg modal-dialog-centered">
+<div class="modal-content" style="border-radius:18px;border:none;box-shadow:0 24px 64px rgba(0,0,0,0.18);">
+    <div class="modal-header" style="border:none;padding:20px 24px 0;">
+        <h5 class="modal-title fw-bold" id="detailTitle" style="font-size:1.05rem;"></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body" style="padding:16px 24px;">
+        <form id="detailForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="item_id" id="detailItemId">
+            <div class="detail-section">
+                <label>Title</label>
+                <input type="text" name="title" id="detailTitleInput" class="form-control">
+            </div>
+            <div class="detail-section">
+                <label>Description</label>
+                <textarea name="description" id="detailDesc" class="form-control" rows="2"></textarea>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-4 detail-section">
+                    <label>Priority</label>
+                    <select name="priority" id="detailPriority" class="form-select"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
+                </div>
+                <div class="col-md-4 detail-section">
+                    <label>Status</label>
+                    <select name="status" id="detailStatus" class="form-select"><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="on_hold">On hold</option><option value="done">Done</option></select>
+                </div>
+                <div class="col-md-4 detail-section">
+                    <label>Due date</label>
+                    <input type="date" name="due_date" id="detailDue" class="form-control">
+                </div>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-4 detail-section">
+                    <label>Category</label>
+                    <input type="text" name="category" id="detailCategory" class="form-control">
+                </div>
+                <div class="col-md-4 detail-section">
+                    <label>Est. minutes</label>
+                    <input type="number" name="estimated_minutes" id="detailEst" class="form-control" min="0">
+                </div>
+                <div class="col-md-4 detail-section">
+                    <label>Repeat</label>
+                    <select name="recurrence_rule" id="detailRecurrence" class="form-select">
+                        <option value="">Never</option><option value="daily">Daily</option><option value="every_2_days">Every 2 days</option>
+                        <option value="weekly">Weekly</option><option value="every_2_weeks">Every 2 weeks</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option>
+                    </select>
+                </div>
+            </div>
+        </form>
+    </div>
+    <div class="modal-footer" style="border:none;padding:0 24px 20px;">
+        <button class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal" style="font-size:0.8rem;">Cancel</button>
+        <button class="btn btn-dark rounded-pill px-4" onclick="saveDetail()" style="font-size:0.8rem;">Save changes</button>
+    </div>
+</div>
+</div>
+</div>
+
+<script>
+var csrf = '{{ csrf_token() }}';
+var addUrl = '{{ add_url }}';
+var toggleUrl = '{{ toggle_url }}';
+var updateBase = '{{ update_base }}';
+var dataBase = '{{ data_base }}';
+var deleteBase = '{{ delete_base }}';
+var promoteBase = '{{ promote_base }}';
+var msToggleUrl = '{{ milestone_toggle_url }}';
+var msAddBase = '{{ milestone_add_base }}';
+
+// ===== FOCUS TIMER =====
+var FT = { mins:25, remaining:1500, running:false, interval:null };
+function toggleFocusTimer(e) {
+    e.stopPropagation();
+    document.getElementById('ftDropdown').classList.toggle('open');
+}
+function setFTMode(el, mins) {
+    el.parentElement.querySelectorAll('span').forEach(function(s){s.classList.remove('active');});
+    el.classList.add('active');
+    resetFT();
+    FT.mins = mins; FT.remaining = mins * 60;
+    upFT();
+}
+function upFT() {
+    var m = Math.floor(FT.remaining / 60), s = FT.remaining % 60;
+    var t = String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+    document.getElementById('ftDisplay').textContent = t;
+    document.getElementById('ftDisplayPill').textContent = t;
+}
+function startFT() {
+    if (FT.running) return;
+    FT.running = true;
+    document.getElementById('ftStartBtn').style.display = 'none';
+    document.getElementById('ftPauseBtn').style.display = '';
+    document.getElementById('ftDropdown').classList.remove('ft-ringing');
+    document.getElementById('focusTimerPill').classList.add('active');
+    FT.interval = setInterval(function(){
+        FT.remaining--;
+        upFT();
+        if (FT.remaining <= 0) {
+            clearInterval(FT.interval); FT.running = false;
+            document.getElementById('ftStartBtn').style.display = '';
+            document.getElementById('ftPauseBtn').style.display = 'none';
+            document.getElementById('ftDropdown').classList.add('ft-ringing');
+            document.getElementById('focusTimerPill').classList.remove('active');
+            showToast('Focus session complete!','success');
+            FT.remaining = FT.mins * 60; upFT();
+        }
+    }, 1000);
+}
+function pauseFT() {
+    clearInterval(FT.interval); FT.running = false;
+    document.getElementById('ftStartBtn').style.display = '';
+    document.getElementById('ftPauseBtn').style.display = 'none';
+    document.getElementById('focusTimerPill').classList.remove('active');
+}
+function resetFT() {
+    clearInterval(FT.interval); FT.running = false;
+    FT.remaining = FT.mins * 60; upFT();
+    document.getElementById('ftStartBtn').style.display = '';
+    document.getElementById('ftPauseBtn').style.display = 'none';
+    document.getElementById('ftDropdown').classList.remove('ft-ringing');
+    document.getElementById('focusTimerPill').classList.remove('active');
+}
+document.addEventListener('click', function(e){
+    var dd = document.getElementById('ftDropdown');
+    if (dd.classList.contains('open') && !e.target.closest('#focusTimerPill') && !e.target.closest('#ftDropdown')) {
+        dd.classList.remove('open');
+    }
+});
+
+// ===== QUICK-ADD BAR =====
+var qbar = document.getElementById('qaddBar');
+var qin = document.getElementById('qinput');
+var addForm = document.getElementById('addForm');
+var qSuggest = document.getElementById('qSuggest');
+
+function collapseBar() {
+    qbar.classList.add('collapsed'); qbar.classList.remove('expanded');
+    addForm.style.display = 'none'; qSuggest.classList.remove('show'); qSuggest.innerHTML = '';
+    qin.blur();
+}
+
+function insertCard(d) {
+    var list = document.getElementById('itemList');
+    if (!list || !d.card_html) return;
+    var empty = list.querySelector('.empty-state');
+    if (empty) empty.remove();
+    var tmp = document.createElement('div');
+    tmp.innerHTML = d.card_html;
+    var card = tmp.firstElementChild;
+    if (card) { card.style.animation = 'fadeSlide 0.2s ease'; list.insertBefore(card, list.firstChild); }
+    collapseBar();
+}
+
+function submitAdd() {
+    var fd = new FormData(addForm);
+    fd.set('lane', addForm.dataset.lane);
+    var raw = qin.value.trim();
+    if (!raw && !fd.get('title')) return;
+    if (raw && !fd.get('title')) { fd.set('q', raw); }
+    var laneVal = addForm.dataset.lane;
+    var titleVal = raw || fd.get('title') || '';
+    fetch(addUrl, {method:'POST', headers:{'X-CSRFToken':csrf}, body:fd})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) { qin.value = ''; showToast('Added!'); insertCard(d); }
+            else { showToast(d.error||'Error','error'); }
+        });
+}
+
+qin.addEventListener('keydown', function(e){
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        if (qbar.classList.contains('collapsed')) {
+            var v = qin.value.trim();
+            if (!v) return;
+            var fd = new FormData();
+            fd.append('csrf_token', csrf);
+            fd.append('lane', addForm.dataset.lane);
+            fd.append('q', v);
+            fetch(addUrl, {method:'POST', headers:{'X-CSRFToken':csrf}, body:fd})
+                .then(function(r){return r.json()})
+                .then(function(d){
+                    if (d.ok) { qin.value = ''; showToast('Added!'); insertCard(d); }
+                    else { showToast(d.error||'Error','error'); }
+                });
+        } else {
+            submitAdd();
+        }
+    }
+});
+
+qin.addEventListener('focus', function(){
+    qbar.classList.remove('collapsed'); qbar.classList.add('expanded');
+    addForm.style.display = 'block';
+});
+document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape' && qbar.classList.contains('expanded')) {
+        collapseBar();
+    }
+    if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.target.closest('input,textarea,select,[contenteditable]')) {
+        e.preventDefault(); qin.focus();
+    }
+});
+
+// Click outside to collapse
+document.addEventListener('click', function(e){
+    if (qbar.classList.contains('expanded') && !qbar.contains(e.target)) {
+        collapseBar();
+    }
+});
+
+// Suggestion engine
+qin.addEventListener('input', function(){
+    var val = qin.value.trim().toLowerCase();
+    if (!val || !qbar.classList.contains('expanded')) { qSuggest.classList.remove('show'); qSuggest.innerHTML = ''; return; }
+    var titles = [], cats = [];
+    document.querySelectorAll('.ms-title, .gp-title, .fp-title, .kcard-title').forEach(function(el){
+        var t = (el.textContent || '').trim();
+        if (t && t.toLowerCase().indexOf(val) > -1) titles.push(t);
+    });
+    document.querySelectorAll('.ms-badge.cat, .ms-chip.cat').forEach(function(el){
+        var c = (el.textContent || '').trim();
+        if (c && c.toLowerCase().indexOf(val) > -1 && cats.indexOf(c) === -1) cats.push(c);
+    });
+    var html = '';
+    if (cats.length) {
+        cats.slice(0, 5).forEach(function(c){ html += '<div class="qs-item" onclick="applySuggestion(\''+c.replace(/'/g,"\\'")+'\')"><span class="qs-icon" style="background:rgba(139,92,246,0.08);color:#8b5cf6;"><i class="bi bi-tag"></i></span><span class="qs-label">'+escapeHtml(c)+'</span><span class="qs-hint">Tag</span></div>'; });
+    }
+    if (titles.length) {
+        titles.slice(0, 5).forEach(function(t){ html += '<div class="qs-item" onclick="applySuggestion(\''+t.replace(/'/g,"\\'")+'\')"><span class="qs-icon" style="background:rgba(20,24,31,0.06);"><i class="bi bi-list-task"></i></span><span class="qs-label">'+escapeHtml(t)+'</span><span class="qs-hint">Existing</span></div>'; });
+    }
+    if (html) { qSuggest.innerHTML = html; qSuggest.classList.add('show'); }
+    else { qSuggest.classList.remove('show'); qSuggest.innerHTML = ''; }
+});
+
+function applySuggestion(text) {
+    qin.value = text;
+    qSuggest.classList.remove('show'); qSuggest.innerHTML = '';
+    if (qbar.classList.contains('collapsed')) {
+        qbar.classList.remove('collapsed'); qbar.classList.add('expanded');
+        addForm.style.display = 'block';
+    }
+    qin.focus();
+    // Auto-fill category if it's a known tag
+    var catField = addForm.querySelector('[name="category"]');
+    if (catField) {
+        document.querySelectorAll('.ms-badge.cat').forEach(function(el){
+            if ((el.textContent||'').trim() === text) catField.value = text;
+        });
+    }
+}
+
+addForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    submitAdd();
+});
+
+// ===== SEARCH (client-side only, no hard reload) =====
+var searchTimeout;
+function onSearch(val) {
+    clearTimeout(searchTimeout);
+    var cb = document.getElementById('searchClear');
+    if (val) { cb.classList.add('show'); } else { cb.classList.remove('show'); }
+    var q = val.toLowerCase().trim();
+    document.querySelectorAll('.ms-card, .gp-card, .fp-card, .kcard').forEach(function(c){
+        c.style.display = (!q || c.textContent.toLowerCase().indexOf(q) > -1) ? '' : 'none';
+    });
+    document.querySelectorAll('.empty-state').forEach(function(e){ e.style.display = q ? 'none' : ''; });
+}
+
+// ===== TOGGLE =====
+function toggleItem(id, btn) {
+    fetch(toggleUrl.replace('__ID__', id), {method:'POST', headers:{'X-CSRFToken':csrf}})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) {
+                btn.classList.toggle('checked');
+                var card = btn.closest('.ms-card');
+                card.classList.toggle('done');
+                btn.innerHTML = d.status === 'done' ? '<i class="bi bi-check"></i>' : '';
+                if (d.status === 'done' && d.new_id) { showToast('Done! New recurrence set for '+d.new_due); }
+                else { showToast(d.status === 'done' ? 'Done!' : 'Reopened'); }
+                afterToggleCheck(d.status, 'task');
+            } else { showToast('Error','error'); }
+        });
+}
+
+// ===== DETAIL MODAL =====
+var detailModal = null;
+document.addEventListener('DOMContentLoaded', function(){
+    detailModal = new bootstrap.Modal(document.getElementById('detailModal'));
+});
+
+var _detailCache = {};
+
+function openDetail(id) {
+    _detailCache.id = id;
+    document.getElementById('detailItemId').value = id;
+    fetch(dataBase + id)
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) {
+                document.getElementById('detailTitle').textContent = d.task.title;
+                document.getElementById('detailTitleInput').value = d.task.title;
+                document.getElementById('detailDesc').value = d.task.description;
+                document.getElementById('detailPriority').value = d.task.priority;
+                document.getElementById('detailStatus').value = d.task.status;
+                document.getElementById('detailDue').value = d.task.due_date;
+                document.getElementById('detailCategory').value = d.task.category;
+                document.getElementById('detailEst').value = d.task.estimated_minutes;
+                document.getElementById('detailRecurrence').value = d.task.recurrence_rule;
+                if (detailModal) detailModal.show();
+            } else { showToast('Error loading item','error'); }
+        });
+}
+
+function saveDetail() {
+    var id = document.getElementById('detailItemId').value;
+    if (!id) return;
+    var fd = new FormData(document.getElementById('detailForm'));
+    fetch(updateBase + id, {method:'POST', headers:{'X-CSRFToken':csrf}, body:fd})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) { showToast('Saved!'); detailModal.hide(); }
+            else { showToast(d.error||'Error','error'); }
+        });
+}
+
+// ===== INLINE EDIT =====
+function inlineEdit(id, field, value) {
+    if (!value) return;
+    var fd = new FormData();
+    fd.append(field, value);
+    fetch(updateBase + id, {method:'POST', headers:{'X-CSRFToken':csrf}, body:fd})
+        .then(function(r){return r.json()})
+        .then(function(d){ if (d.ok) showToast('Saved'); else showToast(d.error||'Error','error'); });
+}
+
+// ===== DELETE =====
+function deleteItem(id, el) {
+    if (!confirm('Delete this item?')) return;
+    fetch(deleteBase + id, {method:'POST', headers:{'X-CSRFToken':csrf}})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) {
+                var card = el.closest('[data-id]')||el.closest('.gp-card')||el.closest('.fp-card')||el.closest('.ms-card');
+                if (card) { card.style.transition='opacity 0.15s'; card.style.opacity='0'; setTimeout(function(){card.remove();showToast('Deleted');},150); }
+            } else { showToast('Error','error'); }
+        });
+}
+
+// ===== MILESTONE TOGGLE =====
+function toggleMs(id, btn) {
+    fetch(msToggleUrl.replace('__ID__', id), {method:'POST', headers:{'X-CSRFToken':csrf}})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) {
+                btn.classList.toggle('checked');
+                btn.closest('.ms-row').classList.toggle('done');
+                btn.innerHTML = d.is_done ? '<i class="bi bi-check"></i>' : '';
+                var card = btn.closest('.gp-card');
+                if (card) {
+                    var cp = card.querySelector('.cp-text');
+                    if (cp) cp.textContent = d.progress + '%';
+                    var pi = card.querySelector('.gp-pi');
+                    if (pi) {
+                        var parts = pi.textContent.split('/');
+                        var total = parts[1]||'0';
+                        pi.textContent = Math.round(d.progress*parseInt(total)/100)+'/'+total+(pi.textContent.includes('sub-task')?' sub-task':' milestone')+(total!=1?'s':'');
+                    }
+                }
+                showToast(d.is_done ? 'Done!' : 'Undone');
+            } else { showToast('Error','error'); }
+        });
+}
+
+// ===== ADD MILESTONE =====
+function addMs(itemId, input) {
+    var title = input.value.trim();
+    if (!title) return;
+    var fd = new FormData(); fd.append('title', title); fd.append('csrf_token', csrf);
+    fetch(msAddBase + itemId, {method:'POST', headers:{'X-CSRFToken':csrf}, body:fd})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) {
+                input.value=''; showToast('Added!');
+                var card = input.closest('.gp-card');
+                if (card) {
+                    var msBody = card.querySelector('.ms-body.open');
+                    if (msBody) {
+                        var tmp = document.createElement('div');
+                        tmp.innerHTML = d.ms_html;
+                        var row = tmp.firstElementChild;
+                        if (row) { row.style.animation = 'fadeSlide 0.15s ease'; msBody.insertBefore(row, msBody.querySelector('.ms-add')); }
+                    }
+                    var cp = card.querySelector('.cp-text');
+                    if (cp) cp.textContent = d.progress + '%';
+                    var countSpan = card.querySelector('.ms-badge');
+                    if (countSpan) countSpan.textContent = d.done + '/' + d.total;
+                    var toggle = card.querySelector('.ms-toggle');
+                    if (toggle) toggle.innerHTML = '<span class="arr">&#9654;</span> ' + d.total + ' milestone' + (d.total != 1 ? 's' : '');
+                    var bar = card.querySelector('[style*="background:var(--border);border-radius:2px;overflow:hidden;"]');
+                    if (bar) bar.innerHTML = '<div style="height:100%;width:'+d.progress+'%;background:'+(d.progress>=100?'#1e9e63':d.progress>=50?'#d99a2b':'#cbd5e1')+';border-radius:2px;transition:width 0.4s ease;"></div>';
+                }
+            } else { showToast(d.error||'Error','error'); }
+        });
+}
+
+// ===== PROMOTE =====
+function promoteItem(id, target) {
+    var fd = new FormData(); fd.append('target', target);
+    fetch(promoteBase + id, {method:'POST', headers:{'X-CSRFToken':csrf}, body:fd})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) {
+                showToast('Promoted to '+target);
+                var card = document.querySelector('.fp-card[style*="flex-direction:column"]')||document.querySelector('[data-id="'+id+'"]');
+                if (card) { card.style.transition='opacity 0.15s'; card.style.opacity='0'; setTimeout(function(){card.remove();},150); }
+            } else { showToast('Error','error'); }
+        });
+}
+
+// ===== STATUS UPDATE =====
+function updateStatus(id, status) {
+    var fd = new FormData(); fd.append('status', status);
+    fetch(updateBase + id, {method:'POST', headers:{'X-CSRFToken':csrf}, body:fd})
+        .then(function(r){return r.json()})
+        .then(function(d){
+            if (d.ok) {
+                showToast('Status: '+status.replace('_',' '));
+                var card = document.querySelector('.gp-card[data-id="'+id+'"]');
+                if (card) {
+                    card.querySelectorAll('.sc').forEach(function(c){ c.classList.remove('active'); });
+                    var sel = '.sc[onclick*="updateStatus('+id+',\''+status+'\')"]';
+                    var chip = card.querySelector(sel);
+                    if (chip) chip.classList.add('active');
+                }
+            } else { showToast('Error','error'); }
+        });
+}
+
+// ===== PROACTIVE SUGGESTIONS =====
+var sugState = { doneStreak: 0, lastDoneTime: 0, addedIds: [], sugTimer: null };
+
+function showSug(icon, text, btnText, btnAction) {
+    var s = document.getElementById('suggestion');
+    document.getElementById('sugIcon').textContent = icon;
+    document.getElementById('sugText').textContent = text;
+    var b = document.getElementById('sugBtn');
+    if (btnText && btnAction) {
+        b.style.display = '';
+        b.textContent = btnText;
+        b.onclick = btnAction;
+    } else { b.style.display = 'none'; }
+    s.classList.add('show');
+    clearTimeout(sugState.sugTimer);
+    sugState.sugTimer = setTimeout(dismissSug, 8000);
+}
+function dismissSug() {
+    document.getElementById('suggestion').classList.remove('show');
+    clearTimeout(sugState.sugTimer);
+}
+
+// Init Mermaid and check for overdue tasks on load
+document.addEventListener('DOMContentLoaded', function(){
+    if (typeof mermaid !== 'undefined') { try { mermaid.initialize({ startOnLoad: false }); } catch(e){} }
+    var overdueCount = parseInt('{{ this_week|length }}' || '0');
+    if (overdueCount >= 5) {
+        setTimeout(function(){
+            showSug('\u26A0\uFE0F', 'You have ' + overdueCount + ' overdue tasks. Want to plan your week?', '/plan', function(){ aiQuick('/plan'); dismissSug(); });
+        }, 1500);
+    }
+});
+
+// Hook into add form submit to check for issues
+function afterAddCheck(title, lane) {
+    // Very short title
+    if (title.trim().split(/\s+/).length < 2) {
+        showSug('\uD83D\uDCDD', 'Short title — want to add more detail? Click to edit.', null, null);
+        return;
+    }
+    // Check for duplicates in DOM
+    var cards = document.querySelectorAll('.ms-card .ms-title, .gp-card .gp-title, .fp-card .fp-title');
+    var match = null;
+    var titleLower = title.toLowerCase().trim();
+    cards.forEach(function(c){
+        if (c.textContent.toLowerCase().trim() === titleLower) {
+            match = c.textContent.trim();
+        }
+    });
+    if (match) {
+        showSug('\uD83D\uDD0D', 'You already have "' + match + '". Duplicate?', null, null);
+        return;
+    }
+    // Tasks without due dates
+    if (lane === 'task') {
+        var hasDue = document.querySelector('.ms-card:last-child .due');
+        if (!hasDue) {
+            showSug('\uD83D\uDCC5', 'No due date set. Want to add one?', 'Set date', function(){
+                var lastCard = document.querySelector('.ms-card:last-child');
+                if (lastCard) {
+                    var id = lastCard.dataset.id;
+                    if (id) openDetail(parseInt(id));
+                }
+                dismissSug();
+            });
+        }
+    }
+}
+
+// Override the addForm submit to also run afterAddCheck
+// We store original lane and title from the response
+var _origSubmit = addForm ? addForm.submit : null;
+
+// After toggle: track streak and check for all-clear
+function afterToggleCheck(status, lane) {
+    if (status === 'done') {
+        var now = Date.now();
+        sugState.doneStreak++;
+        sugState.lastDoneTime = now;
+        // Check streak
+        if (sugState.doneStreak === 3) {
+            showSug('\uD83C\uDF1F', '3 in a row! You\'re on fire today!', null, null);
+        } else if (sugState.doneStreak === 5) {
+            showSug('\uD83C\uDFC6', '5 tasks done! That\'s a solid session.', '/motivate', function(){ aiQuick('/motivate'); dismissSug(); });
+        }
+        // Check if all tasks visible are done
+        var visibleCards = document.querySelectorAll('.ms-card:not(.done)');
+        if (visibleCards.length === 0) {
+            var totalCards = document.querySelectorAll('.ms-card').length;
+            if (totalCards > 0) {
+                showSug('\u2705', 'All tasks done! Time to celebrate.', '/next', function(){ aiQuick('/next'); dismissSug(); });
+            }
+        }
+    } else {
+        sugState.doneStreak = 0;
+    }
+    // Reset streak after 10min of inactivity
+    clearTimeout(sugState._streakTimer);
+    sugState._streakTimer = setTimeout(function(){ sugState.doneStreak = 0; }, 600000);
+}
+
+// === AI Idea Assistant ===
+var _aiLoading = {};
+function toggleAIPanel(id) {
+    var p = document.getElementById('aiPanel'+id);
+    if (p) { p.classList.toggle('open'); if (p.classList.contains('open'))
+        setTimeout(function(){ var i=document.getElementById('aiInput'+id); if(i) i.focus(); }, 100); }
+}
+function askAI(id, msg, mode) {
+    mode = mode || 'chat';
+    if (_aiLoading[id]) return;
+    var respDiv = document.getElementById('aiResp'+id);
+    var diagDiv = document.getElementById('aiDiagram'+id);
+    if (!respDiv) return;
+    respDiv.innerHTML = '<span class="ai-spinner"></span> Thinking...';
+    respDiv.classList.add('show');
+    diagDiv.classList.remove('show');
+    diagDiv.innerHTML = '';
+    _aiLoading[id] = true;
+    var fd = new FormData();
+    fd.append('item_id', id);
+    fd.append('prompt', msg);
+    fd.append('mode', mode);
+    fetch('/mine/ai-idea', { method:'POST', body:fd })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        _aiLoading[id] = false;
+        if (d.ok) {
+            if (mode === 'diagram' || mode === 'flowchart') {
+                respDiv.style.display = 'none';
+                renderMermaid(id, d.reply);
+            } else {
+                respDiv.style.display = '';
+                respDiv.innerHTML = d.reply.replace(/\n/g, '<br>');
+            }
+        } else {
+            respDiv.style.display = '';
+            respDiv.innerHTML = '<span style="color:var(--danger)">Error: ' + (d.error||'Unknown') + '</span>';
+        }
+    })
+    .catch(function(e){
+        _aiLoading[id] = false;
+        respDiv.style.display = '';
+        respDiv.innerHTML = '<span style="color:var(--danger)">Request failed</span>';
+    });
+}
+function renderMermaid(id, code) {
+    var diagDiv = document.getElementById('aiDiagram'+id);
+    var respDiv = document.getElementById('aiResp'+id);
+    if (!diagDiv) return;
+    diagDiv.innerHTML = '<div class="mermaid" style="min-height:100px;">' + code.trim() + '</div>';
+    diagDiv.classList.add('show');
+    respDiv.classList.remove('show');
+    try {
+        mermaid.run({ nodes: [diagDiv.querySelector('.mermaid')] });
+    } catch(e) {
+        diagDiv.innerHTML = '<div style="color:var(--danger);font-size:0.78rem;padding:8px;">Could not render diagram. Raw output:<br><pre style="font-size:0.72rem;background:var(--surface-soft);padding:8px;border-radius:6px;margin-top:6px;overflow-x:auto;">'+code.replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</pre></div>';
+    }
+}
+</script>
+
+{% endblock %}

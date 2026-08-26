@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Audit Log{% endblock %}
+{% block pagetitle %}Audit Log{% endblock %}
+{% block content %}
+<p class="text-muted small">Showing the most recent 200 actions for the active company.</p>
+
+<table class="table table-bordered bg-white">
+    <thead>
+        <tr><th>Date/Time</th><th>User</th><th>Action</th><th>Details</th></tr>
+    </thead>
+    <tbody>
+        {% for log in logs %}
+        <tr>
+            <td>{{ log.created_at | local_time }}</td>
+            <td>{{ log.user.name or log.user.email if log.user else "System" }}</td>
+            <td>
+                <span class="badge bg-secondary">{{ log.action.replace('_', ' ')|title }}</span>
+            </td>
+            <td>{{ log.details }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-muted">No actions logged yet.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

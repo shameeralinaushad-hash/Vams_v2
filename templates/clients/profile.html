@@ -1,0 +1,651 @@
+{% extends "base.html" %}
+{% block title %}{{ client.name }} — Profile{% endblock %}
+{% block pagetitle %}Client Profile{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* ---------- Top Action Bar ---------- */
+    .action-bar {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+    .btn-action-pill {
+        background: var(--surface);
+        color: var(--text-primary);
+        border: 1px solid var(--border);
+        border-radius: 30px;
+        padding: 8px 18px;
+        font-weight: 600;
+        font-size: 0.82rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        text-decoration: none;
+    }
+    .btn-action-pill:hover {
+        background: var(--surface-soft);
+        border-color: var(--text-secondary);
+        color: var(--text-primary);
+        transform: translateY(-1px);
+    }
+    .btn-action-pill i {
+        font-size: 0.95rem;
+        color: var(--text-secondary);
+    }
+
+    /* ---------- Profile Header Card ---------- */
+    .profile-header-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.03);
+        padding: 28px;
+    }
+    .client-logo-img {
+        width: 64px; height: 64px;
+        object-fit: contain;
+        border-radius: 16px;
+        background: var(--surface-soft);
+        padding: 8px;
+        border: 1px solid var(--border);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+    }
+    .client-logo-placeholder {
+        width: 64px; height: 64px;
+        border-radius: 16px;
+        background: var(--rail-bg);
+        color: var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 1.5rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+    }
+    .profile-title {
+        font-family: 'Space Grotesk', 'Inter', sans-serif;
+        font-weight: 700;
+        font-size: 2.2rem;
+        letter-spacing: -0.02em;
+        color: var(--text-primary);
+    }
+    .profile-meta-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+    .profile-meta-item i {
+        color: var(--text-muted);
+    }
+
+    /* ---------- Navigation Pill Tabs ---------- */
+    .header-tabs {
+        border-top: 1px solid var(--border);
+        padding-top: 18px;
+        margin-top: 20px;
+    }
+    .pill-tabs {
+        display: inline-flex;
+        background: var(--surface-soft);
+        border-radius: 30px;
+        padding: 4px;
+        border: 1px solid var(--border);
+    }
+    .pill-tabs a {
+        color: var(--text-secondary);
+        font-size: 0.82rem;
+        font-weight: 600;
+        padding: 6px 18px;
+        border-radius: 30px;
+        text-decoration: none;
+        transition: all 0.2s ease;
+    }
+    .pill-tabs a:hover {
+        color: var(--text-primary);
+    }
+    .pill-tabs a.active {
+        background: #ffffff;
+        color: var(--text-primary);
+        box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+    }
+
+    /* ---------- Advanced Metric Cards ---------- */
+    .metric-chip {
+        background: var(--surface);
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border);
+        box-shadow: 0 4px 18px rgba(0,0,0,0.02);
+        padding: 22px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+    }
+    .metric-chip:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 24px rgba(0,0,0,0.06);
+    }
+    .metric-icon-wrap {
+        width: 38px; height: 38px;
+        border-radius: 10px;
+        background: var(--surface-soft);
+        color: var(--text-primary);
+        font-size: 1.1rem;
+        display: flex; align-items: center; justify-content: center;
+        margin-bottom: 16px;
+        transition: background-color 0.25s, color 0.25s;
+    }
+    .metric-chip:hover .metric-icon-wrap {
+        background: var(--rail-bg);
+        color: var(--accent);
+    }
+
+    /* Specific Accent Indicators */
+    .metric-success .metric-icon-wrap { background: rgba(30, 158, 99, 0.1); color: var(--success); }
+    .metric-danger .metric-icon-wrap { background: rgba(214, 69, 69, 0.1); color: var(--danger); }
+    .metric-success:hover .metric-icon-wrap { background: var(--success); color: #ffffff; }
+    .metric-danger:hover .metric-icon-wrap { background: var(--danger); color: #ffffff; }
+
+    /* ---------- Modern Split Content Panels ---------- */
+    .info-panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 24px;
+        height: 100%;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.02);
+    }
+    .panel-header {
+        border-bottom: 1px dashed var(--border);
+        padding-bottom: 12px;
+        margin-bottom: 18px;
+    }
+    .panel-title {
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 700;
+        font-size: 1rem;
+        color: var(--text-primary);
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .panel-title i {
+        color: var(--text-secondary);
+    }
+
+    /* ---------- Custom Tables & Lists ---------- */
+    .table-custom {
+        margin: 0;
+    }
+    .table-custom th {
+        border-bottom: 2px solid var(--border);
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 10px 8px;
+    }
+    .table-custom td {
+        padding: 12px 8px;
+        vertical-align: middle;
+        font-size: 0.85rem;
+        color: var(--text-primary);
+        border-bottom: 1px solid var(--border);
+    }
+    .table-custom tr:last-child td {
+        border-bottom: none;
+    }
+
+    .contact-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 0;
+        border-bottom: 1px dashed var(--border);
+    }
+    .contact-row:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+    .contact-row i {
+        color: var(--text-secondary);
+        font-size: 1.05rem;
+        margin-top: 2px;
+    }
+    .contact-label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 700;
+        color: var(--text-muted);
+        margin-bottom: 2px;
+    }
+    .contact-value {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    /* ---------- Company breakdown cards ---------- */
+    .breakdown-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-left: 4px solid var(--text-muted);
+        border-radius: var(--radius-md);
+        padding: 20px;
+        height: 100%;
+        transition: transform 0.2s ease, border-left-color 0.2s;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.02);
+    }
+    .breakdown-card:hover {
+        transform: translateY(-2px);
+        border-left-color: #14181f;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% macro format_num(val) %}
+    {% if val and val > 1000000 %}
+        {{ "%.2f"|format(val / 1000000) }}M
+    {% else %}
+        {{ "%.2f"|format(val or 0) }}
+    {% endif %}
+{% endmacro %}
+
+<!-- ===== ACTIONS HEADER BAR ===== -->
+<div class="action-bar">
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('clients.edit_client', client_id=client.id) }}" class="btn-action-pill">
+            <i class="bi bi-pencil"></i> Edit Profile
+        </a>
+        <a href="{{ url_for('clients.download_statement', client_id=client.id, view=1) }}" target="_blank" class="btn-action-pill">
+            <i class="bi bi-eye"></i> View Statement
+        </a>
+        <button type="button" class="btn-action-pill" onclick="printPdfUrl('{{ url_for('clients.download_statement', client_id=client.id, view=1) }}')">
+            <i class="bi bi-printer"></i> Print
+        </button>
+        <a href="{{ url_for('clients.download_statement', client_id=client.id) }}" class="btn-action-pill">
+            <i class="bi bi-file-earmark-arrow-down"></i> Download
+        </a>
+    </div>
+
+    <div class="dropdown">
+        <button class="btn-action-pill dropdown-toggle" data-bs-toggle="dropdown">
+            <i class="bi bi-people"></i> Switch Client
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow">
+            {% for c in all_clients %}
+            <li>
+                <a class="dropdown-item {% if c.id == client.id %}active{% endif %} fw-semibold" href="{{ url_for('clients.view_profile', client_id=c.id) }}">
+                    {{ c.name }}
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+<!-- ===== CLIENT IDENTITY CARD ===== -->
+<div class="profile-header-card mb-4">
+    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+        <div class="d-flex align-items-center gap-3">
+            {% if client.logo_filename %}
+                <img src="{{ url_for('static', filename='client_logos/' ~ client.logo_filename) }}" class="client-logo-img" alt="{{ client.name }}">
+            {% else %}
+                <div class="client-logo-placeholder">{{ client.name[0] }}</div>
+            {% endif %}
+            <div>
+                <h1 class="profile-title m-0">{{ client.name }}</h1>
+                <div class="d-flex flex-wrap gap-3 mt-1 text-muted">
+                    <span class="profile-meta-item"><i class="bi bi-calendar3"></i> Partner since {{ client.created_at.strftime('%b %Y') }}</span>
+                    <span class="profile-meta-item"><i class="bi bi-building"></i> Active in {{ client.company_links|length }} compan{{ 'y' if client.company_links|length == 1 else 'ies' }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="header-tabs">
+        <div class="pill-tabs">
+            <a class="active" href="#">Overview</a>
+            <a href="#numbering-section">Numbering</a>
+            <a href="#orders-section">Orders</a>
+            <a href="#contact-section">Contact</a>
+        </div>
+    </div>
+</div>
+
+<!-- ===== CORE METRICS PANEL ===== -->
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="metric-chip">
+            <div class="metric-icon-wrap"><i class="bi bi-graph-up-arrow"></i></div>
+            <div>
+                <div class="text-muted small mb-1 fw-semibold">Total Revenue Generated</div>
+                <div class="fs-4 fw-bold" style="color: var(--text-primary);">{{ format_num(combined_stats.revenue) }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="metric-chip metric-success">
+            <div class="metric-icon-wrap"><i class="bi bi-check-circle"></i></div>
+            <div>
+                <div class="text-muted small mb-1 fw-semibold">Total Paid to Date</div>
+                <div class="fs-4 fw-bold" style="color: var(--success)">{{ format_num(combined_stats.paid) }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="metric-chip metric-danger">
+            <div class="metric-icon-wrap"><i class="bi bi-exclamation-circle"></i></div>
+            <div>
+                <div class="text-muted small mb-1 fw-semibold">Outstanding Receivable</div>
+                <div class="fs-4 fw-bold" style="color: var(--danger)">{{ format_num(combined_stats.owed) }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== COMPANY BREAKDOWN GRID ===== -->
+{% if company_breakdown %}
+<div class="mb-4">
+    <h5 class="fw-bold mb-3" style="font-family: 'Space Grotesk', sans-serif; color: var(--text-primary);">Entity Breakdown</h5>
+    <div class="row g-3">
+        {% for entry in company_breakdown %}
+        <div class="col-md-6">
+            <div class="breakdown-card">
+                <div class="fw-bold mb-3 d-flex align-items-center gap-2" style="color: var(--text-primary); font-size: 0.95rem;">
+                    <i class="bi bi-buildings text-muted"></i> {{ entry.company.name }}
+                </div>
+                <table class="table table-sm table-borderless mb-0 align-middle">
+                    <tbody>
+                        <tr style="border-bottom: 1px dashed var(--border);">
+                            <td class="text-muted small py-2 px-0">Revenue</td>
+                            <td class="text-end fw-semibold py-2 px-0">{{ format_num(entry.revenue) }}</td>
+                        </tr>
+                        <tr style="border-bottom: 1px dashed var(--border);">
+                            <td class="text-muted small py-2 px-0">Paid</td>
+                            <td class="text-end fw-semibold text-success py-2 px-0">{{ format_num(entry.paid) }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted small py-2 px-0">Owes</td>
+                            <td class="text-end fw-bold text-danger py-2 px-0">{{ format_num(entry.owed) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- ===== PER-CLIENT DOCUMENT NUMBERING SEQUENCES ===== -->
+<div class="mb-4" id="numbering-section">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold m-0" style="font-family: 'Space Grotesk', sans-serif; color: var(--text-primary);">
+            Document Sequence Counters
+        </h5>
+        <span class="badge bg-light text-secondary border px-2.5 py-1.5 rounded-pill" style="font-size: 0.75rem;">
+            <i class="bi bi-123 me-1"></i> Per-Client Sequences
+        </span>
+    </div>
+
+    <div class="info-panel p-0 overflow-hidden">
+        <div class="table-responsive">
+            <table class="table table-custom align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th class="ps-3">Company</th>
+                        <th class="text-center">Next Quotation #</th>
+                        <th class="text-center">Next Invoice #</th>
+                        <th class="text-center">Next Challan #</th>
+                        {% if current_user.has_permission('manage_numbering') %}
+                        <th class="text-end pe-3">Actions</th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                {% for info in numbering_info %}
+                    <tr>
+                        <td class="ps-3 fw-semibold" style="color: var(--text-primary);">
+                            <i class="bi bi-building text-muted me-1"></i>
+                            {{ info.company.name }}
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-10 px-2.5 py-1.5 rounded-pill font-monospace" style="font-size: 0.8rem;">
+                                #{{ info.quotation }}
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-10 px-2.5 py-1.5 rounded-pill font-monospace" style="font-size: 0.8rem;">
+                                #{{ info.invoice }}
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-10 px-2.5 py-1.5 rounded-pill font-monospace" style="font-size: 0.8rem;">
+                                #{{ info.challan }}
+                            </span>
+                        </td>
+                        {% if current_user.has_permission('manage_numbering') %}
+                        <td class="text-end pe-3">
+                            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" style="font-size: 0.75rem; font-weight: 600;"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#editNumberingModal{{ info.company.id }}">
+                                <i class="bi bi-pencil me-1"></i> Edit Next #
+                            </button>
+                        </td>
+                        {% endif %}
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center py-4 text-muted small">
+                            No active company links configured for this client.
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modals for Editing Counters -->
+{% if current_user.has_permission('manage_numbering') %}
+    {% for info in numbering_info %}
+    <div class="modal fade" id="editNumberingModal{{ info.company.id }}" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow" style="border-radius: var(--radius-lg); background: var(--surface);">
+                <div class="modal-header border-bottom">
+                    <h5 class="modal-title h6 fw-bold" style="color: var(--text-primary);">
+                        <i class="bi bi-123 text-primary me-2"></i>Update Counter — {{ info.company.name }}
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="POST" action="{{ url_for('clients.update_client_numbering', client_id=client.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="company_id" value="{{ info.company.id }}">
+
+                    <div class="modal-body">
+                        <p class="text-muted small mb-3">
+                            Manually adjust the <strong>next raw number</strong> that will be assigned when creating documents for <strong>{{ client.name }}</strong> under <strong>{{ info.company.name }}</strong>.
+                        </p>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold text-secondary">Document Type</label>
+                            <select name="doc_type" class="form-select form-select-sm" required>
+                                <option value="quotation">Quotation (Current Next: #{{ info.quotation }})</option>
+                                <option value="invoice">Invoice (Current Next: #{{ info.invoice }})</option>
+                                <option value="challan">Delivery Challan (Current Next: #{{ info.challan }})</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold text-secondary">Next Raw Number</label>
+                            <input type="number" min="1" name="next_number" class="form-control form-control-sm" placeholder="e.g. 1 or 105" required>
+                            <div class="form-text extra-small text-muted mt-1">
+                                Entering <code>105</code> means the next generated document will use raw number 105.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer border-top py-2" style="background: var(--surface-soft);">
+                        <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-sm btn-primary rounded-pill px-3 fw-semibold">Save Sequence</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+{% endif %}
+
+<!-- ===== DETAILED TABLES ===== -->
+<div class="row g-4 mb-4">
+    <!-- Contact Card -->
+    <div class="col-md-4" id="contact-section">
+        <div class="info-panel">
+            <div class="panel-header">
+                <h6 class="panel-title"><i class="bi bi-card-list"></i> Contact Details</h6>
+            </div>
+
+            <div class="contact-row">
+                <i class="bi bi-geo-alt-fill"></i>
+                <div>
+                    <div class="contact-label">Registered Address</div>
+                    <div class="contact-value">{{ client.address or "—" }}</div>
+                </div>
+            </div>
+
+            <div class="contact-row">
+                <i class="bi bi-telephone-fill"></i>
+                <div>
+                    <div class="contact-label">Direct Contact</div>
+                    <div class="contact-value">{{ client.contact_info or "—" }}</div>
+                </div>
+            </div>
+
+            <div class="contact-row">
+                <i class="bi bi-receipt-cutoff"></i>
+                <div>
+                    <div class="contact-label">Tax ID Registration</div>
+                    <div class="contact-value">{{ client.tax_number or "—" }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Orders Card -->
+    <div class="col-md-8" id="orders-section">
+        <div class="info-panel">
+            <div class="panel-header">
+                <h6 class="panel-title"><i class="bi bi-cart3"></i> Client Orders</h6>
+            </div>
+
+            {% if orders %}
+            <div class="table-responsive">
+                <table class="table table-custom align-middle">
+                    <thead>
+                        <tr>
+                            <th>Company</th>
+                            <th>Status</th>
+                            <th>Inquiry Date</th>
+                            <th class="text-end">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for o in orders[:5] %}
+                        <tr>
+                            <td class="fw-semibold" style="color: var(--text-primary);">{{ o.company.name }}</td>
+                            <td>
+                                {% if o.status == 'PO Received' %}
+                                    <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-10 px-2.5 py-1.5 rounded-pill" style="font-size: 0.75rem; font-weight: 600;">PO Received</span>
+                                {% elif o.status == 'Not Received' %}
+                                    <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-10 px-2.5 py-1.5 rounded-pill" style="font-size: 0.75rem; font-weight: 600;">Not Received</span>
+                                {% else %}
+                                    <span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-10 px-2.5 py-1.5 rounded-pill text-dark" style="font-size: 0.75rem; font-weight: 600;">Pending</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-secondary small">{{ o.inquiry_date }}</td>
+                            <td class="text-end">
+                                <a href="{{ url_for('orders.view_order', order_id=o.id) }}" class="btn btn-sm btn-outline-primary px-3 rounded-pill" style="font-size: 0.75rem; font-weight: 600;">Open</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-box-seam text-muted mb-2" style="font-size: 2rem;"></i>
+                    <p class="text-muted small mb-0">No active orders associated with this profile yet.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- ===== SUBSIDIARIES ===== -->
+<div class="card-stat p-3 mt-3">
+    <h6 class="mb-3">Subsidiaries</h6>
+
+    {% if client.subsidiaries %}
+    <table class="table table-sm mb-3">
+        <thead><tr><th>Name</th><th>Client Code</th><th></th></tr></thead>
+        <tbody>
+        {% for sub in client.subsidiaries %}
+        <tr>
+            <td>{{ sub.name }}</td>
+            <td>{{ sub.client_code or "—" }}</td>
+            <td>
+                <a href="{{ url_for('clients.view_subsidiary_profile', subsidiary_id=sub.id) }}" class="btn btn-sm btn-outline-primary">View Profile</a>
+                <a href="{{ url_for('clients.edit_subsidiary', subsidiary_id=sub.id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                <form method="POST" action="{{ url_for('clients.delete_subsidiary', subsidiary_id=sub.id) }}" class="d-inline"
+                    onsubmit="return confirm('Remove subsidiary {{ sub.name }}?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted small">No subsidiaries added yet.</p>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('clients.add_subsidiary', client_id=client.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-2">
+            <div class="col-md-3">
+                <input type="text" name="name" class="form-control" placeholder="Subsidiary Name" required>
+            </div>
+            <div class="col-md-2">
+                <input type="text" name="client_code" class="form-control" placeholder="Client Code">
+            </div>
+            <div class="col-md-3">
+                <input type="text" name="address" class="form-control" placeholder="Address">
+            </div>
+            <div class="col-md-2">
+                <input type="text" name="contact_info" class="form-control" placeholder="Contact Info">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Add Subsidiary</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+{% endblock %}

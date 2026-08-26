@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Company Documents{% endblock %}
+{% block pagetitle %}Company Documents{% endblock %}
+{% block content %}
+
+<div class="card-stat p-3 mb-4">
+    <h6 class="mb-3">Upload a Document</h6>
+    <form method="POST" action="{{ url_for('company_documents.add_document') }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-2">
+            <div class="col-md-4">
+                <input type="text" name="title" class="form-control" placeholder="e.g. Company Profile, Tax Certificate" required>
+            </div>
+            <div class="col-md-6">
+                <input type="file" name="document_file" class="form-control" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" required>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Upload</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<table class="table table-bordered bg-white">
+<thead><tr><th>Title</th><th>Uploaded</th><th></th></tr></thead>
+<tbody>
+{% for doc in documents %}
+<tr>
+    <td>{{ doc.title }}</td>
+    <td>{{ doc.uploaded_at.strftime('%Y-%m-%d %H:%M') }}</td>
+    <td>
+        <a href="{{ url_for('static', filename='company_documents/' ~ doc.filename) }}" target="_blank" class="btn btn-sm btn-outline-primary">View / Download</a>
+        <form method="POST" action="{{ url_for('company_documents.delete_document', doc_id=doc.id) }}" class="d-inline"
+              onsubmit="return confirm('Delete this document?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+        </form>
+    </td>
+</tr>
+{% else %}
+<tr><td colspan="3" class="text-muted">No documents uploaded yet.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+{% endblock %}

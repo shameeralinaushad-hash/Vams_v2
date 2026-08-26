@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ subsidiary.name }}{% endblock %}
+{% block pagetitle %}Edit Subsidiary{% endblock %}
+{% block content %}
+
+<div class="mb-3">
+    <a href="{{ url_for('clients.view_subsidiary_profile', subsidiary_id=subsidiary.id) }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back to Profile
+    </a>
+</div>
+
+<div class="card-stat p-4" style="max-width:600px;">
+    <h5 class="mb-3">Edit {{ subsidiary.name }}</h5>
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="mb-3">
+            <label class="form-label">Subsidiary Name</label>
+            <input type="text" name="name" class="form-control" value="{{ subsidiary.name }}" required>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Client Code</label>
+            <input type="text" name="client_code" class="form-control" value="{{ subsidiary.client_code or '' }}">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Address</label>
+            <textarea name="address" class="form-control">{{ subsidiary.address or "" }}</textarea>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Contact Info</label>
+            <input type="text" name="contact_info" class="form-control" value="{{ subsidiary.contact_info or '' }}">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Tax / Registration Number</label>
+            <input type="text" name="tax_number" class="form-control" value="{{ subsidiary.tax_number or '' }}">
+        </div>
+
+        <button type="submit" class="btn btn-success">Save Changes</button>
+        <a href="{{ url_for('clients.view_subsidiary_profile', subsidiary_id=subsidiary.id) }}" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

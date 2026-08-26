@@ -1,0 +1,110 @@
+{% extends "mobile/layout.html" %}
+{% block title %}Home{% endblock %}
+{% block header %}Hi, {{ emp.name.split()[0] }}{% endblock %}
+{% set active_tab = 'home' %}
+{% block content %}
+
+<div class="greeting-card">
+  <div class="greeting-emoji" id="greetingEmoji">☀️</div>
+  <div>
+    <div class="greeting-time" id="greetingTime">Good {{ 'Morning' if today_rec else 'Evening' }}</div>
+    <div class="greeting-sub">{{ emp.designation or emp.department or 'Team Member' }}</div>
+  </div>
+</div>
+
+{% if today_rec %}
+<div class="status-card present">
+  <div class="status-icon"><i class="bi bi-check-circle-fill"></i></div>
+  <div>
+    <div class="status-title">Marked Present</div>
+    <div class="status-sub">You're all set for today</div>
+  </div>
+  <div class="status-badge">✅</div>
+</div>
+{% else %}
+<div class="status-card pending">
+  <div class="status-icon"><i class="bi bi-hourglass-split"></i></div>
+  <div>
+    <div class="status-title">Not Marked Yet</div>
+    <div class="status-sub">Tap to mark yourself present</div>
+  </div>
+  <a href="{{ url_for('hr.qr_landing') }}" class="btn btn-success btn-sm" style="flex-shrink:0;">Mark Present</a>
+</div>
+{% endif %}
+
+<div class="stat-row" style="margin-bottom:14px;animation:pageIn 0.3s 0.1s both;">
+  <div class="stat-box" onclick="window.location='{{ url_for('mobile.attendance') }}'" style="cursor:pointer;">
+    <div class="stat-value counter" data-target="{{ present_count }}" style="color:var(--success);">0</div>
+    <div class="stat-label">Present this month</div>
+  </div>
+  <div class="stat-box" onclick="window.location='{{ url_for('mobile.attendance') }}'" style="cursor:pointer;">
+    <div class="stat-value counter" data-target="{{ total_days }}">0</div>
+    <div class="stat-label">Days in month</div>
+  </div>
+  <div class="stat-box" onclick="window.location='{{ url_for('mobile.tasks') }}'" style="cursor:pointer;">
+    <div class="stat-value counter" data-target="{{ pending_tasks }}" style="color:{% if pending_tasks > 0 %}var(--warning){% else %}var(--success){% endif %};">0</div>
+    <div class="stat-label">Pending tasks</div>
+  </div>
+</div>
+
+<div class="card" style="animation:pageIn 0.3s 0.2s both;">
+  <div class="card-title"><i class="bi bi-lightning-fill" style="margin-right:4px;"></i> Quick Actions</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+    <a href="{{ url_for('mobile.attendance') }}" class="action-btn"><i class="bi bi-calendar3"></i> <span>Attendance</span></a>
+    <a href="{{ url_for('mobile.tasks') }}" class="action-btn"><i class="bi bi-list-task"></i> <span>My Tasks</span></a>
+  </div>
+</div>
+
+<div style="text-align:center;padding:12px 0;font-size:0.7rem;color:var(--muted);animation:pageIn 0.3s 0.3s both;">
+  {{ emp.employee_code or '' }}
+</div>
+
+<style>
+.greeting-card { display:flex;align-items:center;gap:14px;background:var(--card);border-radius:var(--radius);padding:18px 20px;margin-bottom:14px;box-shadow:0 1px 6px rgba(0,0,0,0.04);animation:pageIn 0.3s cubic-bezier(0.16,1,0.3,1); }
+.greeting-emoji { font-size:2.4rem;width:56px;height:56px;display:flex;align-items:center;justify-content:center;background:var(--bg);border-radius:16px; }
+.greeting-time { font-size:1.15rem;font-weight:700; }
+.greeting-sub { font-size:0.82rem;color:var(--muted);margin-top:2px; }
+
+.status-card { display:flex;align-items:center;gap:12px;border-radius:var(--radius);padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 6px rgba(0,0,0,0.04);animation:pageIn 0.3s 0.05s both; }
+.status-card.present { background:#e6f7ef;border-left:4px solid var(--success); }
+.status-card.pending { background:#fff8e6;border-left:4px solid var(--warning); }
+.status-icon { font-size:1.3rem;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:rgba(0,0,0,0.04);flex-shrink:0; }
+.status-title { font-weight:700;font-size:0.9rem; }
+.status-sub { font-size:0.75rem;color:var(--muted);margin-top:1px; }
+.status-badge { margin-left:auto;font-size:1.2rem; }
+
+.action-btn { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px;border-radius:12px;background:var(--bg);color:var(--text);text-decoration:none;font-size:0.75rem;font-weight:600;transition:all 0.15s; }
+.action-btn i { font-size:1.3rem; }
+.action-btn:active { transform:scale(0.95);background:#e8e8ec; }
+
+.counter { display:inline-block; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var h = new Date().getHours();
+  var emoji = document.getElementById('greetingEmoji');
+  var time = document.getElementById('greetingTime');
+  if (h < 12) { emoji.textContent = '🌅'; time.textContent = 'Good Morning'; }
+  else if (h < 17) { emoji.textContent = '☀️'; time.textContent = 'Good Afternoon'; }
+  else { emoji.textContent = '🌙'; time.textContent = 'Good Evening'; }
+
+  var counters = document.querySelectorAll('.counter');
+  counters.forEach(function(el) {
+    var target = parseInt(el.getAttribute('data-target'));
+    if (target === 0) { el.textContent = '0'; return; }
+    var duration = 400;
+    var start = performance.now();
+    function update(now) {
+      var elapsed = now - start;
+      var progress = Math.min(elapsed / duration, 1);
+      var eased = 1 - Math.pow(1 - progress, 3);
+      el.textContent = Math.round(eased * target);
+      if (progress < 1) requestAnimationFrame(update);
+    }
+    requestAnimationFrame(update);
+  });
+});
+</script>
+
+{% endblock %}

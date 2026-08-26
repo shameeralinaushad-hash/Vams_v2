@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}My Dashboard{% endblock %}
+{% block pagetitle %}My Dashboard{% endblock %}
+{% block content %}
+<div class="row g-3">
+
+    <!-- Greeting + Today Status -->
+    <div class="col-12">
+        <div class="card-stat p-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div>
+                <h4 class="fw-bold mb-1">Hello, {{ emp.name.split()[0] or emp.name }}</h4>
+                <div class="text-muted small">
+                    {% if today_rec %}
+                    <span class="badge {% if today_rec.status == 'present' %}bg-success{% elif today_rec.status == 'half_day' %}bg-warning{% elif today_rec.status == 'leave' %}bg-secondary{% else %}bg-danger{% endif %}">
+                        {{ today_rec.status }}
+                    </span>
+                    Today's attendance recorded
+                    {% else %}
+                    <span class="badge bg-secondary">Not marked</span>
+                    Not yet marked for today
+                    {% endif %}
+                </div>
+            </div>
+            <div class="d-flex gap-2">
+                {% if not today_rec and attendance_allowed %}
+                <form method="POST" action="{{ url_for('hr.qr_scan') }}" style="display:inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-primary btn-sm rounded-pill"><i class="bi bi-check-lg"></i> Mark Present</button>
+                </form>
+                {% endif %}
+                <a href="{{ url_for('auth.profile') }}" class="btn btn-outline-secondary btn-sm rounded-pill"><i class="bi bi-person"></i> Profile</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="col-6 col-md-3">
+        <div class="card-stat p-3 text-center">
+            <div class="stat-number">{{ present_count }}</div>
+            <div class="stat-label">Present this month</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card-stat p-3 text-center">
+            <div class="stat-number">{{ total_marked }}</div>
+            <div class="stat-label">Days marked</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card-stat p-3 text-center">
+            <div class="stat-number">{{ attn_pct }}%</div>
+            <div class="stat-label">Attendance rate</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card-stat p-3 text-center">
+            <div class="stat-number">{{ pending_tasks }}</div>
+            <div class="stat-label">Open tasks</div>
+        </div>
+    </div>
+
+    <!-- Mini Calendar -->
+    <div class="col-md-7">
+        <div class="card-stat p-3">
+            <h6 class="fw-bold mb-3"><i class="bi bi-calendar3"></i> {{ month_name }} {{ year }}</h6>
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;font-size:0.78rem;text-align:center;">
+                {% for d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
+                <div class="fw-bold text-muted small py-1">{{ d }}</div>
+                {% endfor %}
+                {% for _ in range(first_weekday_padding) %}
+                <div></div>
+                {% endfor %}
+                {% for day in range(1, days_in_month + 1) %}
+                {% set cls = calendar.get(day, '') %}
+                <div style="padding:6px 0;border-radius:8px;
+                    {% if cls == 'present' %}background:var(--success);color:#fff;
+                    {% elif cls == 'absent' %}background:var(--danger);color:#fff;
+                    {% elif cls == 'half_day' %}background:var(--warning);color:#fff;
+                    {% elif cls == 'leave' %}background:var(--surface-soft);color:var(--text-muted);
+                    {% else %}color:var(--text-primary);{% endif %}
+                    {% if day == today_day %}font-weight:800;border:2px solid var(--text-primary);{% endif %}">
+                    {{ day }}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Pending Tasks -->
+    <div class="col-md-5">
+        <div class="card-stat p-3">
+            <h6 class="fw-bold mb-3"><i class="bi bi-list-task"></i> My Tasks</h6>
+            {% if tasks %}
+            <div style="max-height:320px;overflow-y:auto;">
+                {% for t in tasks %}
+                <div class="d-flex align-items-center gap-2 py-2 border-bottom" style="border-color:var(--border) !important;">
+                    <form method="POST" action="{{ url_for('mobile.toggle_task', task_id=t.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button class="btn btn-sm" style="border:none;background:transparent;padding:0;font-size:1.1rem;cursor:pointer;"
+                            {% if t.status == 'done' %}><i class="bi bi-check-circle-fill" style="color:var(--success);"></i>
+                            {% else %}><i class="bi bi-circle" style="color:var(--text-muted);"></i>
+                            {% endif %}
+                        </button>
+                    </form>
+                    <div class="flex-fill">
+                        <div style="font-size:0.85rem;{% if t.status == 'done' %}text-decoration:line-through;color:var(--text-muted);{% endif %}">{{ t.title }}</div>
+                        {% if t.due_date %}<div class="text-muted" style="font-size:0.7rem;">Due {{ t.due_date }}</div>{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-muted small py-3 text-center">No pending tasks</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Quick Links -->
+    <div class="col-12">
+        <div class="card-stat p-3 d-flex flex-wrap gap-2">
+            <a href="{{ url_for('hr.qr_landing') }}" class="btn btn-outline-secondary btn-sm rounded-pill"><i class="bi bi-qr-code"></i> Scan QR</a>
+            <a href="{{ url_for('auth.profile') }}" class="btn btn-outline-secondary btn-sm rounded-pill"><i class="bi bi-person-circle"></i> My Profile</a>
+            <a href="{{ url_for('tasks.my_space') }}" class="btn btn-outline-secondary btn-sm rounded-pill"><i class="bi bi-check2-square"></i> My Tasks</a>
+            <a href="{% if upcoming_holidays %}{{ url_for('hr.list_holidays') }}{% else %}#{% endif %}" class="btn btn-outline-secondary btn-sm rounded-pill"><i class="bi bi-calendar-heart"></i> Holidays</a>
+        </div>
+    </div>
+
+    {% if upcoming_holidays %}
+    <div class="col-12">
+        <div class="card-stat p-3">
+            <h6 class="fw-bold mb-2"><i class="bi bi-calendar-heart"></i> Upcoming Holidays</h6>
+            <div class="d-flex flex-wrap gap-2">
+                {% for h in upcoming_holidays %}
+                <span class="badge bg-light text-dark px-3 py-2" style="border-radius:999px;">
+                    {{ h.date.strftime('%d %b') }} — {{ h.name }}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,407 @@
+{% extends "base.html" %}
+{% block title %}{{ project.title }} — Project{% endblock %}
+{% block pagetitle %}{{ project.title }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .project-header { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; box-shadow: 0 2px 10px rgba(20,24,31,0.03); }
+    .project-header .color-bar { height: 4px; border-radius: 2px; margin-bottom: 16px; }
+    .progress-lg { height: 10px; border-radius: 5px; background: var(--surface-soft); }
+    .progress-lg .progress-bar { border-radius: 5px; transition: width 0.5s ease; }
+    .tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+    .tab-bar .tab { padding: 10px 20px; font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; text-decoration: none; }
+    .tab-bar .tab:hover { color: var(--text-primary); }
+    .tab-bar .tab.active { color: var(--text-primary); border-bottom-color: var(--text-primary); }
+    .task-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .task-row:last-child { border-bottom: none; }
+    .task-row .task-status { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--text-muted); cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; transition: all 0.15s; }
+    .task-row .task-status.done { background: #1e9e63; border-color: #1e9e63; color: #fff; }
+    .task-row .task-status.in_progress { border-color: #d99a2b; background: #d99a2b33; }
+    .task-row .task-title { flex: 1; font-size: 0.85rem; font-weight: 500; }
+    .task-row .task-title.done { text-decoration: line-through; color: var(--text-muted); }
+    .resource-card { background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px; }
+    .activity-item { padding: 14px 0; border-bottom: 1px solid var(--border); }
+    .activity-item:last-child { border-bottom: none; }
+    .activity-item .avatar-sm { width: 32px; height: 32px; border-radius: 50%; background: var(--surface-soft); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.7rem; flex-shrink: 0; }
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--text-secondary); }
+    .empty-state i { font-size: 2rem; display: block; margin-bottom: 8px; opacity: 0.2; }
+    .member-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-soft); border-radius: 20px; padding: 4px 12px 4px 4px; font-size: 0.78rem; }
+    .member-chip .chip-avatar { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.55rem; font-weight: 700; color: #fff; flex-shrink: 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set progress = project.progress_pct() %}
+{% set counts = project.task_counts() %}
+{% set hlth = project.health() %}
+{% set dtd = project.days_to_deadline() %}
+
+<div class="project-header mb-4">
+    <div class="color-bar" style="width:80px;background:{{ project.color }};"></div>
+    <div class="d-flex align-items-start justify-content-between gap-3">
+        <div>
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <h4 class="fw-bold mb-0">{{ project.title }}</h4>
+                <span class="badge rounded-pill" style="background:{{ project.color }}20;color:{{ project.color }};font-weight:600;">{{ project.status|replace('_', ' ')|title }}</span>
+                {% if is_admin and project.status != 'completed' %}
+                <div class="dropdown d-inline">
+                    <button class="btn btn-sm btn-outline-secondary rounded-pill" style="font-size:0.65rem;padding:2px 8px;" data-bs-toggle="dropdown"><i class="bi bi-pencil"></i></button>
+                    <ul class="dropdown-menu dropdown-menu-end" style="font-size:0.8rem;">
+                        {% for s in statuses %}
+                        <li><a class="dropdown-item" href="#" onclick="event.preventDefault();updateStatus({{ project.id }},'{{ s }}')">{{ s|replace('_', ' ')|title }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            </div>
+            {% if project.description %}
+            <p class="text-muted small mb-2">{{ project.description }}</p>
+            {% endif %}
+            <div class="d-flex align-items-center gap-3 text-muted small">
+                {% if project.owner %}
+                <span><i class="bi bi-person"></i> {{ project.owner.name or project.owner.email }}</span>
+                {% endif %}
+                {% if project.start_date %}
+                <span><i class="bi bi-calendar"></i> Start: {{ project.start_date }}</span>
+                {% endif %}
+                {% if project.target_date %}
+                <span><i class="bi bi-calendar-check"></i> Target: {{ project.target_date }}</span>
+                {% endif %}
+                {% if dtd is not none %}
+                <span class="{% if dtd <= 0 %}text-danger fw-bold{% elif dtd <= 7 %}text-warning{% endif %}"><i class="bi bi-clock"></i> {{ dtd }}d left</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="text-end" style="min-width:140px;">
+            <div class="progress progress-lg mb-2">
+                <div class="progress-bar" role="progressbar" style="width:{{ progress }}%;background:{{ project.color }};" aria-valuenow="{{ progress }}" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+            <div class="fw-bold" style="font-size:1.2rem;">{{ progress }}%</div>
+            <div class="text-muted small">{{ counts['to_do'] + counts['in_progress'] }} open · {{ counts['done'] }} done</div>
+        </div>
+    </div>
+
+    <!-- Team roster -->
+    <div class="d-flex align-items-center gap-2 mt-3 flex-wrap">
+        {% for m in members %}
+        <div class="member-chip">
+            <div class="chip-avatar" style="background:{{ project.color }};">{{ (m.user.name or m.user.email)[:1]|upper }}</div>
+            <span>{{ m.user.name or m.user.email }}</span>
+            <span class="text-muted" style="font-size:0.65rem;">{{ m.role }}</span>
+        </div>
+        {% endfor %}
+        {% if is_admin %}
+        <button class="btn btn-sm btn-outline-secondary rounded-pill" style="font-size:0.7rem;" data-bs-toggle="modal" data-bs-target="#addMemberModal"><i class="bi bi-plus"></i> Add</button>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Tabs -->
+<div class="tab-bar">
+    <a href="?tab=tasks" class="tab {% if tab == 'tasks' %}active{% endif %}"><i class="bi bi-list-task"></i> Tasks ({{ tasks|length }})</a>
+    <a href="?tab=resources" class="tab {% if tab == 'resources' %}active{% endif %}"><i class="bi bi-paperclip"></i> Resources</a>
+    <a href="?tab=activity" class="tab {% if tab == 'activity' %}active{% endif %}"><i class="bi bi-chat-dots"></i> Activity</a>
+</div>
+
+{% if tab == 'tasks' %}
+<div class="project-header">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h6 class="fw-bold mb-0"><i class="bi bi-list-task"></i> Tasks</h6>
+        {% if is_admin %}
+        <button class="btn btn-dark btn-sm rounded-pill" data-bs-toggle="modal" data-bs-target="#addTaskModal"><i class="bi bi-plus-lg"></i> Add Task</button>
+        {% endif %}
+    </div>
+    {% if tasks %}
+    {% for t in tasks %}
+    <div class="task-row">
+        <div class="task-status {{ t.status }}" onclick="toggleTask({{ t.id }}, this)" title="{{ t.status|replace('_', ' ')|title }}">
+            {% if t.status == 'done' %}<i class="bi bi-check"></i>{% endif %}
+        </div>
+        <div class="task-title {% if t.status == 'done' %}done{% endif %}">
+            {{ t.title }}
+            {% if t.due_date %}
+            <span class="text-muted small"> — due {{ t.due_date }}</span>
+            {% endif %}
+        </div>
+        {% if t.assignee %}
+        <span class="badge rounded-pill" style="background:var(--surface-soft);color:var(--text-secondary);font-weight:400;font-size:0.65rem;">{{ t.assignee.name }}</span>
+        {% endif %}
+        <span class="badge rounded-pill" style="font-size:0.55rem;background:{% if t.priority == 'high' %}#d6454520;color:#d64545{% elif t.priority == 'low' %}#98a0ac20;color:#98a0ac{% else %}#d99a2b20;color:#d99a2b{% endif %};">{{ t.priority }}</span>
+        {% if t.due_date and t.status != 'done' and t.due_date < date.today() %}
+        <span class="badge bg-danger rounded-pill" style="font-size:0.55rem;">Overdue</span>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty-state">
+        <i class="bi bi-inbox"></i>
+        <h6 class="fw-bold">No tasks yet</h6>
+        <p class="small">Add a task to get started.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Add Task Modal -->
+<div class="modal fade" id="addTaskModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content" style="border-radius:var(--radius-lg);">
+        <form method="POST" action="{{ url_for('projects.add_task', project_id=project.id) }}" class="modal-form" id="addTaskForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="modal-header border-0 pb-0">
+                <h6 class="modal-title fw-bold"><i class="bi bi-plus-circle"></i> Add Task to Project</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="taskError" class="alert alert-danger py-2 small d-none"></div>
+                <div class="mb-3">
+                    <label class="form-label">Title</label>
+                    <input type="text" name="title" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <textarea name="description" class="form-control" rows="2"></textarea>
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Assignee</label>
+                        <select name="assignee_id" class="form-select" required>
+                            <option value="">Select…</option>
+                            {% for e in employees %}
+                            <option value="{{ e.id }}">{{ e.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Priority</label>
+                        <select name="priority" class="form-select">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Due Date</label>
+                        <input type="date" name="due_date" class="form-control">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-dark rounded-pill px-4" id="taskSubmitBtn">Add Task</button>
+            </div>
+        </form>
+    </div></div>
+</div>
+{% elif tab == 'resources' %}
+<div class="project-header">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h6 class="fw-bold mb-0"><i class="bi bi-paperclip"></i> Resources</h6>
+        <button class="btn btn-dark btn-sm rounded-pill" data-bs-toggle="modal" data-bs-target="#addResourceModal"><i class="bi bi-plus-lg"></i> Add Resource</button>
+    </div>
+    {% if resources %}
+    <div class="row g-3">
+        {% for r in resources %}
+        <div class="col-md-6">
+            <div class="resource-card d-flex align-items-start gap-3">
+                <i class="bi {% if r.type == 'file' %}bi-file-earmark{% elif r.type == 'link' %}bi-link-45deg{% elif r.type == 'budget_line' %}bi-cash{% else %}bi-sticky{% endif %}" style="font-size:1.2rem;color:{{ project.color }};"></i>
+                <div class="flex-grow-1" style="min-width:0;">
+                    <div class="fw-semibold small">{{ r.title }}</div>
+                    {% if r.value %}
+                    <div class="text-muted small text-truncate">{{ r.value }}</div>
+                    {% endif %}
+                    <div class="d-flex align-items-center gap-2 mt-1">
+                        <span class="text-muted" style="font-size:0.6rem;">{{ r.adder.name or '?' }} · {{ r.created_at.strftime('%d %b') if r.created_at else '' }}</span>
+                        {% if is_admin %}
+                        <form method="POST" action="{{ url_for('projects.delete_resource', project_id=project.id, resource_id=r.id) }}" class="d-inline" onsubmit="return confirm('Delete this resource?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm text-danger p-0" style="font-size:0.6rem;background:none;border:none;"><i class="bi bi-trash"></i></button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <i class="bi bi-paperclip"></i>
+        <h6 class="fw-bold">No resources</h6>
+        <p class="small">Add files, links, or notes to this project.</p>
+    </div>
+    {% endif %}
+</div>
+{% elif tab == 'activity' %}
+<div class="project-header">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h6 class="fw-bold mb-0"><i class="bi bi-chat-dots"></i> Activity</h6>
+    </div>
+    <form method="POST" action="{{ url_for('projects.post_update', project_id=project.id) }}" class="mb-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="d-flex gap-2">
+            <input type="text" name="body" class="form-control" placeholder="Post an update…" required style="border-radius:20px;font-size:0.85rem;">
+            <button type="submit" class="btn btn-dark rounded-pill px-3" style="font-size:0.8rem;">Post</button>
+        </div>
+    </form>
+    {% if updates %}
+    {% for u in updates %}
+    <div class="activity-item d-flex gap-3">
+        <div class="avatar-sm">{{ (u.author.name or u.author.email)[:1]|upper if u.author else '?' }}</div>
+        <div>
+            <div class="small">{{ u.body }}</div>
+            <div class="text-muted" style="font-size:0.65rem;margin-top:2px;">{{ u.author.name if u.author else 'System' }} · {{ time_ago(u.created_at) }}</div>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty-state">
+        <i class="bi bi-chat-dots"></i>
+        <h6 class="fw-bold">No activity yet</h6>
+        <p class="small">Post your first update to get started.</p>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Add Member Modal -->
+<div class="modal fade" id="addMemberModal" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered"><div class="modal-content" style="border-radius:var(--radius-lg);">
+        <form method="POST" action="{{ url_for('projects.add_member', project_id=project.id) }}" class="modal-form" id="addMemberForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="modal-header border-0"><h6 class="modal-title fw-bold">Add Member</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div id="memberError" class="alert alert-danger py-2 small d-none"></div>
+                <div class="mb-3">
+                    <label class="form-label">User</label>
+                    <select name="user_id" class="form-select" required>
+                        <option value="">Select user…</option>
+                        {% for u in available_users %}
+                        <option value="{{ u.id }}">{{ u.name or u.email }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Role</label>
+                    <select name="role" class="form-select">
+                        <option value="contributor">Contributor</option>
+                        <option value="viewer">Viewer</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer border-0"><button type="submit" class="btn btn-dark rounded-pill px-4" id="memberSubmitBtn">Add</button></div>
+        </form>
+    </div></div>
+</div>
+
+<!-- Add Resource Modal -->
+<div class="modal fade" id="addResourceModal" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered"><div class="modal-content" style="border-radius:var(--radius-lg);">
+        <form method="POST" action="{{ url_for('projects.add_resource', project_id=project.id) }}" class="modal-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="modal-header border-0"><h6 class="modal-title fw-bold">Add Resource</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Type</label>
+                    <select name="type" class="form-select">
+                        <option value="link">Link</option>
+                        <option value="file">File</option>
+                        <option value="budget_line">Budget Line</option>
+                        <option value="note">Note</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Title</label>
+                    <input type="text" name="title" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">URL / Value</label>
+                    <input type="text" name="value" class="form-control" placeholder="Optional link or amount">
+                </div>
+            </div>
+            <div class="modal-footer border-0"><button type="submit" class="btn btn-dark rounded-pill px-4">Add</button></div>
+        </form>
+    </div></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function updateStatus(projectId, status) {
+    var form = new FormData();
+    form.append('status', status);
+    form.append('csrf_token', '{{ csrf_token() }}');
+    fetch('/projects/' + projectId + '/status', {method:'POST', body:form, headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(r=>r.json()).then(function(d){if(d.ok) location.reload();});
+}
+
+function toggleTask(taskId, el) {
+    var form = new FormData();
+    form.append('csrf_token', '{{ csrf_token() }}');
+    var current = el.classList.contains('done') ? 'done' : (el.classList.contains('in_progress') ? 'in_progress' : 'to_do');
+    var next = current === 'to_do' ? 'in_progress' : (current === 'in_progress' ? 'done' : 'to_do');
+    form.append('status', next);
+    fetch('/tasks/team/update/' + taskId, {method:'POST', body:form, headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(r=>r.json()).then(function(d){
+        if(d.ok) {
+            var parent = el.closest('.task-row');
+            var title = parent.querySelector('.task-title');
+            el.className = 'task-status ' + d.status;
+            el.innerHTML = d.status === 'done' ? '<i class="bi bi-check"></i>' : '';
+            title.className = 'task-title' + (d.status === 'done' ? ' done' : '');
+            if (d.status === 'done') { var check = document.createElement('span'); check.className = 'badge bg-success rounded-pill ms-1'; check.style.fontSize='0.5rem'; check.textContent='Just done'; parent.querySelector('.task-title').appendChild(check); setTimeout(function(){location.reload();},1500); }
+        }
+    });
+}
+
+// Add member form — AJAX submit with error handling
+document.getElementById('addMemberForm')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var btn = document.getElementById('memberSubmitBtn');
+    var errEl = document.getElementById('memberError');
+    btn.disabled = true; btn.textContent = 'Adding…';
+    errEl.classList.add('d-none');
+    fetch(this.action, {method:'POST', body:new FormData(this), headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(function(r){ return r.json().then(function(d){ return {status: r.status, data: d}; }); })
+    .then(function(res){
+        if (res.data.ok) {
+            var modal = bootstrap.Modal.getInstance(document.getElementById('addMemberModal'));
+            modal.hide();
+            location.reload();
+        } else {
+            errEl.textContent = res.data.error || 'Failed to add member.';
+            errEl.classList.remove('d-none');
+            btn.disabled = false; btn.textContent = 'Add';
+        }
+    })['catch'](function(){
+        errEl.textContent = 'Network error. Please try again.';
+        errEl.classList.remove('d-none');
+        btn.disabled = false; btn.textContent = 'Add';
+    });
+});
+
+// Add task form — AJAX submit
+document.getElementById('addTaskForm')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var btn = document.getElementById('taskSubmitBtn');
+    var errEl = document.getElementById('taskError');
+    btn.disabled = true; btn.textContent = 'Adding…';
+    errEl.classList.add('d-none');
+    fetch(this.action, {method:'POST', body:new FormData(this), headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(function(r){ return r.json().then(function(d){ return {status: r.status, data: d}; }); })
+    .then(function(res){
+        if (res.data.ok) {
+            var modal = bootstrap.Modal.getInstance(document.getElementById('addTaskModal'));
+            modal.hide();
+            location.reload();
+        } else {
+            errEl.textContent = res.data.error || 'Failed to add task.';
+            errEl.classList.remove('d-none');
+            btn.disabled = false; btn.textContent = 'Add Task';
+        }
+    })['catch'](function(){
+        errEl.textContent = 'Network error. Please try again.';
+        errEl.classList.remove('d-none');
+        btn.disabled = false; btn.textContent = 'Add Task';
+    });
+});
+</script>
+{% endblock %}

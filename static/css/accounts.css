@@ -1,0 +1,23 @@
+.kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 20px; box-shadow: 0 2px 10px rgba(20,24,31,0.04); height: 100%; }
+.kpi-card .kpi-number { font-family: var(--font-mono); font-size: 1.4rem; font-weight: 500; letter-spacing: -0.03em; line-height: 1.2; }
+.kpi-card .kpi-label { color: var(--text-secondary); font-size: 0.72rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; }
+.chart-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 20px; box-shadow: 0 2px 10px rgba(20,24,31,0.04); height: 100%; }
+.chart-panel h6 { font-family: var(--font-display); font-weight: 600; font-size: 0.9rem; color: var(--text-primary); }
+.pill-filter { display: flex; gap: 6px; background: var(--surface-soft); padding: 5px; border-radius: 12px; width: fit-content; flex-wrap: wrap; }
+.pill-filter a { padding: 7px 16px; border-radius: 8px; font-size: 0.83rem; font-weight: 600; color: var(--text-secondary); text-decoration: none; transition: all 0.15s ease; }
+.pill-filter a.active { background: var(--surface); color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+.attention-card { background: rgba(214,69,69,0.06); border: 1px solid rgba(214,69,69,0.15); border-radius: var(--radius-md); padding: 20px; }
+.attention-card.healthy { background: rgba(30,158,99,0.06); border-color: rgba(30,158,99,0.15); }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 20px; height: 100%; }
+.stat-card .stat-number { font-family: var(--font-mono); font-size: 1.4rem; font-weight: 500; letter-spacing: -0.03em; }
+.stat-card .stat-label { color: var(--text-secondary); font-size: 0.72rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; }
+.expense-table { font-size: 0.88rem; }
+.expense-table th { font-family: var(--font-mono); font-weight: 500; color: var(--text-secondary); text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.06em; border-bottom: 1px solid var(--border); }
+.expense-table td { border-bottom: 1px solid var(--border); vertical-align: middle; }
+.upload-zone { border: 2px dashed var(--border); border-radius: var(--radius-md); padding: 40px; text-align: center; transition: all 0.15s ease; }
+.upload-zone:hover { border-color: var(--accent); background: var(--accent-soft); }
+.txn-row { transition: background 0.1s ease; }
+.txn-row:hover { background: var(--accent-soft); }
+.txn-row.reconciled { opacity: 0.6; }
+.badge-credit { background: rgba(30,158,99,0.14); color: var(--success); }
+.badge-debit { background: rgba(214,69,69,0.12); color: var(--danger); }

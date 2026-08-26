@@ -1,0 +1,55 @@
+﻿{% extends "base.html" %}
+{% block title %}Expense Categories{% endblock %}
+{% block pagetitle %}Expense Categories{% endblock %}
+{% block content %}
+<div class="row g-4">
+    <div class="col-md-5">
+        <div class="info-panel" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;">
+            <h6 class="fw-bold mb-3" style="font-family:'Space Grotesk',sans-serif;font-size:0.95rem;"><i class="bi bi-plus-circle"></i> Add Category</h6>
+            <form method="POST" action="{{ url_for('accounts.add_category') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="mb-3">
+                    <label class="form-label">Name</label>
+                    <input type="text" name="name" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Scope</label>
+                    <select name="scope" class="form-select">
+                        <option value="personal">Personal</option>
+                        <option value="general" selected>General</option>
+                        <option value="company">Company</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary rounded-pill px-4">Add</button>
+            </form>
+        </div>
+    </div>
+    <div class="col-md-7">
+        <div class="info-panel" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;">
+            <h6 class="fw-bold mb-3" style="font-family:'Space Grotesk',sans-serif;font-size:0.95rem;"><i class="bi bi-tags"></i> All Categories</h6>
+            <div class="table-responsive">
+                <table class="table table-custom align-middle" style="margin:0;">
+                    <thead><tr><th>Name</th><th>Scope</th><th>Active</th><th class="text-end">Actions</th></tr></thead>
+                    <tbody>
+                        {% for c in categories %}
+                        <tr>
+                            <td class="fw-bold" style="font-size:0.85rem;">{{ c.name }}</td>
+                            <td><span class="badge badge-category rounded-pill" style="background:var(--surface-soft);color:var(--text-primary);border:1px solid var(--border);font-size:0.7rem;">{{ scopes.get(c.scope, c.scope) }}</span></td>
+                            <td>{% if c.is_active %}<span class="badge bg-success rounded-pill" style="font-size:0.6rem;">Active</span>{% else %}<span class="badge bg-secondary rounded-pill" style="font-size:0.6rem;">Inactive</span>{% endif %}</td>
+                            <td class="text-end">
+                                <form method="POST" action="{{ url_for('accounts.toggle_category', category_id=c.id) }}" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary rounded-pill" style="font-size:0.7rem;">{% if c.is_active %}Deactivate{% else %}Activate{% endif %}</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-muted text-center py-4">No categories yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

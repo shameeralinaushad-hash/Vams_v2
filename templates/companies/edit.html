@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Edit Company{% endblock %}
+{% block pagetitle %}Edit Company{% endblock %}
+{% block content %}
+<h3>Edit {{ company.name }}</h3>
+<form method="POST" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="mb-3">
+        <label class="form-label">Company Name</label>
+        <input type="text" name="name" class="form-control" value="{{ company.name }}" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Address</label>
+        <textarea name="address" class="form-control">{{ company.address or "" }}</textarea>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Tax / Registration Number</label>
+        <input type="text" name="tax_number" class="form-control" value="{{ company.tax_number or '' }}">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Bank Details</label>
+        <textarea name="bank_details" class="form-control">{{ company.bank_details or "" }}</textarea>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Letterhead Header Image</label>
+        {% if company.letterhead_filename %}
+        <div class="mb-2"><img src="{{ url_for('static', filename='letterheads/' ~ company.letterhead_filename) }}" style="max-width:250px;border:1px solid var(--border);border-radius:8px;"></div>
+        {% endif %}
+        <input type="file" name="letterhead" class="form-control" accept="image/*">
+        <div class="form-text">Leave empty to keep the current one.</div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Letterhead Footer Image (optional)</label>
+        {% if company.letterhead_footer_filename %}
+        <div class="mb-2"><img src="{{ url_for('static', filename='letterheads/' ~ company.letterhead_footer_filename) }}" style="max-width:250px;border:1px solid var(--border);border-radius:8px;"></div>
+        {% endif %}
+        <input type="file" name="letterhead_footer" class="form-control" accept="image/*">
+        <div class="form-text">Shown at the bottom of every page. Leave empty to keep the current one.</div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Company Logo</label>
+        {% if company.logo_filename %}
+        <div class="mb-2"><img src="{{ url_for('static', filename='company_logos/' ~ company.logo_filename) }}" style="width:60px;height:60px;object-fit:contain;border:1px solid var(--border);border-radius:8px;"></div>
+        {% endif %}
+        <input type="file" name="logo" class="form-control" accept="image/*">
+        <div class="form-text">Leave empty to keep the current one.</div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Authorized Signatory Name</label>
+        <input type="text" name="authorized_name" class="form-control" value="{{ company.authorized_name or '' }}">
+    </div>
+    <div class="mb-3">
+    <label class="form-label">Phone</label>
+    <input type="text" name="phone" class="form-control" value="{{ company.phone if company else '' }}">
+</div>
+<div class="mb-3">
+    <label class="form-label">Email</label>
+    <input type="email" name="email" class="form-control" value="{{ company.email if company else '' }}">
+</div>
+<div class="mb-3">
+    <label class="form-label">Designation (shown under signature, e.g. "Sales Director")</label>
+    <input type="text" name="designation" class="form-control" value="{{ company.designation if company else '' }}">
+</div>
+
+    <div class="mb-3">
+        <label class="form-label">Signature / Stamp Image</label>
+        {% if company.signature_filename %}
+        <div class="mb-2"><img src="{{ url_for('static', filename='signatures/' ~ company.signature_filename) }}" style="max-width:150px;border:1px solid var(--border);border-radius:8px;"></div>
+        {% endif %}
+        <input type="file" name="signature" class="form-control" accept="image/*">
+        <div class="form-text">Leave empty to keep the current one.</div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Short Name</label>
+        <input type="text" name="short_name" class="form-control" value="{{ company.short_name or '' }}">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Location Code</label>
+        <input type="text" name="location_code" class="form-control" value="{{ company.location_code or '' }}">
+    </div>
+
+    <hr>
+    <h6 class="fw-bold mb-3">Entity Profile</h6>
+    <div class="mb-3">
+        <label class="form-label">Entity Type</label>
+        <input type="text" name="entity_type" class="form-control" value="{{ company.entity_type or '' }}" placeholder="e.g. Corporation, LLC, Sole Proprietorship">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Status</label>
+        <input type="text" name="status" class="form-control" value="{{ company.status or '' }}" placeholder="e.g. Active, Dormant">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Formation Date</label>
+        <input type="date" name="formation_date" class="form-control" value="{{ company.formation_date.strftime('%Y-%m-%d') if company.formation_date else '' }}">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">EIN / Registration Number</label>
+        <input type="text" name="ein" class="form-control" value="{{ company.ein or '' }}">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Registered Agent</label>
+        <input type="text" name="registered_agent" class="form-control" value="{{ company.registered_agent or '' }}">
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">PDF Document Style</label>
+        <select name="pdf_theme" class="form-control">
+            {% for key in theme_keys %}
+            <option value="{{ key }}" {% if key == (company.pdf_theme or "default") %}selected{% endif %}>{{ theme_names.get(key, key|capitalize) }}</option>
+            {% endfor %}
+        </select>
+        <div class="form-text">Controls table styling and signature layout on generated quotations/invoices/challans.</div>
+    </div>
+
+    <button type="submit" class="btn btn-success">Save Changes</button>
+    <a href="{{ url_for('companies.list_companies') }}" class="btn btn-outline-secondary">Cancel</a>
+</form>
+{% endblock %}

@@ -1,0 +1,410 @@
+﻿{% extends "base.html" %}
+{% block title %}{{ "Edit Delivery Challan" if challan else "Create Delivery Challan" }}{% endblock %}
+{% block pagetitle %}{{ "Edit Delivery Challan" if challan else "Create Delivery Challan" }} — {{ order.client.name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* ---------- Card Panels & Headers ---------- */
+    .form-section-card {
+        background: var(--surface, #ffffff);
+        border: 1px solid var(--border, #e5e7eb);
+        border-radius: var(--radius-lg, 12px);
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.02);
+    }
+    .form-section-title {
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 700;
+        font-size: 1rem;
+        color: var(--text-primary, #111827);
+        margin-bottom: 20px;
+        padding-bottom: 12px;
+        border-bottom: 1px dashed var(--border, #e5e7eb);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .form-section-title i {
+        color: var(--text-secondary, #6b7280);
+        font-size: 1.1rem;
+    }
+
+    /* ---------- Table & Inputs ---------- */
+    .table-custom {
+        margin-bottom: 0;
+    }
+    .table-custom th {
+        border-bottom: 2px solid var(--border, #e5e7eb);
+        color: var(--text-secondary, #6b7280);
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 10px 8px;
+    }
+    .table-custom td {
+        padding: 10px 8px;
+        vertical-align: middle;
+        border-bottom: 1px solid var(--border, #e5e7eb);
+    }
+
+    /* ---------- Search Suggestion Dropdown ---------- */
+    .suggestion-box {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        z-index: 1050;
+        max-height: 220px;
+        overflow-y: auto;
+        border-radius: 8px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        background: var(--surface, #ffffff);
+        border: 1px solid var(--border, #e5e7eb);
+    }
+    .suggestion-box .list-group-item {
+        border: none;
+        border-bottom: 1px solid var(--border, #f3f4f6);
+        font-size: 0.85rem;
+        padding: 10px 14px;
+        cursor: pointer;
+        transition: background 0.15s ease;
+    }
+    .suggestion-box .list-group-item:last-child {
+        border-bottom: none;
+    }
+    .suggestion-box .list-group-item:hover {
+        background-color: var(--surface-soft, #f8fafc);
+    }
+
+    /* ---------- Action Buttons ---------- */
+    .btn-action-pill {
+        background: var(--surface, #ffffff);
+        color: var(--text-primary, #111827);
+        border: 1px solid var(--border, #e5e7eb);
+        border-radius: 30px;
+        padding: 8px 18px;
+        font-weight: 600;
+        font-size: 0.82rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        text-decoration: none;
+    }
+    .btn-action-pill:hover {
+        background: var(--surface-soft, #f9fafb);
+        border-color: var(--text-secondary, #6b7280);
+        color: var(--text-primary, #111827);
+        transform: translateY(-1px);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Top Navigation / Client Badge Bar -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <a href="{{ url_for('orders.view_order', order_id=order.id) }}" class="btn-action-pill me-2">
+            <i class="bi bi-arrow-left"></i> Back to Order
+        </a>
+    </div>
+    <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-10 px-3 py-2 rounded-pill font-monospace" style="font-size: 0.85rem;">
+        Client: {{ order.client.name }}
+    </span>
+</div>
+
+<form method="POST" id="challanCreateForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <!-- ===== SECTION 1: CHALLAN META DETAILS ===== -->
+    <div class="form-section-card">
+        <h6 class="form-section-title">
+            <i class="bi bi-truck"></i> Delivery Challan Details
+        </h6>
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label small fw-semibold text-secondary">Challan Number</label>
+                <input type="text" name="challan_number" class="form-control form-control-sm" value="{{ suggested_number }}" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small fw-semibold text-secondary">Dispatch Date</label>
+                <input type="date" name="dispatch_date" class="form-control form-control-sm" value="{{ today }}" required>
+            </div>
+            <div class="col-12">
+                <label class="form-label small fw-semibold text-secondary">Delivered To <span class="text-muted fw-normal">(Leave blank to use client name & address)</span></label>
+                <textarea name="recipient" class="form-control form-control-sm" rows="3" placeholder="{{ order.client.name }}{% if order.client.address %}
+{{ order.client.address }}{% endif %}">{{ challan.recipient if challan else '' }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SECTION 2: LOGISTICS & SHIPPING DETAILS ===== -->
+    <div class="form-section-card">
+        <h6 class="form-section-title">
+            <i class="bi bi-geo-alt"></i> Logistics & Transport Information
+        </h6>
+
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold text-secondary">Transport Mode <span class="text-muted fw-normal">(Optional)</span></label>
+                <input type="text" name="transport_mode" class="form-control form-control-sm" placeholder="e.g. Courier / Road Vehicle" value="{{ challan.transport_mode if challan else '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold text-secondary">Vehicle Number <span class="text-muted fw-normal">(Optional)</span></label>
+                <input type="text" name="vehicle_number" class="form-control form-control-sm" placeholder="e.g. LEB-1234" value="{{ challan.vehicle_number if challan else '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold text-secondary">Place / Destination <span class="text-muted fw-normal">(Optional)</span></label>
+                <input type="text" name="place" class="form-control form-control-sm" placeholder="e.g. Diplomatic Enclave, Islamabad" value="{{ challan.place if challan else '' }}">
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== SECTION 3: LINE ITEMS ===== -->
+    <div class="form-section-card">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="form-section-title m-0 border-0 p-0">
+                <i class="bi bi-box-seam"></i> Dispatched Items
+            </h6>
+            <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" onclick="addRow()">
+                <i class="bi bi-plus-lg me-1"></i> Add Item
+            </button>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-custom align-middle" id="items-table">
+                <thead>
+                    <tr>
+                        <th style="width:50px;" class="text-center">Sr#</th>
+                        <th>Description</th>
+                        <th style="width: 130px;">Unit</th>
+                        <th style="width: 120px;">Qty</th>
+                        <th style="width: 50px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if prefill_items %}
+                        {% for item in prefill_items %}
+                        <tr>
+                            <td class="row-serial fw-semibold text-center text-muted">{{ loop.index }}</td>
+                            <td style="position:relative;">
+                                <input type="text" name="item_description" class="form-control form-control-sm item-desc-input" value="{{ item.description }}" autocomplete="off" placeholder="Item description" required>
+                                <div class="list-group suggestion-box" style="display:none;"></div>
+                            </td>
+                            <td>
+                                <input type="text" name="item_unit" class="form-control form-control-sm item-unit-input" value="{{ item.unit or 'Nos' }}">
+                            </td>
+                            <td>
+                                <input type="number" step="0.01" name="item_qty" class="form-control form-control-sm row-input" value="{{ item.qty }}" required>
+                            </td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-outline-danger border-0 rounded-circle p-1" onclick="removeRow(this)" title="Remove item">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td class="row-serial fw-semibold text-center text-muted">1</td>
+                            <td style="position:relative;">
+                                <input type="text" name="item_description" class="form-control form-control-sm item-desc-input" autocomplete="off" placeholder="Item description" required>
+                                <div class="list-group suggestion-box" style="display:none;"></div>
+                            </td>
+                            <td>
+                                <input type="text" name="item_unit" class="form-control form-control-sm item-unit-input" value="Nos">
+                            </td>
+                            <td>
+                                <input type="number" step="0.01" name="item_qty" class="form-control form-control-sm row-input" value="1" required>
+                            </td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-outline-danger border-0 rounded-circle p-1" onclick="removeRow(this)" title="Remove item">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ===== SECTION 4: CONFIGURATION OPTIONS ===== -->
+    <div class="form-section-card">
+        <h6 class="form-section-title">
+            <i class="bi bi-gear"></i> Configuration
+        </h6>
+
+        <div class="form-check form-switch my-1">
+            <input type="checkbox" name="skip_letterhead" id="skip_letterhead" class="form-check-input" {% if challan and challan.skip_letterhead %}checked{% endif %}>
+            <label class="form-check-label small fw-semibold text-secondary" for="skip_letterhead">
+                Generate without letterhead (use plain header layout)
+            </label>
+        </div>
+    </div>
+
+    <!-- ===== SECTION 5: SUBMIT BAR ===== -->
+    <div class="d-flex align-items-center justify-content-end gap-2 mb-5">
+        <a href="{{ url_for('orders.view_order', order_id=order.id) }}" class="btn btn-outline-secondary rounded-pill px-4">Cancel</a>
+        <button type="submit" class="btn btn-success rounded-pill px-4 fw-semibold">
+            <i class="bi bi-check-lg me-1"></i> <span class="btn-label">{{ "Save Changes" if challan else "Generate Delivery Challan" }}</span><span class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
+        </button>
+    </div>
+</form>
+
+<script>
+    const CLIENT_ID = {{ order.client_id }};
+
+    function renumberRows() {
+        document.querySelectorAll("#items-table tbody tr").forEach((row, index) => {
+            const cell = row.querySelector(".row-serial");
+            if (cell) cell.textContent = index + 1;
+        });
+    }
+
+    function rowHasData(row) {
+        return Array.from(row.querySelectorAll("input, select, textarea")).some(i => {
+            const val = (i.value || "").trim();
+            if (!val) return false;
+            if (i.name === "item_qty" && val === "1") return false;
+            if (i.name === "item_unit" && val === "Nos") return false;
+            return true;
+        });
+    }
+
+    function clearRowInputs(row) {
+        row.querySelectorAll("input").forEach(i => {
+            if (i.name === "item_qty") i.value = "1";
+            else if (i.name === "item_unit") i.value = "Nos";
+            else i.value = "";
+        });
+    }
+
+    function removeRowWithUndo(tbody, row) {
+        const index = Array.prototype.indexOf.call(tbody.rows, row);
+        row.style.transition = "opacity 0.15s ease, transform 0.15s ease";
+        row.style.opacity = "0";
+        row.style.transform = "scale(0.98)";
+        setTimeout(function () {
+            if (row.parentNode) row.parentNode.removeChild(row);
+            renumberRows();
+        }, 150);
+        showToast("Item removed", null, "Undo", function () {
+            const rows = tbody.rows;
+            const before = rows[index] || null;
+            if (before) tbody.insertBefore(row, before);
+            else tbody.appendChild(row);
+            attachRowEvents(row);
+            row.style.transition = "opacity 0.2s cubic-bezier(0.16,1,0.3,1), transform 0.2s cubic-bezier(0.16,1,0.3,1)";
+            row.style.opacity = "1";
+            row.style.transform = "scale(1)";
+            renumberRows();
+        });
+    }
+
+    function removeRow(btn) {
+        const tbody = document.querySelector("#items-table tbody");
+        if (tbody.rows.length > 1) {
+            const row = btn.closest("tr");
+            removeRowWithUndo(tbody, row);
+        } else {
+            // Reset row inputs instead of deleting the last remaining row
+            const row = tbody.rows[0];
+            clearRowInputs(row);
+            showToast("Row cleared");
+        }
+    }
+
+    function addRow() {
+        const tbody = document.querySelector("#items-table tbody");
+        if (!tbody || !tbody.rows.length) return;
+        const row = tbody.rows[0].cloneNode(true);
+        row.querySelectorAll("input").forEach(function(i) {
+            if (i.name === "item_qty") i.value = "1";
+            else if (i.name === "item_unit") i.value = "Nos";
+            else i.value = "";
+        });
+        row.querySelector(".suggestion-box").innerHTML = "";
+        row.querySelector(".suggestion-box").style.display = "none";
+        tbody.appendChild(row);
+        attachRowEvents(row);
+        renumberRows();
+        row.style.transition = "opacity 0.18s cubic-bezier(0.16,1,0.3,1), transform 0.18s cubic-bezier(0.16,1,0.3,1)";
+        row.style.opacity = "0";
+        row.style.transform = "translateY(-4px)";
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                row.style.opacity = "1";
+                row.style.transform = "translateY(0)";
+            });
+        });
+        const firstInput = row.querySelector("input:not([type=hidden])");
+        if (firstInput) firstInput.focus();
+    }
+
+    function attachRowEvents(row) {
+        const descInput = row.querySelector(".item-desc-input");
+        const unitInput = row.querySelector(".item-unit-input");
+        const box = row.querySelector(".suggestion-box");
+
+        row.querySelectorAll("input").forEach(input => {
+            input.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                }
+            });
+        });
+
+        descInput.addEventListener("input", function() {
+            const q = descInput.value.trim();
+            if (q.length < 2) { box.style.display = "none"; return; }
+
+            fetch("/catalog/search?q=" + encodeURIComponent(q))
+                .then(r => r.json())
+                .then(results => {
+                    box.innerHTML = "";
+                    if (results.length === 0) { box.style.display = "none"; return; }
+                    results.forEach(item => {
+                        const opt = document.createElement("button");
+                        opt.type = "button";
+                        opt.className = "list-group-item list-group-item-action text-start";
+                        opt.textContent = item.description;
+                        opt.onclick = function() {
+                            descInput.value = item.description;
+                            if (unitInput && item.unit) {
+                                unitInput.value = item.unit;
+                            }
+                            box.style.display = "none";
+                        };
+                        box.appendChild(opt);
+                    });
+                    box.style.display = "block";
+                });
+        });
+
+        descInput.addEventListener("blur", function() {
+            setTimeout(() => { box.style.display = "none"; }, 200);
+        });
+    }
+
+    // Attach autocomplete listeners to prefilled / initial rows
+    document.querySelectorAll("#items-table tbody tr").forEach(attachRowEvents);
+
+    // Busy-state on submit: PDF generation is synchronous on the server
+    document.getElementById('challanCreateForm').addEventListener('submit', function (e) {
+        if (!this.checkValidity()) return;
+        var btn = this.querySelector('button[type="submit"]');
+        if (btn) {
+            btn.disabled = true;
+            var icon = btn.querySelector('.bi-check-lg'); if (icon) icon.style.display = 'none';
+            var label = btn.querySelector('.btn-label'); if (label) label.textContent = 'Generating…';
+            var spin = btn.querySelector('.spinner-border'); if (spin) spin.classList.remove('d-none');
+        }
+    });
+</script>
+{% endblock %}

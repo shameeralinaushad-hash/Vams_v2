@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ client.name }}{% endblock %}
+{% block pagetitle %}Edit Client{% endblock %}
+{% block content %}
+<h3>Edit Client</h3>
+<form method="POST" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="mb-3">
+        <label class="form-label">Client Name</label>
+        <input type="text" name="name" class="form-control" value="{{ client.name }}" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Address</label>
+        <textarea name="address" class="form-control">{{ client.address or "" }}</textarea>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Contact Info (phone / email)</label>
+        <input type="text" name="contact_info" class="form-control" value="{{ client.contact_info or '' }}">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Tax / Registration Number</label>
+        <input type="text" name="tax_number" class="form-control" value="{{ client.tax_number or '' }}">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Client Logo</label><br>
+        {% if client.logo_filename %}
+        <img src="{{ url_for('static', filename='client_logos/' ~ client.logo_filename) }}" style="width:56px;height:56px;object-fit:contain;border-radius:12px;background:var(--surface-soft);padding:6px;margin-bottom:8px;">
+        <div class="small text-muted mb-2">Uploading a new logo below will replace this one.</div>
+        {% endif %}
+        <input type="file" name="logo" class="form-control" accept="image/*">
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Which of your companies does this client order from?</label>
+        {% for co in companies %}
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="company_ids" value="{{ co.id }}" id="co{{ co.id }}"
+                   {% if co.id in linked_company_ids %}checked{% endif %}>
+            <label class="form-check-label" for="co{{ co.id }}">{{ co.name }}</label>
+        </div>
+        {% endfor %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Client Code (used in Invoice/Challan numbers, e.g. "IOM")</label>
+        <input type="text" name="client_code" class="form-control" value="{{ client.client_code or '' }}" placeholder="IOM">
+    </div>
+    <button type="submit" class="btn btn-success">Save Changes</button>
+    <a href="{{ url_for('clients.view_profile', client_id=client.id) }}" class="btn btn-outline-secondary">Cancel</a>
+</form>
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Holidays{% endblock %}
+{% block pagetitle %}Holidays{% endblock %}
+
+{% block extra_head %}
+<style>
+    .info-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: 0 2px 10px rgba(20,24,31,0.03); }
+    .panel-header { border-bottom: 1px dashed var(--border); padding-bottom: 14px; margin-bottom: 18px; }
+    .panel-title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1rem; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 8px; }
+    .table-custom { margin: 0; }
+    .table-custom th { border-bottom: 2px solid var(--border); color: var(--text-secondary); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 10px; }
+    .table-custom td { padding: 14px 10px; vertical-align: middle; font-size: 0.85rem; color: var(--text-primary); border-bottom: 1px solid var(--border); }
+    .table-custom tr:last-child td { border-bottom: none; }
+    .modal-form .form-control, .modal-form .form-select { background-color: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 0.85rem; }
+    .modal-form .form-label { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
+    .holiday-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+    .holiday-badge.fixed { background: rgba(30,158,99,0.12); color: #1e9e63; }
+    .holiday-badge.recurring { background: rgba(217,154,43,0.12); color: #d99a2b; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div class="d-flex gap-2 align-items-center">
+        <select class="form-select form-select-sm" style="width: auto;" onchange="window.location='?year='+this.value">
+            {% for y in range(2023, 2035) %}
+            <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+        </select>
+        <span class="text-muted small">{{ holidays | length }} holiday(s)</span>
+    </div>
+    <button type="button" class="btn btn-primary rounded-pill" data-bs-toggle="modal" data-bs-target="#addHolidayModal">+ Add Holiday</button>
+</div>
+
+<div class="info-panel">
+    <div class="table-responsive">
+        <table class="table table-custom align-middle">
+            <thead><tr><th>Date</th><th>Name</th><th>Type</th><th class="text-end">Actions</th></tr></thead>
+            <tbody>
+                {% for h in holidays %}
+                <tr>
+                    <td>{{ h.date }}</td>
+                    <td class="fw-semibold">{{ h.name }}</td>
+                    <td><span class="holiday-badge {% if h.is_recurring %}recurring{% else %}fixed{% endif %}">{{ 'Recurring' if h.is_recurring else 'Fixed' }}</span></td>
+                    <td class="text-end">
+                        <form method="POST" action="{{ url_for('hr.delete_holiday', holiday_id=h.id) }}" class="d-inline" onsubmit="return confirm('Delete {{ h.name }}?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill" style="font-size:0.7rem;">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-muted text-center py-4">No holidays defined.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="addHolidayModal" tabindex="-1">
+    <div class="modal-dialog modal-sm"><div class="modal-content" style="border-radius: var(--radius-lg);">
+        <form method="POST" action="{{ url_for('hr.add_holiday') }}" class="modal-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="modal-header border-0"><h6 class="modal-title fw-bold">Add Holiday</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-3"><label class="form-label">Date *</label><input type="date" name="date" class="form-control" required></div>
+                <div class="mb-3"><label class="form-label">Name *</label><input type="text" name="name" class="form-control" placeholder="e.g. Eid-ul-Fitr" required></div>
+                <div class="mb-3"><div class="form-check"><input class="form-check-input" type="checkbox" name="is_recurring" id="is_recurring" value="1"><label class="form-check-label" for="is_recurring">Recurring (applies every year)</label></div></div>
+            </div>
+            <div class="modal-footer border-0"><button type="submit" class="btn btn-primary rounded-pill px-4">Add</button></div>
+        </form>
+    </div></div>
+</div>
+{% endblock %}

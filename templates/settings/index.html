@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block pagetitle %}Settings{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Maintenance Mode Card -->
+    <div class="settings-panel mb-4" style="max-width: 640px;">
+        <h6 class="fw-bold mb-3">System Maintenance</h6>
+        <p class="text-muted small mb-4">
+            Enable maintenance mode to restrict access. Staff will see a "back soon" page, while you remain logged in to verify updates.
+        </p>
+
+        <form method="POST" action="{{ url_for('maintenance.toggle_maintenance') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="maintenanceSwitch"
+                       name="maintenance_on" {% if maintenance_on %}checked{% endif %}>
+                <label class="form-check-label fw-semibold" for="maintenanceSwitch">
+                    Maintenance Mode is {{ "ON" if maintenance_on else "OFF" }}
+                </label>
+            </div>
+            <div class="mb-3">
+                <label class="small text-muted mb-1 d-block">Message shown to users:</label>
+                <textarea name="message" class="form-control" rows="2"
+                          placeholder="e.g. Upgrading features — back in 10 minutes.">{{ current_message or "We'll be back online shortly." }}</textarea>
+            </div>
+            <button type="submit" class="btn btn-primary rounded-pill px-4">Save Changes</button>
+        </form>
+    </div>
+
+    <!-- Data Management Section -->
+    <div class="settings-panel mb-4" style="max-width: 640px;">
+        <h6 class="fw-bold mb-3">Data Management</h6>
+        <p class="text-muted small mb-3">
+            Import records from legacy systems or perform database maintenance.
+        </p>
+        <a href="{{ url_for('reports.import_legacy') }}" class="btn btn-outline-secondary rounded-pill px-4 mb-2 d-block">
+            <i class="bi bi-cloud-upload me-1"></i> Import Historical Record
+        </a>
+    </div>
+
+    <!-- Backup Card -->
+    <div class="settings-panel" style="max-width: 640px;">
+        <h6 class="fw-bold mb-3">Database Backup</h6>
+        <p class="text-muted small mb-3">
+            Creates a timestamped copy of the database. Good practice to run before any update.
+        </p>
+        <a href="{{ url_for('backup_now') }}" class="btn btn-outline-secondary rounded-pill px-4">
+            <i class="bi bi-download me-1"></i> Backup Database Now
+        </a>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,38 @@
+<div class="modal fade" id="editExpenseModal" tabindex="-1">
+    <div class="modal-dialog modal-sm"><div class="modal-content" style="border-radius: var(--radius-lg);">
+        <form method="POST" action="" id="editExpenseForm" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="modal-header border-0"><h6 class="modal-title fw-bold">Edit Expense</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-3"><label class="form-label">Category</label><select name="category_id" id="editExpCat" class="form-select">{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
+                <div class="mb-3"><label class="form-label">Amount</label><input type="number" step="0.01" name="amount" id="editExpAmt" class="form-control" required></div>
+                <div class="mb-3"><label class="form-label">Date</label><input type="date" name="expense_date" id="editExpDate" class="form-control"></div>
+                <div class="mb-3"><label class="form-label">Payee</label><input type="text" name="payee" id="editExpPayee" class="form-control"></div>
+                <div class="mb-3" id="editExpPmGroup"><label class="form-label">Payment Method</label><select name="payment_method" id="editExpPm" class="form-select"><option value="">—</option><option value="cash">Cash</option><option value="bank">Bank</option><option value="card">Card</option></select></div>
+                <div class="mb-3"><label class="form-label">Notes</label><input type="text" name="notes" id="editExpNotes" class="form-control"></div>
+                <div class="mb-3"><label class="form-label">Receipt</label><input type="file" name="receipt" class="form-control form-control-sm" accept="image/*,.pdf"></div>
+            </div>
+            <div class="modal-footer border-0"><button type="submit" class="btn btn-primary rounded-pill px-4">Save</button></div>
+        </form>
+    </div></div>
+</div>
+
+<script>
+function openEditExpense(urlPrefix, id, catId, amt, payee, pm, notes, dt) {
+    var form = document.getElementById('editExpenseForm');
+    form.action = '/accounts/' + urlPrefix + '/edit/' + id;
+    if (catId) document.getElementById('editExpCat').value = catId;
+    document.getElementById('editExpAmt').value = amt;
+    document.getElementById('editExpDate').value = dt;
+    document.getElementById('editExpPayee').value = payee;
+    var pmGroup = document.getElementById('editExpPmGroup');
+    if (urlPrefix === 'personal') {
+        pmGroup.style.display = 'none';
+    } else {
+        pmGroup.style.display = '';
+        document.getElementById('editExpPm').value = pm;
+    }
+    document.getElementById('editExpNotes').value = notes;
+    new bootstrap.Modal(document.getElementById('editExpenseModal')).show();
+}
+</script>
