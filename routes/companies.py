@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from flask import Blueprint, render_template, request, redirect, url_for, session, current_app, flash
+from flask import Blueprint, render_template, request, redirect, url_for, session, current_app, flash, send_from_directory, abort
 from werkzeug.utils import secure_filename
 from models import db, Company, DocSequence
 from utils import validate_upload, ALLOWED_IMAGE_EXTENSIONS
@@ -35,6 +35,51 @@ def _save_optional_image(file_storage, folder, filename_prefix, error_label):
     return filename
 
 
+_ASSET_MAP = {
+    "logo": ("COMPANY_LOGO_FOLDER", "logo_filename"),
+    "signature": ("SIGNATURE_FOLDER", "signature_filename"),
+    "letterhead": ("LETTERHEAD_FOLDER", "letterhead_filename"),
+    "letterhead_footer": ("LETTERHEAD_FOLDER", "letterhead_footer_filename"),
+}
+
+
+def _resolve_asset(company, asset_type):
+    cfg_key, field = _ASSET_MAP.get(asset_type, (None, None))
+    if not cfg_key:
+        return None, None, None
+    filename = getattr(company, field, None)
+    if not filename:
+        return None, None, None
+    folder = current_app.config[cfg_key]
+    return folder, filename, field
+
+
+@companies_bp.route("/<int:company_id>/asset/<asset_type>")
+@permission_required("manage_companies")
+def download_asset(company_id, asset_type):
+    company = Company.query.get_or_404(company_id)
+    folder, filename, _ = _resolve_asset(company, asset_type)
+    if not filename:
+        abort(404)
+    return send_from_directory(folder, filename, as_attachment=True)
+
+
+@companies_bp.route("/<int:company_id>/asset/<asset_type>/delete", methods=["POST"])
+@permission_required("manage_companies")
+def delete_asset(company_id, asset_type):
+    company = Company.query.get_or_404(company_id)
+    folder, filename, field = _resolve_asset(company, asset_type)
+    if not filename:
+        abort(404)
+    filepath = os.path.join(folder, filename)
+    if os.path.exists(filepath):
+        os.remove(filepath)
+    setattr(company, field, None)
+    db.session.commit()
+    flash(f"{asset_type.replace('_', ' ').title()} removed.")
+    return redirect(url_for("companies.company_profile", company_id=company.id))
+
+
 @companies_bp.route("/")
 def list_companies():
     companies = Company.query.all()
@@ -42,15 +87,57 @@ def list_companies():
 
 
 @companies_bp.route("/<int:company_id>/profile")
+@permission_required("manage_companies")
 def company_profile(company_id):
     company = Company.query.get_or_404(company_id)
 
-    from models import Order, Invoice, Quotation, PurchaseOrder, DeliveryChallan
+    from models import Order, Invoice, Quotation, PurchaseOrder, DeliveryChallan, Payment, Expense, Client, CompanyDocument, ClientCompanyLink
+
     order_count = Order.query.filter_by(company_id=company.id).count()
     invoice_count = Invoice.query.join(Order).filter(Order.company_id == company.id).count()
     quotation_count = Quotation.query.join(Order).filter(Order.company_id == company.id).count()
     po_count = PurchaseOrder.query.join(Order).filter(Order.company_id == company.id).count()
     challan_count = DeliveryChallan.query.join(Order).filter(Order.company_id == company.id).count()
+    client_count = ClientCompanyLink.query.filter_by(company_id=company.id).count()
+
+    # PO-based revenue
+    from sqlalchemy import func
+    revenue = db.session.query(func.coalesce(func.sum(PurchaseOrder.total_amount), 0.0)).join(Order).filter(
+        Order.company_id == company.id,
+        PurchaseOrder.status.in_(["Received", "Delivered", "Partially Delivered"]),
+    ).scalar()
+
+    # Expenses
+    total_expenses = db.session.query(func.coalesce(func.sum(Expense.amount), 0.0)).filter(
+        Expense.company_id == company.id,
+    ).scalar()
+
+    # Payments collected
+    total_collected = db.session.query(func.coalesce(func.sum(Payment.amount), 0.0)).join(Invoice).join(Order).filter(
+        Order.company_id == company.id,
+    ).scalar()
+
+    outstanding = revenue - total_collected
+    profit = revenue - total_expenses
+
+    # Profile documents
+    profile_documents = CompanyDocument.query.filter_by(company_id=company.id, show_on_profile=True).all()
+
+    # Visual assets
+    visual_assets = {"logos": [], "signatures": [], "letterheads": [], "letterhead_footers": []}
+    if company.logo_filename:
+        visual_assets["logos"].append(f"company_logos/{company.logo_filename}")
+    if company.signature_filename:
+        visual_assets["signatures"].append(f"signatures/{company.signature_filename}")
+    if company.letterhead_filename:
+        visual_assets["letterheads"].append(f"letterheads/{company.letterhead_filename}")
+    if company.letterhead_footer_filename:
+        visual_assets["letterhead_footers"].append(f"letterheads/{company.letterhead_footer_filename}")
+
+    def fmt_currency(val):
+        if val >= 1_000_000:
+            return f"{val / 1_000_000:.2f}M"
+        return f"{val:,.0f}"
 
     return render_template(
         "companies/profile.html", company=company,
@@ -60,7 +147,18 @@ def company_profile(company_id):
             "quotations": quotation_count,
             "purchase_orders": po_count,
             "challans": challan_count,
+            "clients": client_count,
         },
+        stats={
+            "revenue": revenue,
+            "collected": total_collected,
+            "outstanding": outstanding,
+            "profit": profit,
+            "total_expenses": total_expenses,
+        },
+        format_currency=fmt_currency,
+        visual_assets=visual_assets,
+        profile_documents=profile_documents,
     )
 
 
@@ -83,6 +181,7 @@ def add_company():
         formation_date = _parse_date(request.form.get("formation_date", ""))
         ein = request.form.get("ein", "")
         registered_agent = request.form.get("registered_agent", "")
+        terms_conditions = request.form.get("terms_conditions", "")
 
         letterhead_filename = _save_optional_image(
             request.files.get("letterhead"), current_app.config["LETTERHEAD_FOLDER"],
@@ -133,6 +232,7 @@ def add_company():
             formation_date=formation_date,
             ein=ein,
             registered_agent=registered_agent,
+            terms_conditions=terms_conditions,
         )
         db.session.add(company)
         db.session.commit()
@@ -168,6 +268,7 @@ def edit_company(company_id):
         company.formation_date = _parse_date(request.form.get("formation_date", ""))
         company.ein = request.form.get("ein", "")
         company.registered_agent = request.form.get("registered_agent", "")
+        company.terms_conditions = request.form.get("terms_conditions", "")
 
         letterhead_filename = _save_optional_image(
             request.files.get("letterhead"), current_app.config["LETTERHEAD_FOLDER"],

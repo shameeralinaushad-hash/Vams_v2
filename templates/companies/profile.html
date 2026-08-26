@@ -1,77 +1,848 @@
 {% extends "base.html" %}
-{% block title %}Entity Profile — {{ company.name }}{% endblock %}
-{% block pagetitle %}Entity Profile{% endblock %}
+{% block title %}{{ company.name }} — Profile{% endblock %}
+{% block pagetitle %}{{ company.name }}{% endblock %}
 
 {% block extra_head %}
 <style>
-    .profile-card { background: #ffffff; border: 1px solid var(--border); border-radius: 16px; padding: 24px; }
-    .profile-stat { text-align: center; padding: 16px 8px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-soft, #f8fafc); }
-    .profile-stat .num { font-size: 1.4rem; font-weight: 800; color: var(--text-dark); }
-    .profile-stat .lbl { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
-    .profile-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
-    .profile-value { font-weight: 600; color: var(--text-dark); }
-    .badge-status { background: #dcfce7; color: #15803d; padding: 3px 12px; border-radius: 20px; font-weight: 700; font-size: 0.75rem; }
+    /* ---------- Top Action Bar ---------- */
+    .action-bar {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+    .btn-action-pill {
+        background: var(--surface);
+        color: var(--text-primary);
+        border: 1px solid var(--border);
+        border-radius: 30px;
+        padding: 8px 18px;
+        font-weight: 600;
+        font-size: 0.82rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        text-decoration: none;
+    }
+    .btn-action-pill:hover {
+        background: var(--surface-soft);
+        border-color: var(--text-secondary);
+        color: var(--text-primary);
+        transform: translateY(-1px);
+    }
+    .btn-action-pill i { font-size: 0.95rem; color: var(--text-secondary); }
+    .btn-action-pill.btn-solid {
+        background: #16171a;
+        color: #fff;
+        border-color: #16171a;
+    }
+    .btn-action-pill.btn-solid i { color: #e8f27c; }
+    .btn-action-pill.btn-solid:hover {
+        background: #2c2d31;
+        border-color: #2c2d31;
+        color: #fff;
+    }
+
+    /* ---------- Profile Header Card ---------- */
+    .profile-header-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg, 16px);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.03);
+        padding: 28px;
+        margin-bottom: 24px;
+    }
+    .company-logo-img {
+        width: 72px; height: 72px;
+        object-fit: contain;
+        border-radius: 18px;
+        background: var(--surface-soft);
+        padding: 10px;
+        border: 1px solid var(--border);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+    }
+    .company-logo-placeholder {
+        width: 72px; height: 72px;
+        border-radius: 18px;
+        background: #16171a;
+        color: #e8f27c;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 1.6rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+    }
+    .profile-title {
+        font-family: 'Poppins', 'Inter', sans-serif;
+        font-weight: 700;
+        font-size: 2rem;
+        letter-spacing: -0.02em;
+        color: var(--text-primary);
+        margin: 0;
+    }
+    .profile-meta-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+    .profile-meta-item i { color: var(--text-muted); }
+
+    /* ---------- Navigation Pill Tabs ---------- */
+    .header-tabs {
+        border-top: 1px solid var(--border);
+        padding-top: 18px;
+        margin-top: 20px;
+    }
+    .pill-tabs {
+        display: inline-flex;
+        flex-wrap: wrap;
+        background: var(--surface-soft);
+        border-radius: 30px;
+        padding: 4px;
+        border: 1px solid var(--border);
+    }
+    .pill-tabs a {
+        color: var(--text-secondary);
+        font-size: 0.82rem;
+        font-weight: 600;
+        padding: 6px 18px;
+        border-radius: 30px;
+        text-decoration: none;
+        transition: all 0.2s ease;
+        cursor: pointer;
+    }
+    .pill-tabs a:hover { color: var(--text-primary); }
+    .pill-tabs a.active {
+        background: #ffffff;
+        color: var(--text-primary);
+        box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+    }
+
+    /* ---------- Metric Cards ---------- */
+    .metric-chip {
+        background: var(--surface);
+        border-radius: var(--radius-md, 12px);
+        border: 1px solid var(--border);
+        box-shadow: 0 4px 18px rgba(0,0,0,0.02);
+        padding: 20px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+    }
+    .metric-chip:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 24px rgba(0,0,0,0.06);
+    }
+    .metric-chip:active { transform: scale(0.98); }
+    .metric-icon-wrap {
+        width: 38px; height: 38px;
+        border-radius: 10px;
+        background: var(--surface-soft);
+        color: var(--text-primary);
+        font-size: 1.1rem;
+        display: flex; align-items: center; justify-content: center;
+        margin-bottom: 14px;
+        transition: background-color 0.25s, color 0.25s;
+    }
+    .metric-chip:hover .metric-icon-wrap {
+        background: #16171a;
+        color: #e8f27c;
+    }
+    .metric-success .metric-icon-wrap { background: rgba(63, 178, 127, 0.1); color: var(--success, #3fb27f); }
+    .metric-danger .metric-icon-wrap { background: rgba(229, 88, 79, 0.1); color: var(--danger, #e5584f); }
+    .metric-info .metric-icon-wrap { background: rgba(22, 23, 26, 0.06); color: var(--text-primary); }
+    .metric-success:hover .metric-icon-wrap { background: var(--success, #3fb27f); color: #ffffff; }
+    .metric-danger:hover .metric-icon-wrap { background: var(--danger, #e5584f); color: #ffffff; }
+    .metric-info:hover .metric-icon-wrap { background: var(--text-primary); color: #e8f27c; }
+
+    /* ---------- Content Panels ---------- */
+    .info-panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg, 16px);
+        padding: 24px;
+        height: 100%;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.02);
+    }
+    .panel-header {
+        border-bottom: 1px dashed var(--border);
+        padding-bottom: 12px;
+        margin-bottom: 18px;
+    }
+    .panel-title {
+        font-family: 'Poppins', sans-serif;
+        font-weight: 700;
+        font-size: 1rem;
+        color: var(--text-primary);
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .panel-title i { color: var(--text-secondary); }
+
+    .contact-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 0;
+        border-bottom: 1px dashed var(--border);
+    }
+    .contact-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .contact-row i { color: var(--text-secondary); font-size: 1.05rem; margin-top: 2px; }
+    .contact-label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 700;
+        color: var(--text-muted);
+        margin-bottom: 2px;
+    }
+    .contact-value {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        word-break: break-word;
+    }
+
+    /* ---------- Visual Assets ---------- */
+    .asset-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+        gap: 18px;
+    }
+    .asset-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md, 12px);
+        overflow: hidden;
+        transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+        display: flex;
+        flex-direction: column;
+    }
+    .asset-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 24px rgba(0,0,0,0.06);
+    }
+    .asset-card-media {
+        height: 150px;
+        background: var(--surface-soft);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 14px;
+        border-bottom: 1px solid var(--border);
+    }
+    .asset-card-media img { max-height: 100%; max-width: 100%; object-fit: contain; }
+    .asset-card-body { padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .asset-card-footer {
+        display: flex;
+        gap: 8px;
+        padding: 0 16px 14px;
+        margin-top: auto;
+    }
+    .doc-preview {
+        background:
+            linear-gradient(180deg, var(--surface-soft), var(--surface-soft)),
+            #fff;
+    }
+    .doc-preview img {
+        max-height: 100%;
+        max-width: 100%;
+        object-fit: contain;
+        border-radius: 6px;
+    }
+    .pdf-tile {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 16px;
+        text-align: center;
+    }
+    .pdf-tile i {
+        font-size: 3rem;
+        color: var(--text-muted);
+    }
+    .pdf-tile .pdf-name {
+        font-size: 0.72rem;
+        color: var(--text-secondary);
+        max-width: 170px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .asset-card-title {
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-secondary);
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .asset-card-title i { color: var(--text-muted); }
+    .btn-copy {
+        background: var(--surface-soft);
+        color: var(--text-primary);
+        border: 1px solid var(--border);
+        border-radius: 30px;
+        padding: 5px 12px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        transition: all 0.2s ease;
+        text-decoration: none;
+        cursor: pointer;
+    }
+    .btn-copy:hover {
+        background: #16171a;
+        color: #e8f27c;
+        border-color: #16171a;
+    }
+    .btn-delete:hover {
+        background: var(--danger, #e5584f);
+        color: #ffffff;
+        border-color: var(--danger, #e5584f);
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 48px 20px;
+        color: var(--text-muted);
+    }
+    .empty-state i { font-size: 2.4rem; color: var(--text-muted); display: block; margin-bottom: 12px; }
+
+    /* ---------- Tab sections ---------- */
+    .tab-section { display: none; }
+    .tab-section.active { display: block; }
+
+    /* ---------- Toast ---------- */
+    .copy-toast {
+        position: fixed;
+        bottom: 24px; right: 24px;
+        background: #16171a;
+        color: #e8f27c;
+        padding: 12px 20px;
+        border-radius: 30px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+        z-index: 2000;
+        opacity: 0;
+        transform: translateY(10px);
+        pointer-events: none;
+        transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .copy-toast.show { opacity: 1; transform: translateY(0); }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <div class="d-flex align-items-center gap-3">
-        {% if company.logo_filename %}
-        <img src="{{ url_for('static', filename='company_logos/' ~ company.logo_filename) }}" style="width:56px;height:56px;object-fit:contain;border:1px solid var(--border);border-radius:12px;">
-        {% endif %}
-        <div>
-            <h5 class="fw-bold m-0" style="font-family: 'Space Grotesk', sans-serif;">{{ company.name }}</h5>
-            {% if company.status %}
-            <span class="badge-status">{{ company.status }}</span>
-            {% else %}
-            <span class="text-muted" style="font-size:0.85rem;">Entity profile</span>
-            {% endif %}
-        </div>
-    </div>
-    <div>
-        <a href="{{ url_for('companies.edit_company', company_id=company.id) }}" class="btn btn-outline-primary rounded-pill px-4">
-            <i class="bi bi-pencil me-1"></i> Edit
+
+<!-- ===== ACTIONS HEADER BAR ===== -->
+<div class="action-bar">
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('companies.switch_company', company_id=company.id) }}" class="btn-action-pill">
+            <i class="bi bi-check2-circle"></i> Set Active
         </a>
-        <a href="{{ url_for('companies.list_companies') }}" class="btn btn-outline-secondary rounded-pill px-4 ms-1">Back</a>
+        <a href="{{ url_for('companies.edit_company', company_id=company.id) }}" class="btn-action-pill btn-solid">
+            <i class="bi bi-pencil"></i> Edit Profile
+        </a>
+        <a href="{{ url_for('companies.list_companies') }}" class="btn-action-pill">
+            <i class="bi bi-arrow-left"></i> All Companies
+        </a>
     </div>
 </div>
 
-<!-- Stat row -->
-<div class="row g-3 mb-4">
-    <div class="col-6 col-md-2"><div class="profile-stat"><div class="num">{{ counts.orders }}</div><div class="lbl">Orders</div></div></div>
-    <div class="col-6 col-md-2"><div class="profile-stat"><div class="num">{{ counts.invoices }}</div><div class="lbl">Invoices</div></div></div>
-    <div class="col-6 col-md-2"><div class="profile-stat"><div class="num">{{ counts.quotations }}</div><div class="lbl">Quotations</div></div></div>
-    <div class="col-6 col-md-2"><div class="profile-stat"><div class="num">{{ counts.purchase_orders }}</div><div class="lbl">Purchase Orders</div></div></div>
-    <div class="col-6 col-md-2"><div class="profile-stat"><div class="num">{{ counts.challans }}</div><div class="lbl">Challans</div></div></div>
-</div>
-
-<div class="row g-3">
-    <!-- Entity information -->
-    <div class="col-md-6">
-        <div class="profile-card h-100">
-            <h6 class="fw-bold mb-3">Entity Information</h6>
-            <div class="row mb-2"><div class="col-5 profile-label">Entity Type</div><div class="col-7 profile-value">{{ company.entity_type or "—" }}</div></div>
-            <div class="row mb-2"><div class="col-5 profile-label">Status</div><div class="col-7 profile-value">{{ company.status or "—" }}</div></div>
-            <div class="row mb-2"><div class="col-5 profile-label">Formation Date</div><div class="col-7 profile-value">{{ company.formation_date.strftime('%b %d, %Y') if company.formation_date else "—" }}</div></div>
-            <div class="row mb-2"><div class="col-5 profile-label">EIN</div><div class="col-7 profile-value">{{ company.ein or "—" }}</div></div>
-            <div class="row mb-2"><div class="col-5 profile-label">Registered Agent</div><div class="col-7 profile-value">{{ company.registered_agent or "—" }}</div></div>
-            <div class="row mb-2"><div class="col-5 profile-label">Tax / Reg. Number</div><div class="col-7 profile-value">{{ company.tax_number or "—" }}</div></div>
+<!-- ===== COMPANY IDENTITY CARD ===== -->
+<div class="profile-header-card">
+    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+        <div class="d-flex align-items-center gap-3">
+            {% if company.logo_filename %}
+                <img src="{{ url_for('static', filename='company_logos/' ~ company.logo_filename) }}" class="company-logo-img" alt="{{ company.name }}">
+            {% else %}
+                <div class="company-logo-placeholder">{{ company.name[0] }}</div>
+            {% endif %}
+            <div>
+                <h1 class="profile-title">{{ company.name }}</h1>
+                <div class="d-flex flex-wrap gap-3 mt-2 text-muted">
+                    {% if company.created_at %}
+                    <span class="profile-meta-item"><i class="bi bi-calendar3"></i> Since {{ company.created_at.strftime('%b %Y') }}</span>
+                    {% endif %}
+                    {% if company.location_code %}
+                    <span class="profile-meta-item"><i class="bi bi-geo"></i> {{ company.location_code }}</span>
+                    {% endif %}
+                    {% if company.pdf_theme %}
+                    <span class="profile-meta-item"><i class="bi bi-palette"></i> Theme: {{ company.pdf_theme }}</span>
+                    {% endif %}
+                    {% if company.status %}
+                    <span class="profile-meta-item"><i class="bi bi-check-circle"></i> {{ company.status }}</span>
+                    {% endif %}
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- Contact & documents -->
-    <div class="col-md-6">
-        <div class="profile-card h-100">
-            <h6 class="fw-bold mb-3">Contact &amp; Details</h6>
-            <div class="row mb-2"><div class="col-5 profile-label">Address</div><div class="col-7 profile-value">{{ company.address or "—" }}</div></div>
-            <div class="row mb-2"><div class="col-5 profile-label">Phone</div><div class="col-7 profile-value">{{ company.phone or "—" }}</div></div>
-            <div class="row mb-2"><div class="col-5 profile-label">Email</div><div class="col-7 profile-value">{{ company.email or "—" }}</div></div>
-            <div class="row mb-2"><div class="col-5 profile-label">Authorized Signatory</div><div class="col-7 profile-value">{{ company.authorized_name or "—" }}</div></div>
-            <div class="row mb-2"><div class="col-5 profile-label">Designation</div><div class="col-7 profile-value">{{ company.designation or "—" }}</div></div>
-            <div class="row mb-2"><div class="col-5 profile-label">Short Name</div><div class="col-7 profile-value">{{ company.short_name or "—" }}</div></div>
-            <div class="row mb-2"><div class="col-5 profile-label">Location Code</div><div class="col-7 profile-value">{{ company.location_code or "—" }}</div></div>
+    <div class="header-tabs">
+        <div class="pill-tabs">
+            <a class="active" onclick="switchTab('overview')">Overview</a>
+            <a onclick="switchTab('details')">Company Details</a>
+            <a onclick="switchTab('assets')">Visual Assets</a>
         </div>
     </div>
 </div>
+
+<!-- ===== OVERVIEW TAB ===== -->
+<div class="tab-section active" id="tab-overview">
+
+    <!-- Core Metrics -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-3 col-sm-6">
+            <div class="metric-chip">
+                <div class="metric-icon-wrap"><i class="bi bi-graph-up-arrow"></i></div>
+                <div>
+                    <div class="text-muted small mb-1 fw-semibold">Total Revenue</div>
+                    <div class="fs-4 fw-bold" style="color: var(--text-primary);">{{ format_currency(stats.revenue) }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="metric-chip metric-success">
+                <div class="metric-icon-wrap"><i class="bi bi-check-circle"></i></div>
+                <div>
+                    <div class="text-muted small mb-1 fw-semibold">Collected</div>
+                    <div class="fs-4 fw-bold" style="color: var(--success, #3fb27f);">{{ format_currency(stats.collected) }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="metric-chip metric-danger">
+                <div class="metric-icon-wrap"><i class="bi bi-exclamation-circle"></i></div>
+                <div>
+                    <div class="text-muted small mb-1 fw-semibold">Outstanding</div>
+                    <div class="fs-4 fw-bold" style="color: var(--danger, #e5584f);">{{ format_currency(stats.outstanding) }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="metric-chip metric-info">
+                <div class="metric-icon-wrap"><i class="bi bi-bar-chart"></i></div>
+                <div>
+                    <div class="text-muted small mb-1 fw-semibold">Est. Profit</div>
+                    <div class="fs-4 fw-bold" style="color: var(--text-primary);">{{ format_currency(stats.profit) }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Activity Counts -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4 col-6">
+            <div class="info-panel p-3 d-flex align-items-center gap-3">
+                <div class="metric-icon-wrap mb-0"><i class="bi bi-cart3"></i></div>
+                <div>
+                    <div class="fs-4 fw-bold" style="color: var(--text-primary);">{{ counts.orders }}</div>
+                    <div class="text-muted small fw-semibold">Orders</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-6">
+            <div class="info-panel p-3 d-flex align-items-center gap-3">
+                <div class="metric-icon-wrap mb-0"><i class="bi bi-file-earmark-text"></i></div>
+                <div>
+                    <div class="fs-4 fw-bold" style="color: var(--text-primary);">{{ counts.quotations }}</div>
+                    <div class="text-muted small fw-semibold">Quotations</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-6">
+            <div class="info-panel p-3 d-flex align-items-center gap-3">
+                <div class="metric-icon-wrap mb-0"><i class="bi bi-receipt"></i></div>
+                <div>
+                    <div class="fs-4 fw-bold" style="color: var(--text-primary);">{{ counts.purchase_orders }}</div>
+                    <div class="text-muted small fw-semibold">Purchase Orders</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-6">
+            <div class="info-panel p-3 d-flex align-items-center gap-3">
+                <div class="metric-icon-wrap mb-0"><i class="bi bi-truck"></i></div>
+                <div>
+                    <div class="fs-4 fw-bold" style="color: var(--text-primary);">{{ counts.challans }}</div>
+                    <div class="text-muted small fw-semibold">Challans</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-6">
+            <div class="info-panel p-3 d-flex align-items-center gap-3">
+                <div class="metric-icon-wrap mb-0"><i class="bi bi-people"></i></div>
+                <div>
+                    <div class="fs-4 fw-bold" style="color: var(--text-primary);">{{ counts.clients }}</div>
+                    <div class="text-muted small fw-semibold">Clients</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-6">
+            <div class="info-panel p-3 d-flex align-items-center gap-3">
+                <div class="metric-icon-wrap mb-0"><i class="bi bi-receipt"></i></div>
+                <div>
+                    <div class="fs-4 fw-bold" style="color: var(--text-primary);">{{ counts.invoices }}</div>
+                    <div class="text-muted small fw-semibold">Invoices</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profile Documents -->
+    {% if profile_documents %}
+    <div id="documents-section">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold m-0" style="font-family: 'Poppins', sans-serif; color: var(--text-primary);">Documents</h5>
+            <span class="badge bg-light text-secondary border px-3 py-1.5 rounded-pill" style="font-size: 0.75rem;">
+                <i class="bi bi-folder2-open me-1"></i> Shared on this profile
+            </span>
+        </div>
+
+        <div class="asset-grid">
+            {% for doc in profile_documents %}
+            {% set doc_url = url_for('static', filename='company_documents/' ~ doc.filename) %}
+            {% set ext = doc.filename.split('.')[-1].lower() %}
+            <div class="asset-card document-card">
+                <div class="asset-card-media doc-preview" title="{{ doc.title }}">
+                    {% if ext in ['jpg', 'jpeg', 'png', 'gif', 'webp'] %}
+                        <img src="{{ doc_url }}" alt="{{ doc.title }}" loading="lazy">
+                    {% elif ext == 'pdf' %}
+                        <div class="pdf-tile">
+                            <i class="bi bi-file-earmark-pdf-fill"></i>
+                            <span class="pdf-name">{{ doc.filename.split('/')[-1] }}</span>
+                        </div>
+                    {% else %}
+                        <div class="pdf-tile">
+                            <i class="bi bi-file-earmark-text-fill"></i>
+                            <span class="pdf-name">{{ doc.filename.split('/')[-1] }}</span>
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="asset-card-body">
+                    <div class="asset-card-title" style="max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        <i class="bi bi-file-earmark"></i> {{ doc.title }}
+                    </div>
+                </div>
+                <div class="asset-card-footer">
+                    <a href="{{ doc_url }}" target="_blank" class="btn-copy flex-fill justify-content-center">
+                        <i class="bi bi-box-arrow-up-right"></i> Open
+                    </a>
+                    <a href="{{ doc_url }}" download class="btn-copy flex-fill justify-content-center">
+                        <i class="bi bi-download"></i> Download
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ===== DETAILS TAB ===== -->
+<div class="tab-section" id="tab-details">
+    <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+            <div class="info-panel">
+                <div class="panel-header">
+                    <h6 class="panel-title"><i class="bi bi-building"></i> Company Details</h6>
+                </div>
+
+                <div class="contact-row">
+                    <i class="bi bi-info-circle"></i>
+                    <div>
+                        <div class="contact-label">Full Name</div>
+                        <div class="contact-value">{{ company.name or "—" }}</div>
+                    </div>
+                </div>
+                {% if company.short_name %}
+                <div class="contact-row">
+                    <i class="bi bi-tag"></i>
+                    <div>
+                        <div class="contact-label">Short Name</div>
+                        <div class="contact-value">{{ company.short_name }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if company.location_code %}
+                <div class="contact-row">
+                    <i class="bi bi-geo-alt"></i>
+                    <div>
+                        <div class="contact-label">Location Code</div>
+                        <div class="contact-value">{{ company.location_code }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if company.email %}
+                <div class="contact-row">
+                    <i class="bi bi-envelope"></i>
+                    <div>
+                        <div class="contact-label">Email</div>
+                        <div class="contact-value d-flex align-items-center gap-2">
+                            {{ company.email }}
+                            <button class="btn-copy" data-copy="{{ company.email }}"><i class="bi bi-copy"></i> Copy</button>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if company.phone %}
+                <div class="contact-row">
+                    <i class="bi bi-telephone"></i>
+                    <div>
+                        <div class="contact-label">Phone</div>
+                        <div class="contact-value d-flex align-items-center gap-2">
+                            {{ company.phone }}
+                            <button class="btn-copy" data-copy="{{ company.phone }}"><i class="bi bi-copy"></i> Copy</button>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if company.tax_number %}
+                <div class="contact-row">
+                    <i class="bi bi-receipt-cutoff"></i>
+                    <div>
+                        <div class="contact-label">Tax Number</div>
+                        <div class="contact-value">{{ company.tax_number }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if company.entity_type %}
+                <div class="contact-row">
+                    <i class="bi bi-diagram-3"></i>
+                    <div>
+                        <div class="contact-label">Entity Type</div>
+                        <div class="contact-value">{{ company.entity_type }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if company.ein %}
+                <div class="contact-row">
+                    <i class="bi bi-hash"></i>
+                    <div>
+                        <div class="contact-label">EIN</div>
+                        <div class="contact-value">{{ company.ein }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if company.formation_date %}
+                <div class="contact-row">
+                    <i class="bi bi-calendar-event"></i>
+                    <div>
+                        <div class="contact-label">Formation Date</div>
+                        <div class="contact-value">{{ company.formation_date.strftime('%b %d, %Y') }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if company.registered_agent %}
+                <div class="contact-row">
+                    <i class="bi bi-person-badge"></i>
+                    <div>
+                        <div class="contact-label">Registered Agent</div>
+                        <div class="contact-value">{{ company.registered_agent }}</div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="info-panel">
+                <div class="panel-header">
+                    <h6 class="panel-title"><i class="bi bi-person-badge"></i> Representation & Configuration</h6>
+                </div>
+
+                {% if company.authorized_name %}
+                <div class="contact-row">
+                    <i class="bi bi-person"></i>
+                    <div>
+                        <div class="contact-label">Authorized Person</div>
+                        <div class="contact-value">{{ company.authorized_name }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if company.designation %}
+                <div class="contact-row">
+                    <i class="bi bi-briefcase"></i>
+                    <div>
+                        <div class="contact-label">Designation</div>
+                        <div class="contact-value">{{ company.designation }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if company.pdf_theme %}
+                <div class="contact-row">
+                    <i class="bi bi-palette"></i>
+                    <div>
+                        <div class="contact-label">PDF Theme</div>
+                        <div class="contact-value">
+                            <span class="badge bg-light text-dark border rounded-pill px-3 py-1.5">{{ company.pdf_theme }}</span>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if company.bank_details %}
+                <div class="contact-row">
+                    <i class="bi bi-bank"></i>
+                    <div>
+                        <div class="contact-label">Bank Details</div>
+                        <div class="contact-value" style="white-space: pre-wrap;">{{ company.bank_details }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if company.terms_conditions %}
+                <div class="contact-row">
+                    <i class="bi bi-file-text"></i>
+                    <div>
+                        <div class="contact-label">Terms & Conditions</div>
+                        <div class="contact-value" style="white-space: pre-wrap;">{{ company.terms_conditions }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if company.address %}
+                <div class="contact-row">
+                    <i class="bi bi-geo-alt-fill"></i>
+                    <div>
+                        <div class="contact-label">Address</div>
+                        <div class="contact-value d-flex align-items-center gap-2">
+                            {{ company.address }}
+                            <button class="btn-copy" data-copy="{{ company.address }}"><i class="bi bi-copy"></i> Copy</button>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== VISUAL ASSETS TAB ===== -->
+<div class="tab-section" id="tab-assets">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold m-0" style="font-family: 'Poppins', sans-serif; color: var(--text-primary);">Visual Assets</h5>
+        <span class="badge bg-light text-secondary border px-3 py-1.5 rounded-pill" style="font-size: 0.75rem;">
+            <i class="bi bi-image me-1"></i> Logos · Signatures · Letterheads
+        </span>
+    </div>
+
+    {% if visual_assets.logos or visual_assets.signatures or visual_assets.letterheads or visual_assets.letterhead_footers %}
+    <div class="asset-grid">
+        {% set labels = {
+            'logos': 'Company Logo',
+            'signatures': 'Signature',
+            'letterheads': 'Letterhead',
+            'letterhead_footers': 'Letterhead Footer'
+        } %}
+        {% set asset_types = {
+            'logos': 'logo',
+            'signatures': 'signature',
+            'letterheads': 'letterhead',
+            'letterhead_footers': 'letterhead_footer'
+        } %}
+        {% for category in ['logos', 'signatures', 'letterheads', 'letterhead_footers'] %}
+            {% for asset in visual_assets[category] %}
+            <div class="asset-card">
+                <div class="asset-card-media">
+                    <img src="{{ url_for('static', filename=asset) }}" alt="{{ labels[category] }}" loading="lazy">
+                </div>
+                <div class="asset-card-body">
+                    <div class="asset-card-title"><i class="bi bi-image"></i> {{ labels[category] }}</div>
+                    <div class="d-flex gap-1">
+                        <a href="{{ url_for('companies.download_asset', company_id=company.id, asset_type=asset_types[category]) }}"
+                           class="btn-copy" title="Download">
+                            <i class="bi bi-download"></i>
+                        </a>
+                        <button class="btn-copy" data-copy="{{ url_for('static', filename=asset) }}" title="Copy URL"><i class="bi bi-link-45deg"></i></button>
+                        <form method="POST" action="{{ url_for('companies.delete_asset', company_id=company.id, asset_type=asset_types[category]) }}"
+                              class="d-inline" onsubmit="return confirm('Delete this {{ labels[category] }}? This cannot be undone.')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn-copy btn-delete" title="Delete"><i class="bi bi-trash"></i></button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="info-panel">
+        <div class="empty-state">
+            <i class="bi bi-image"></i>
+            <p class="fw-semibold mb-1" style="color: var(--text-secondary);">No visual assets uploaded</p>
+            <p class="small mb-0">Add a logo, signature, or letterhead from the Edit Profile page.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ===== TOAST ===== -->
+<div class="copy-toast" id="copyToast"><i class="bi bi-check-circle-fill"></i> Copied to clipboard</div>
+
+<script>
+    (function() {
+        // Tab switching
+        window.switchTab = function(tab) {
+            document.querySelectorAll('.tab-section').forEach(function(s) { s.classList.remove('active'); });
+            document.getElementById('tab-' + tab).classList.add('active');
+            document.querySelectorAll('.pill-tabs a').forEach(function(a) { a.classList.remove('active'); });
+            event.target.classList.add('active');
+        };
+
+        // Copy to clipboard
+        var toast = document.getElementById('copyToast');
+        var timer = null;
+        function showToast() {
+            toast.classList.add('show');
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(function() { toast.classList.remove('show'); }, 1800);
+        }
+
+        document.querySelectorAll('.btn-copy[data-copy]').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                var text = btn.dataset.copy || '';
+                if (!text) return;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(showToast).catch(function() { fallbackCopy(text); });
+                } else {
+                    fallbackCopy(text);
+                }
+            });
+        });
+
+        function fallbackCopy(text) {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); showToast(); } catch (e) {}
+            document.body.removeChild(ta);
+        }
+    })();
+</script>
+
 {% endblock %}

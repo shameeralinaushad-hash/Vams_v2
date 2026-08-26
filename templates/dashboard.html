@@ -1377,7 +1377,7 @@
         <!-- CARD 3: Retention / Order Status (Span 4 Bottom Left) -->
         <div class="zentra-card span-4">
             <div class="zentra-card-header">
-                <h3 class="zentra-card-title">Order Distribution</h3>
+                <h3 class="zentra-card-title">PO Status</h3>
                 <div class="zentra-dots-btn"><i class="bi bi-three-dots"></i></div>
             </div>
             <div style="height: 210px;">
@@ -1601,14 +1601,16 @@ document.addEventListener("DOMContentLoaded", () => {
         new Chart(statusCtx, {
             type: "doughnut",
             data: {
-                labels: ["PO Received", "Not Received", "Pending"],
+                labels: ["Pending", "Received", "Delivered", "Partially Delivered", "Cancelled"],
                 datasets: [{
                     data: [
-                        {{ stats.won_count if stats is defined else 1 }},
-                        {{ stats.not_received_count if stats is defined else 1 }},
-                        {{ stats.pending_count if stats is defined else 1 }}
+                        {{ stats.po_pending if stats is defined else 0 }},
+                        {{ stats.po_received if stats is defined else 0 }},
+                        {{ stats.po_delivered if stats is defined else 0 }},
+                        {{ stats.po_partially_delivered if stats is defined else 0 }},
+                        {{ stats.po_cancelled if stats is defined else 0 }}
                     ],
-                    backgroundColor: ["#22c55e", "#ef4444", "#f59e0b"],
+                    backgroundColor: ["#f59e0b", "#22c55e", "#3b82f6", "#a855f7", "#ef4444"],
                     borderWidth: 0,
                 }]
             },

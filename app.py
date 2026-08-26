@@ -660,6 +660,11 @@ def create_app():
             "won_count": 0,
             "not_received_count": 0,
             "pending_count": 0,
+            "po_pending": 0,
+            "po_received": 0,
+            "po_delivered": 0,
+            "po_partially_delivered": 0,
+            "po_cancelled": 0,
         }
         recent_orders = []
         chart_labels = []
@@ -703,6 +708,21 @@ def create_app():
             in_range_pos = [po for po in pos if _po_in_range(po, date_from, date_to)]
             stats["total_invoiced"] = sum(po.total_amount for po in in_range_pos)
             stats["outstanding"] = 0  # No invoice outstanding tracking for now
+
+            # PO status counts for pie chart
+            _status_key_map = {
+                "Pending": "po_pending",
+                "Received": "po_received",
+                "Delivered": "po_delivered",
+                "Partially Delivered": "po_partially_delivered",
+                "Cancelled": "po_cancelled",
+            }
+            all_pos = PurchaseOrder.query.join(Order).filter(Order.company_id == company_id).all()
+            for po in all_pos:
+                if _po_in_range(po, date_from, date_to):
+                    key = _status_key_map.get(po.status)
+                    if key:
+                        stats[key] += 1
 
             expenses = Expense.query.filter_by(company_id=company_id).all()
             in_range_exp = [e for e in expenses if _exp_in_range(e, date_from, date_to)]

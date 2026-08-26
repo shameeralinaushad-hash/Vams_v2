@@ -30,6 +30,7 @@ class Company(db.Model):
     formation_date = db.Column(db.Date)
     ein = db.Column(db.String(50))
     registered_agent = db.Column(db.String(150))
+    terms_conditions = db.Column(db.Text)
 
     def __repr__(self):
         return f"<Company {self.name}>"
@@ -788,6 +789,7 @@ class CompanyDocument(db.Model):
     company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False, index=True)
     title = db.Column(db.String(200), nullable=False)
     filename = db.Column(db.String(300), nullable=False)
+    show_on_profile = db.Column(db.Boolean, default=False)
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     company = db.relationship("Company")

@@ -64,6 +64,7 @@
                     </td>
                     <td class="text-end">
                         <a href="{{ url_for('companies.switch_company', company_id=c.id) }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3">Set Active</a>
+                        <a href="{{ url_for('companies.company_profile', company_id=c.id) }}" class="btn btn-sm btn-outline-info rounded-pill px-3 ms-1">Profile</a>
                         <a href="{{ url_for('companies.edit_company', company_id=c.id) }}" class="btn btn-sm btn-outline-primary rounded-pill px-3 ms-1">Edit</a>
                         <form method="POST" action="{{ url_for('companies.delete_company', company_id=c.id) }}" class="d-inline"
                               onsubmit="return confirm('Delete {{ c.name }}? This cannot be undone.')">

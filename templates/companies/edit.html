@@ -21,6 +21,11 @@
         <label class="form-label">Bank Details</label>
         <textarea name="bank_details" class="form-control">{{ company.bank_details or "" }}</textarea>
     </div>
+    <div class="mb-3">
+        <label class="form-label">Terms &amp; Conditions</label>
+        <textarea name="terms_conditions" class="form-control" rows="4">{{ company.terms_conditions or "" }}</textarea>
+        <div class="form-text">Default terms and conditions shown on this company's documents.</div>
+    </div>
 
     <div class="mb-3">
         <label class="form-label">Letterhead Header Image</label>
