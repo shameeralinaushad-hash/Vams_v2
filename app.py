@@ -665,6 +665,7 @@ def create_app():
             "po_delivered": 0,
             "po_partially_delivered": 0,
             "po_cancelled": 0,
+            "po_none": 0,
         }
         recent_orders = []
         chart_labels = []
@@ -717,12 +718,18 @@ def create_app():
                 "Partially Delivered": "po_partially_delivered",
                 "Cancelled": "po_cancelled",
             }
-            all_pos = PurchaseOrder.query.join(Order).filter(Order.company_id == company_id).all()
-            for po in all_pos:
-                if _po_in_range(po, date_from, date_to):
+            for order in orders:
+                order_date = order.created_at.date() if order.created_at else None
+                in_range = order_date and (date_from is None or order_date >= date_from) and (date_to is None or order_date <= date_to)
+                if not in_range:
+                    continue
+                po = order.purchase_order
+                if po:
                     key = _status_key_map.get(po.status)
                     if key:
                         stats[key] += 1
+                else:
+                    stats["po_none"] += 1
 
             expenses = Expense.query.filter_by(company_id=company_id).all()
             in_range_exp = [e for e in expenses if _exp_in_range(e, date_from, date_to)]

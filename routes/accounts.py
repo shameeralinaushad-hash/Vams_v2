@@ -446,11 +446,16 @@ def personal_expenses():
     categories = _categories_for_scope("personal")
     cat_totals = _expense_cat_totals("personal", start_date, end_date, user_id=current_user.id)
 
+    today = date.today()
+    budget_rows = _budget_rows(today.month, today.year, None, "personal")
+    budget_summary = _budget_summary(budget_rows)
+
     return render_template("accounts/personal.html",
         period=period, expenses=expenses, categories=categories,
         this_month=this_month, last_month=last_month, ytd=ytd,
         cat_totals=cat_totals, selected_category=category_id, search=search,
         page=pagination.page, pages=pagination.pages, total=pagination.total,
+        budget_rows=budget_rows, budget_summary=budget_summary, today=today,
     )
 
 
@@ -541,11 +546,16 @@ def general_expenses():
         Expense.expense_date.between(start_date, end_date)
     ).all())
 
+    today = date.today()
+    budget_rows = _budget_rows(today.month, today.year, None, "general")
+    budget_summary = _budget_summary(budget_rows)
+
     return render_template("accounts/general.html",
         period=period, expenses=expenses, categories=categories,
         overall_spent=overall_spent, selected_category=category_id, search=search,
         page=pagination.page, pages=pagination.pages, total=pagination.total,
         recurring_url=url_for("accounts.list_recurring_templates"),
+        budget_rows=budget_rows, budget_summary=budget_summary, today=today,
     )
 
 
@@ -668,11 +678,14 @@ def company_accounts():
     categories = _categories_for_scope("company")
     cat_totals = _expense_cat_totals("company", start_date, end_date, company_id=company_id)
 
+    today = date.today()
+    budget_rows = _budget_rows(today.month, today.year, company_id, "company")
+    budget_summary = _budget_summary(budget_rows)
+
     monthly_labels = []
     monthly_revenue = []
     monthly_collected = []
     monthly_exp = []
-    today = date.today()
     for i in range(5, -1, -1):
         ym = today.year * 12 + today.month - 1 - i
         y = ym // 12
@@ -703,6 +716,7 @@ def company_accounts():
         monthly_labels=monthly_labels, monthly_revenue=monthly_revenue,
         monthly_collected=monthly_collected, monthly_exp=monthly_exp,
         page=pagination.page, pages=pagination.pages, total=pagination.total,
+        budget_rows=budget_rows, budget_summary=budget_summary, today=today,
     )
 
 
@@ -993,6 +1007,29 @@ def budgets():
         if action == "copy":
             _copy_budgets_from_prev(scope, month, year, company_id)
             flash("Copied budget amounts from the previous month.")
+        elif request.form.get("budget_amount"):
+            # Inline single-budget add from expense pages
+            cat_id = request.form.get("category_id", type=int)
+            amount = parse_float(request.form.get("budget_amount", ""), 0)
+            recurring = request.form.get("recurring") == "1"
+            if cat_id and amount > 0:
+                existing = Budget.query.filter_by(
+                    scope=scope, category_id=cat_id, company_id=company_id, month=month, year=year
+                ).first()
+                if existing:
+                    existing.amount = amount
+                    existing.recurring = recurring
+                else:
+                    db.session.add(Budget(
+                        scope=scope, company_id=company_id, category_id=cat_id,
+                        month=month, year=year, period_type="monthly", amount=amount,
+                        recurring=recurring, created_by=current_user.id,
+                    ))
+                db.session.commit()
+                log_action("add_budget_inline", "Budget", 0, f"Added {scope} budget for category {cat_id}: {amount}")
+                flash("Budget added.")
+            else:
+                flash("Please select a category and enter an amount.")
         else:
             _save_budgets(scope, month, year, company_id)
             flash("Budgets saved.")

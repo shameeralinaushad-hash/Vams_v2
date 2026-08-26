@@ -580,27 +580,6 @@ class ExpenseCategory(db.Model):
     expenses = db.relationship("Expense", backref="category_ref", foreign_keys="Expense.category_id")
 
 
-class CategoryBudget(db.Model):
-    __tablename__ = "category_budgets"
-
-    id = db.Column(db.Integer, primary_key=True)
-    category_id = db.Column(db.Integer, db.ForeignKey("expense_categories.id"), nullable=False, index=True)
-    scope = db.Column(db.String(20), nullable=False)
-    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=True, index=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
-    amount = db.Column(db.Float, nullable=False)
-    period = db.Column(db.String(20), nullable=False, default="monthly")
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    category_ref = db.relationship("ExpenseCategory", backref="budgets")
-    company = db.relationship("Company")
-    user = db.relationship("User")
-
-    __table_args__ = (
-        db.UniqueConstraint("category_id", "scope", "company_id", "user_id", name="uq_category_budget_scope"),
-    )
-
 
 class Expense(db.Model):
     __tablename__ = "expenses"
