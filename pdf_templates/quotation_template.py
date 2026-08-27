@@ -6,7 +6,7 @@ from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_RIGHT, TA_CENTER, TA_LEFT
 from reportlab.pdfbase.pdfmetrics import stringWidth as _sw
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, KeepTogether
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, KeepTogether, PageBreak
 
 from pdf_templates.theme_config import get_theme, get_doc_title
 from pdf_templates.shared import sanitize_text, get_image_dimensions, VisionHeading
@@ -485,39 +485,52 @@ def _build_technical_offer_story(theme, company, quotation, line_items, content_
         cols = col_defs
 
     header_row = [Paragraph(label, hdr_cell) for label, _, _, _, _ in cols]
-    idata = [header_row]
-    for idx, item in enumerate(line_items, start=1):
-        row = []
-        for label, frac, align, cell_style, fn in cols:
-            if label == "Photo":
-                ph = _tech_photo_flowable(item.photo_path, photo_size_mm, photo_col_mm)
-                row.append(ph if ph is not None else Paragraph("&nbsp;", cell_c))
-            else:
-                row.append(Paragraph(fn(idx, item), cell_style or cell_l))
-        idata.append(row)
 
-    it = Table(idata, colWidths=widths, repeatRows=1)
-    rcmds = [
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
-        ("BACKGROUND", (0, 0), (-1, 0), theme["table_header_bg"]),
-        ("TEXTCOLOR", (0, 0), (-1, 0), theme["table_header_text_color"]),
-        ("FONTNAME", (0, 0), (-1, 0), theme["font_bold"]),
-        ("FONTNAME", (0, 1), (-1, -1), theme["font_body"]),
-        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-    ]
-    for c, (label, frac, align, cell_style, fn) in enumerate(cols):
-        if align == "c":
-            rcmds.append(("ALIGN", (c, 0), (c, -1), "CENTER"))
-        elif align == "r":
-            rcmds.append(("ALIGN", (c, 0), (c, -1), "RIGHT"))
-    it.setStyle(TableStyle(rcmds))
-    story.append(it)
-    story.append(Spacer(1, 8 * mm))
+    # Group items by annexure
+    annexure_groups = _group_items_by_annexure(line_items, quotation)
+
+    for group_name, group_items, page_break in annexure_groups:
+        if page_break:
+            from reportlab.platypus import PageBreak as _PB
+            story.append(_PB())
+
+        if group_name:
+            story.append(_make_annexure_header(group_name, theme, content_width))
+            story.append(Spacer(1, 3 * mm))
+
+        idata = [header_row]
+        for idx, item in enumerate(group_items, start=1):
+            row = []
+            for label, frac, align, cell_style, fn in cols:
+                if label == "Photo":
+                    ph = _tech_photo_flowable(item.photo_path, photo_size_mm, photo_col_mm)
+                    row.append(ph if ph is not None else Paragraph("&nbsp;", cell_c))
+                else:
+                    row.append(Paragraph(fn(idx, item), cell_style or cell_l))
+            idata.append(row)
+
+        it = Table(idata, colWidths=widths, repeatRows=1)
+        rcmds = [
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+            ("BACKGROUND", (0, 0), (-1, 0), theme["table_header_bg"]),
+            ("TEXTCOLOR", (0, 0), (-1, 0), theme["table_header_text_color"]),
+            ("FONTNAME", (0, 0), (-1, 0), theme["font_bold"]),
+            ("FONTNAME", (0, 1), (-1, -1), theme["font_body"]),
+            ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ]
+        for c, (label, frac, align, cell_style, fn) in enumerate(cols):
+            if align == "c":
+                rcmds.append(("ALIGN", (c, 0), (c, -1), "CENTER"))
+            elif align == "r":
+                rcmds.append(("ALIGN", (c, 0), (c, -1), "RIGHT"))
+        it.setStyle(TableStyle(rcmds))
+        story.append(it)
+        story.append(Spacer(1, 4 * mm))
 
     if quotation.terms_conditions:
         terms_block = [Paragraph("Terms &amp; Conditions:", style_terms_head), Spacer(1, 2 * mm)]
@@ -802,6 +815,48 @@ def _build_tender_annex_story(theme, company, quotation, line_items, content_wid
     story.append(KeepTogether(sig_block))
 
     return story, subtotal
+
+
+def _group_items_by_annexure(line_items, quotation):
+    """Group line items by annexure. Returns list of (annexure_name, items, page_break)
+    tuples. Items with no annexure come first (name=None)."""
+    annexures = quotation.annexures if hasattr(quotation, 'annexures') else []
+    if not annexures:
+        return [(None, line_items, False)]
+
+    ann_map = {ann.id: ann for ann in annexures}
+    main_items = []
+    groups = {}  # ann_id -> [items]
+
+    for li in line_items:
+        if li.annexure_id and li.annexure_id in ann_map:
+            groups.setdefault(li.annexure_id, []).append(li)
+        else:
+            main_items.append(li)
+
+    result = []
+    if main_items:
+        result.append((None, main_items, False))
+
+    for ann in annexures:
+        items = groups.get(ann.id, [])
+        if items:
+            result.append((ann.name, items, ann.page_break_before))
+
+    return result if result else [(None, line_items, False)]
+
+
+def _make_annexure_header(name, theme, content_width):
+    """Create a bold paragraph for annexure section header."""
+    style = ParagraphStyle(
+        "annexure_header",
+        fontName=theme["font_bold"],
+        fontSize=12,
+        leading=15,
+        alignment=TA_LEFT,
+        spaceAfter=4,
+    )
+    return Paragraph(sanitize_text(name), style)
 
 
 def generate_quotation_pdf(company, client, quotation, line_items, output_path, skip_letterhead=False):
@@ -1142,16 +1197,69 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
 
         item_headers = [make_header(h, align) for h, _, align, _ in columns]
         roww = [content_width * (w / total_weight) for w in col_weights]
-        idata = [item_headers]
+
+        # Group items by annexure
+        annexure_groups = _group_items_by_annexure(line_items, quotation)
+
         subtotal = 0.0
         total_gst = 0.0
-        for idx, item in enumerate(line_items, start=1):
-            lt = lt_by_idx[idx]
-            g = g_by_idx[idx]
-            subtotal += lt
-            total_gst += g
-            idata.append([fn(idx, item, lt, g) for _, _, _, fn in columns])
 
+        for group_name, group_items, page_break in annexure_groups:
+            if page_break:
+                story.append(PageBreak())
+
+            if group_name:
+                story.append(_make_annexure_header(group_name, theme, content_width))
+                story.append(Spacer(1, 3 * mm))
+
+            # Build table for this group
+            idata = [item_headers]
+            group_subtotal = 0.0
+            group_gst = 0.0
+
+            # Compute line totals for this group
+            group_lt = {}
+            group_g = {}
+            for gidx, item in enumerate(group_items, start=1):
+                lt = item.qty * item.unit_price
+                g = round(lt * (item.tax_percent or 0) / 100, 2)
+                group_lt[gidx] = lt
+                group_g[gidx] = g
+                group_subtotal += lt
+                group_gst += g
+
+            for gidx, item in enumerate(group_items, start=1):
+                lt = group_lt[gidx]
+                g = group_g[gidx]
+                idata.append([fn(gidx, item, lt, g) for _, _, _, fn in columns])
+
+            subtotal += group_subtotal
+            total_gst += group_gst
+
+            it = Table(idata, colWidths=roww, repeatRows=1)
+            rcmds = [
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+                ("BACKGROUND", (0, 0), (-1, 0), theme["table_header_bg"]),
+                ("TEXTCOLOR", (0, 0), (-1, 0), theme["table_header_text_color"]),
+                ("FONTNAME", (0, 0), (-1, 0), theme["font_bold"]),
+                ("FONTNAME", (0, 1), (-1, -1), theme["font_body"]),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ]
+            for c, (_, _, align, _) in enumerate(columns):
+                if align == "CENTER":
+                    rcmds.append(("ALIGN", (c, 0), (c, -1), "CENTER"))
+                elif align == "RIGHT":
+                    rcmds.append(("ALIGN", (c, 0), (c, -1), "RIGHT"))
+            it.setStyle(TableStyle(rcmds))
+            story.append(it)
+            story.append(Spacer(1, 4 * mm))
+
+        # Summary rows (after all annexure groups)
         tax_pct = float(getattr(quotation, "tax_amount", 0) or 0)
         discount = float(getattr(quotation, "discount_amount", 0) or 0)
         installation = float(getattr(quotation, "installation_charges", 0) or 0)
@@ -1167,11 +1275,13 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
             gst_value = None
             gst_value_label = None
 
+        # Build summary table
+        summary_data = []
         def summary_row(label, value):
             row = [""] * ncols
             row[0] = label
             row[-1] = value
-            idata.append(row)
+            summary_data.append(row)
 
         if gst_value is not None:
             summary_row(gst_value_label, f"{gst_value:,.2f}")
@@ -1187,38 +1297,24 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
             grand_total_ros += gst_value
         summary_row("Grand Total", f"{grand_total_ros:,.2f}")
 
-        it = Table(idata, colWidths=roww, repeatRows=1)
-        summary_start = len(idata) - (2 + (1 if gst_value is not None else 0) + (1 if discount else 0) + (1 if installation else 0) + (1 if transportation else 0))
-        rcmds = [
-            ("GRID", (0, 0), (-1, summary_start - 1), 0.5, colors.black),
-            ("BACKGROUND", (0, 0), (-1, 0), theme["table_header_bg"]),
-            ("TEXTCOLOR", (0, 0), (-1, 0), theme["table_header_text_color"]),
-            ("FONTNAME", (0, 0), (-1, 0), theme["font_bold"]),
-            ("FONTNAME", (0, 1), (-1, summary_start - 1), theme["font_body"]),
-            ("FONTSIZE", (0, 0), (-1, -1), 8.5),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-        ]
-        for c, (_, _, align, _) in enumerate(columns):
-            if align == "CENTER":
-                rcmds.append(("ALIGN", (c, 0), (c, summary_start - 1), "CENTER"))
-            elif align == "RIGHT":
-                rcmds.append(("ALIGN", (c, 0), (c, summary_start - 1), "RIGHT"))
-        for r in range(summary_start, len(idata)):
-            rcmds.append(("SPAN", (0, r), (ncols - 2, r)))
-            rcmds.append(("FONTNAME", (0, r), (-1, r), theme["font_bold"]))
-            rcmds.append(("FONTSIZE", (0, r), (-1, r), 9))
-            rcmds.append(("ALIGN", (0, r), (ncols - 2, r), "LEFT"))
-            rcmds.append(("ALIGN", (ncols - 1, r), (ncols - 1, r), "RIGHT"))
-            rcmds.append(("LEFTPADDING", (0, r), (ncols - 2, r), 4))
-        rcmds.append(("LINEBELOW", (0, summary_start - 1), (-1, summary_start - 1), 0.75, colors.black))
-        rcmds.append(("BACKGROUND", (0, len(idata) - 1), (-1, len(idata) - 1), theme["table_header_bg"]))
-        rcmds.append(("TEXTCOLOR", (0, len(idata) - 1), (-1, len(idata) - 1), theme["table_header_text_color"]))
-
-        it.setStyle(TableStyle(rcmds))
+        if summary_data:
+            stbl = Table(summary_data, colWidths=roww)
+            summary_rcmds = []
+            for r in range(len(summary_data)):
+                summary_rcmds.append(("SPAN", (0, r), (ncols - 2, r)))
+                summary_rcmds.append(("FONTNAME", (0, r), (-1, r), theme["font_bold"]))
+                summary_rcmds.append(("FONTSIZE", (0, r), (-1, r), 9))
+                summary_rcmds.append(("ALIGN", (0, r), (ncols - 2, r), "LEFT"))
+                summary_rcmds.append(("ALIGN", (ncols - 1, r), (ncols - 1, r), "RIGHT"))
+                summary_rcmds.append(("LEFTPADDING", (0, r), (ncols - 2, r), 4))
+                summary_rcmds.append(("TOPPADDING", (0, r), (-1, r), 3))
+                summary_rcmds.append(("BOTTOMPADDING", (0, r), (-1, r), 3))
+            if len(summary_data) > 1:
+                summary_rcmds.append(("LINEABOVE", (0, 0), (-1, 0), 0.75, colors.black))
+            summary_rcmds.append(("BACKGROUND", (0, len(summary_data) - 1), (-1, len(summary_data) - 1), theme["table_header_bg"]))
+            summary_rcmds.append(("TEXTCOLOR", (0, len(summary_data) - 1), (-1, len(summary_data) - 1), theme["table_header_text_color"]))
+            stbl.setStyle(TableStyle(summary_rcmds))
+            story.append(stbl)
         story.append(it)
         story.append(Spacer(1, 8 * mm))
 
@@ -1335,12 +1431,32 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
 
     # --- Item table ---
     header_labels, col_widths, mode = get_table_columns(theme, content_width)
-    table_data = [header_labels]
+
+    # Group items by annexure
+    annexure_groups = _group_items_by_annexure(line_items, quotation)
+
     subtotal = 0
-    for idx, item in enumerate(line_items, start=1):
-        row, line_total = build_item_row(mode, idx, item, style_normal)
-        table_data.append(row)
-        subtotal += line_total
+    for group_name, group_items, page_break in annexure_groups:
+        if page_break:
+            story.append(PageBreak())
+
+        if group_name:
+            story.append(_make_annexure_header(group_name, theme, content_width))
+            story.append(Spacer(1, 3 * mm))
+
+        table_data = [header_labels]
+        group_subtotal = 0
+        for idx, item in enumerate(group_items, start=1):
+            row, line_total = build_item_row(mode, idx, item, style_normal)
+            table_data.append(row)
+            group_subtotal += line_total
+
+        subtotal += group_subtotal
+
+        item_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+        item_table.setStyle(TableStyle(build_item_table_style(theme, 0, mode, len(table_data))))
+        story.append(item_table)
+        story.append(Spacer(1, 4 * mm))
 
     tax_pct = float(getattr(quotation, "tax_amount", 0) or 0)
     discount = float(getattr(quotation, "discount_amount", 0) or 0)
@@ -1351,9 +1467,7 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
     charges = None
 
     if layout == "billed_summary":
-        total_row = ["Total"] + [""] * (len(header_labels) - 2) + [f"{subtotal:,.2f}"]
-        table_data.append(total_row)
-        total_row_idx = len(table_data) - 1
+        summary_table_data = [["Total"] + [""] * (len(header_labels) - 2) + [f"{subtotal:,.2f}"]]
         grand_total_placeholder = subtotal
     else:
         charges = []
@@ -1375,11 +1489,11 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
         else:
             final_total = subtotal + tax
         if charges:
-            table_data.append(["Total"] + [""] * (len(header_labels) - 2) + [f"{subtotal:,.2f}"])
-            first_summary = len(table_data) - 1
+            summary_table_data = [["Total"] + [""] * (len(header_labels) - 2) + [f"{subtotal:,.2f}"]]
+            first_summary = 0
             for label, val in charges:
-                table_data.append([label] + [""] * (len(header_labels) - 2) + [f"{val:,.2f}"])
-            table_data.append(["Grand Total"] + [""] * (len(header_labels) - 2) + [f"{final_total:,.2f}"])
+                summary_table_data.append([label] + [""] * (len(header_labels) - 2) + [f"{val:,.2f}"])
+            summary_table_data.append(["Grand Total"] + [""] * (len(header_labels) - 2) + [f"{final_total:,.2f}"])
             total_row_idx = first_summary
         else:
             summary_rows = theme.get("total_summary_rows")
@@ -1388,29 +1502,40 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
                     "Total Amount": subtotal, "Subtotal": subtotal,
                     "Tax": tax, "Grand Total": final_total,
                 }
+                summary_table_data = []
                 for label in summary_rows:
                     amount = summary_amounts.get(label, final_total)
                     row = [label] + [""] * (len(header_labels) - 2) + [f"{amount:,.2f}"]
-                    table_data.append(row)
-                total_row_idx = len(table_data) - len(summary_rows)
+                    summary_table_data.append(row)
+                total_row_idx = 0
             else:
-                table_data.append(["Total"] + [""] * (len(header_labels) - 2) + [f"{final_total:,.2f}"])
-                total_row_idx = len(table_data) - 1
+                summary_table_data = [["Total"] + [""] * (len(header_labels) - 2) + [f"{final_total:,.2f}"]]
+                total_row_idx = 0
         grand_total_placeholder = final_total
 
-    item_table = Table(table_data, colWidths=col_widths, repeatRows=1)
-
-    item_table.setStyle(TableStyle(build_item_table_style(theme, total_row_idx, mode, len(table_data))))
-    if charges:
+    # Render summary table
+    if layout == "billed_summary":
+        summary_table = Table(summary_table_data, colWidths=col_widths, repeatRows=1)
+        summary_table.setStyle(TableStyle(build_item_table_style(theme, 0, mode, len(summary_table_data))))
+        story.append(summary_table)
+        story.append(Spacer(1, 8 * mm))
+    elif charges:
+        summary_table = Table(summary_table_data, colWidths=col_widths)
+        summary_table.setStyle(TableStyle(build_item_table_style(theme, total_row_idx, mode, len(summary_table_data))))
         extra = []
-        for r in range(total_row_idx, len(table_data) - 1):
+        for r in range(total_row_idx, len(summary_table_data) - 1):
             extra.append(("FONTSIZE", (0, r), (-1, r), 9))
             extra.append(("ALIGN", (0, r), (0, r), "LEFT"))
             extra.append(("LEFTPADDING", (0, r), (0, r), 4))
             extra.append(("LINEABOVE", (0, r), (-1, r), 1.2, theme["accent_color"]))
-        item_table.setStyle(TableStyle(extra))
-    story.append(item_table)
-    story.append(Spacer(1, 8 * mm))
+        summary_table.setStyle(TableStyle(extra))
+        story.append(summary_table)
+        story.append(Spacer(1, 8 * mm))
+    else:
+        summary_table = Table(summary_table_data, colWidths=col_widths)
+        summary_table.setStyle(TableStyle(build_item_table_style(theme, total_row_idx, mode, len(summary_table_data))))
+        story.append(summary_table)
+        story.append(Spacer(1, 8 * mm))
 
     if layout == "billed_summary":
         summary_col_width = content_width * 0.46

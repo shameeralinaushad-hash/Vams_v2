@@ -5,6 +5,7 @@ from models import db, Payment, Invoice, Order, Payable, Notification, User
 from audit import log_action
 from permissions import permission_required
 from utils import parse_float
+from socket_events import emit_company, emit_dashboard_update
 
 payments_bp = Blueprint("payments", __name__, url_prefix="/payments")
 
@@ -140,6 +141,8 @@ def add_payment(invoice_id):
     log_action("add_payment", "Invoice", invoice.id,
                f"Logged payment of {amount:.2f} against invoice {invoice.invoice_number}")
 
+    emit_company("list_refresh", {"section": "payments"}, session.get("active_company_id"))
+    emit_dashboard_update(session.get("active_company_id"))
     return redirect(redirect_target)
 
 
@@ -161,6 +164,8 @@ def delete_payment(payment_id):
                f"Deleted payment of {amount:.2f} against invoice {invoice_number}")
 
     flash(f"Payment of {amount:.2f} removed from invoice {invoice_number}.")
+    emit_company("list_refresh", {"section": "payments"}, invoice.order.company_id)
+    emit_dashboard_update(invoice.order.company_id)
     return redirect(redirect_target)
 
 
@@ -194,6 +199,8 @@ def add_payable():
     log_action("add_payable", "Payable", payable.id, f"Logged payable of {amount:.2f} owed to {owed_to}")
 
     flash("Payable added.")
+    emit_company("list_refresh", {"section": "payments"}, company_id)
+    emit_dashboard_update(company_id)
     return redirect(url_for("payments.list_payments", tab="payables"))
 
 
@@ -208,6 +215,8 @@ def toggle_payable(payable_id):
     log_action("toggle_payable", "Payable", payable.id,
                f"Marked payable to {payable.owed_to} as {'paid' if payable.is_paid else 'unpaid'}")
 
+    emit_company("list_refresh", {"section": "payments"}, session.get("active_company_id"))
+    emit_dashboard_update(session.get("active_company_id"))
     return redirect(url_for("payments.list_payments", tab="payables"))
 
 
@@ -222,4 +231,6 @@ def delete_payable(payable_id):
     log_action("delete_payable", "Payable", payable_id, f"Deleted payable owed to {owed_to}")
 
     flash("Payable deleted.")
+    emit_company("list_refresh", {"section": "payments"}, session.get("active_company_id"))
+    emit_dashboard_update(session.get("active_company_id"))
     return redirect(url_for("payments.list_payments", tab="payables"))

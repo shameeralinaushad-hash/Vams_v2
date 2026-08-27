@@ -8,6 +8,7 @@ from pdf_templates.invoice_template import generate_invoice_pdf
 from audit import log_action
 from numbering import build_invoice_number
 from permissions import permission_required
+from socket_events import emit_company, emit_dashboard_update
 
 invoices_bp = Blueprint("invoices", __name__, url_prefix="/invoices")
 
@@ -157,6 +158,8 @@ def create_invoice(order_id):
 
         log_action("create_invoice", "Invoice", invoice.id, f"Created invoice {invoice_number} for {order.client.name}")
 
+        emit_company("list_refresh", {"section": "invoices"}, order.company_id)
+        emit_dashboard_update(order.company_id)
         return redirect(url_for("orders.view_order", order_id=order.id))
 
     prefill_items = order.commercial_quotation.line_items if order.commercial_quotation else []
@@ -208,6 +211,8 @@ def edit_invoice(invoice_id):
                    f"Edited invoice {invoice.invoice_number} for {order.client.name}")
 
         flash("Invoice updated.")
+        emit_company("list_refresh", {"section": "invoices"}, order.company_id)
+        emit_dashboard_update(order.company_id)
         return redirect(url_for("orders.view_order", order_id=order.id))
 
     return render_template(
@@ -253,6 +258,8 @@ def delete_invoice(invoice_id):
     log_action("delete_invoice", "Invoice", invoice_id, f"Deleted invoice {invoice_number}")
 
     flash("Invoice deleted.")
+    emit_company("list_refresh", {"section": "invoices"}, invoice.order.company_id)
+    emit_dashboard_update(invoice.order.company_id)
     return redirect(url_for("orders.view_order", order_id=order_id))
 
 

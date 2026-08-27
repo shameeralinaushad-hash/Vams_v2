@@ -106,7 +106,7 @@
         width: 100%;
     }
 
-    #items-table {
+    .items-table {
         table-layout: fixed;
         border-collapse: separate;
         border-spacing: 0;
@@ -115,7 +115,7 @@
         --row-pad-x: 8px;
         --photo-size: 38px;
     }
-    #items-table.density-compact {
+    .items-table.density-compact {
         --row-input-h: 30px;
         --row-pad-y: 6px;
         --row-pad-x: 6px;
@@ -152,50 +152,50 @@
         border-bottom: 1px dashed var(--border);
     }
 
-    #items-table .form-control,
-    #items-table .form-select {
+    .items-table .form-control,
+    .items-table .form-select {
         height: var(--row-input-h);
         min-height: var(--row-input-h);
         padding: 4px 8px;
         font-size: 0.85rem;
         border-radius: 6px;
     }
-    #items-table .row-input,
-    #items-table [name="item_price"],
-    #items-table [name="item_qty"] {
+    .items-table .row-input,
+    .items-table [name="item_price"],
+    .items-table [name="item_qty"] {
         font-size: 0.85rem;
     }
 
     /* ---------- Focus rings & row feedback ---------- */
-    #items-table .form-control:focus,
-    #items-table .form-select:focus {
+    .items-table .form-control:focus,
+    .items-table .form-select:focus {
         border-color: var(--accent);
         box-shadow: 0 0 0 2px var(--accent-soft);
     }
-    #items-table tbody tr:hover td {
+    .items-table tbody tr:hover td {
         background: var(--surface-soft);
     }
-    #items-table tbody tr.active-row td {
+    .items-table tbody tr.active-row td {
         background: var(--surface-soft);
     }
 
     /* ---------- Field importance hierarchy ---------- */
-    #items-table .field-required .form-control,
-    #items-table .field-required .form-select {
+    .items-table .field-required .form-control,
+    .items-table .field-required .form-select {
         border-color: var(--border);
         font-weight: 500;
     }
-    #items-table .field-optional .form-control,
-    #items-table .field-optional .form-select {
+    .items-table .field-optional .form-control,
+    .items-table .field-optional .form-select {
         border-style: dashed;
         border-color: var(--border);
         color: var(--text-secondary);
     }
-    #items-table .field-optional .form-control::placeholder {
+    .items-table .field-optional .form-control::placeholder {
         color: var(--text-muted);
         opacity: 0.75;
     }
-    #items-table .field-computed {
+    .items-table .field-computed {
         color: var(--text-primary);
         font-weight: 700;
         font-size: 0.88rem;
@@ -203,15 +203,15 @@
     }
 
     /* ---------- Row validation state ---------- */
-    #items-table tbody tr {
+    .items-table tbody tr {
         position: relative;
         transition: box-shadow 0.15s ease;
     }
-    #items-table tbody tr.row-invalid {
+    .items-table tbody tr.row-invalid {
         box-shadow: inset 3px 0 0 #dc3545;
     }
-    #items-table tbody tr.row-invalid .form-control.field-missing,
-    #items-table tbody tr.row-invalid .form-select.field-missing {
+    .items-table tbody tr.row-invalid .form-control.field-missing,
+    .items-table tbody tr.row-invalid .form-select.field-missing {
         border-color: #dc3545;
         background: rgba(220, 53, 69, 0.04);
     }
@@ -226,7 +226,7 @@
         background: #dc3545;
         display: none;
     }
-    #items-table tbody tr.row-invalid .row-error-icon {
+    .items-table tbody tr.row-invalid .row-error-icon {
         display: block;
     }
 
@@ -421,31 +421,31 @@
     }
 
     /* ---------- Sticky key columns ---------- */
-    #items-table th.col-sr,
-    #items-table td.row-serial-cell {
+    .items-table th.col-sr,
+    .items-table td.row-serial-cell {
         position: sticky;
         left: 0;
         z-index: 4;
         background: var(--surface);
     }
-    #items-table th.col-nomenclature,
-    #items-table td.col-nomenclature {
+    .items-table th.col-nomenclature,
+    .items-table td.col-nomenclature {
         position: sticky;
         left: 45px;
         z-index: 3;
         background: var(--surface);
         box-shadow: 8px 0 10px -8px rgba(15,23,42,0.12);
     }
-    #items-table th.line-total-th,
-    #items-table td.line-total {
+    .items-table th.line-total-th,
+    .items-table td.line-total {
         position: sticky;
         right: 48px;
         z-index: 3;
         background: var(--surface);
         box-shadow: -8px 0 10px -8px rgba(15,23,42,0.12);
     }
-    #items-table th.col-actions,
-    #items-table td.col-actions {
+    .items-table th.col-actions,
+    .items-table td.col-actions {
         position: sticky;
         right: 0;
         z-index: 4;
@@ -526,22 +526,22 @@
             border: none;
             background: transparent;
         }
-        #items-table thead {
+        .items-table thead {
             display: none;
         }
-        #items-table, #items-table tbody, #items-table tbody tr, #items-table tbody td {
+        .items-table, .items-table tbody, .items-table tbody tr, .items-table tbody td {
             display: block;
             width: 100% !important;
             box-sizing: border-box;
         }
-        #items-table th.col-sr, #items-table td.row-serial-cell,
-        #items-table th.col-nomenclature, #items-table td.col-nomenclature,
-        #items-table th.line-total-th, #items-table td.line-total,
-        #items-table th.col-actions, #items-table td.col-actions {
+        .items-table th.col-sr, .items-table td.row-serial-cell,
+        .items-table th.col-nomenclature, .items-table td.col-nomenclature,
+        .items-table th.line-total-th, .items-table td.line-total,
+        .items-table th.col-actions, .items-table td.col-actions {
             position: static;
             box-shadow: none;
         }
-        #items-table tbody tr {
+        .items-table tbody tr {
             border: 1px solid var(--border);
             border-radius: 12px;
             margin-bottom: 14px;
@@ -549,15 +549,15 @@
             background: var(--surface);
             box-shadow: 0 2px 10px rgba(0,0,0,0.03);
         }
-        #items-table tbody tr.row-invalid {
+        .items-table tbody tr.row-invalid {
             box-shadow: 0 2px 10px rgba(220,53,69,0.08);
             border-color: #dc3545;
         }
-        #items-table tbody td {
+        .items-table tbody td {
             border-bottom: none;
             padding: 6px 0;
         }
-        #items-table tbody td:not(.d-none)::before {
+        .items-table tbody td:not(.d-none)::before {
             content: attr(data-label);
             display: block;
             font-size: 0.68rem;
@@ -567,16 +567,34 @@
             color: var(--text-muted);
             margin-bottom: 4px;
         }
-        #items-table td.row-serial-cell {
+        .items-table td.row-serial-cell {
             font-size: 0.75rem;
             color: var(--text-muted);
             padding-bottom: 4px;
         }
-        #items-table td.col-actions {
+        .items-table td.col-actions {
             border-top: 1px dashed var(--border);
             margin-top: 6px;
             padding-top: 10px;
         }
+    }
+
+    /* ---------- Section card styles ---------- */
+    .section-card {
+        transition: box-shadow 0.2s ease;
+    }
+    .section-card:hover {
+        box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+    }
+    .section-header {
+        cursor: pointer;
+        user-select: none;
+    }
+    .section-header .bi-chevron-down {
+        transition: transform 0.2s ease;
+    }
+    .section-header .collapsed .bi-chevron-down {
+        transform: rotate(-90deg);
     }
 </style>
 {% endblock %}
@@ -648,6 +666,8 @@
 <form method="POST" id="quotationCreateForm" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="doc_type" id="doc_type" value="{{ doc_type }}">
+    <input type="hidden" name="annexure_count" id="annexureCount" value="0">
+    <input type="hidden" name="item_annexure" id="itemAnnexureMap" value="">
 
     <!-- ===== SECTION 1: DOCUMENT METADATA ===== -->
     <div class="info-panel">
@@ -692,9 +712,9 @@
         </div>
     </div>
 
-    <!-- ===== SECTION 2: LINE ITEMS ===== -->
+    <!-- ===== LINE ITEMS TOOLBAR ===== -->
     <div class="info-panel">
-        <div class="panel-header">
+        <div class="panel-header mb-0">
             <h6 class="panel-title">
                 <i class="bi bi-list-task"></i> Line Items
             </h6>
@@ -706,48 +726,31 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 fw-semibold" id="density_toggle_btn" title="Toggle row density">
                     <i class="bi bi-arrows-collapse-vertical me-1"></i><span id="density_toggle_label">Comfortable</span>
                 </button>
-                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-semibold" onclick="addRow()">
-                    <i class="bi bi-plus-lg me-1"></i> Add Item
-                </button>
             </div>
         </div>
-
-        <div class="table-responsive mb-3">
-            <table class="table table-custom align-middle" id="items-table">
-                <thead>
-                    <tr>
-                        <th class="col-sr text-center" style="width:45px; min-width:45px;"><span class="th-l1">Sr</span><span class="th-l2">No</span></th>
-                        <th class="col-part_no" style="width:110px; min-width:110px;"><span class="th-l1">Part</span><span class="th-l2">No</span></th>
-                        <th class="col-nomenclature" style="width:240px; min-width:220px;"><span class="th-l1">Item</span><span class="th-l2">Description</span></th>
-                        <th class="col-unit" style="width:75px; min-width:75px;"><span class="th-l1">Unit</span></th>
-                        <th class="col-qty" style="width:80px; min-width:80px;"><span class="th-l1">Qty</span></th>
-                        <th class="col-price{% if doc_type == "technical" %} d-none{% endif %}" style="width:110px; min-width:110px;"><span class="th-l1">Unit</span><span class="th-l2">Price</span></th>
-                        <th class="col-gst{% if doc_type == "technical" %} d-none{% endif %}" style="width:85px; min-width:85px;"><span class="th-l1">Tax</span><span class="th-l2">%</span></th>
-                        <th class="col-specs{% if doc_type != "technical" %} d-none{% endif %}" style="width:180px; min-width:160px;"><span class="th-l1">Details</span><span class="th-l2">Specs</span></th>
-                        <th class="col-photo{% if doc_type != "technical" %} d-none{% endif %}" style="width:150px; min-width:140px;"><span class="th-l1">Photo</span></th>
-                        <th class="col-coo{% if doc_type != "technical" %} d-none{% endif %}" style="width:80px; min-width:80px;"><span class="th-l1">COO</span></th>
-                        <th class="col-quoted{% if doc_type != "technical" %} d-none{% endif %}" style="width:95px; min-width:95px;"><span class="th-l1">Quoted</span><span class="th-l2">/NQ</span></th>
-                        <th class="col-remark{% if doc_type != "technical" %} d-none{% endif %}" style="width:140px; min-width:130px;"><span class="th-l1">Remarks</span></th>
-                        {% for f in custom_fields %}
-                        <th style="width:150px; min-width:140px;" class="cf-col-{{ f.id }} d-none">{{ f.name }}</th>
-                        {% endfor %}
-                        <th style="width:110px; min-width:100px;" class="text-end line-total-th{% if doc_type == "technical" %} d-none{% endif %}"><span class="th-l1">Line</span><span class="th-l2">Total</span></th>
-                        <th style="width:48px; min-width:48px;" class="text-center col-actions">
-                            <button type="button" id="add_col_th_btn" class="btn btn-sm btn-outline-primary rounded-circle p-0"
-                                    style="width:22px; height:22px; line-height:1;" title="Add a column"><i class="bi bi-plus"></i></button>
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- Rows are rendered entirely by renderTable() on load for a single consistent code path -->
-                </tbody>
-            </table>
-            <datalist id="coo-options">
-                <option value="Imported">
-                <option value="Local">
-            </datalist>
-        </div>
     </div>
+
+    <!-- ===== SECTIONS CONTAINER ===== -->
+    <div id="sectionsContainer"></div>
+
+    <div class="d-flex justify-content-center mt-3 mb-4">
+        <button type="button" class="btn btn-outline-primary rounded-pill px-4 fw-semibold" onclick="addSection()">
+            <i class="bi bi-plus-lg me-1"></i> Add Annexure
+        </button>
+    </div>
+
+    <datalist id="coo-options">
+        <option value="Imported">
+        <option value="Local">
+    </datalist>
+    <datalist id="annexureNameSuggestions">
+        <option value="Annexure A">
+        <option value="Annexure B">
+        <option value="Annexure C">
+        <option value="Annexure 1">
+        <option value="Annexure 2">
+        <option value="Annexure 3">
+    </datalist>
 
     <!-- ===== SECTION 3: SURCHARGES, DISCOUNTS & TOTAL SUMMARY ===== -->
     {% if doc_type == "commercial" %}
@@ -1036,7 +1039,7 @@
 
     function recalcGrandTotal() {
         let itemsSubtotal = 0;
-        document.querySelectorAll("#items-table tbody tr").forEach(row => {
+        document.querySelectorAll(".items-table tbody tr").forEach(row => {
             const valText = row.querySelector(".line-total")?.textContent || "0";
             itemsSubtotal += parseFloat(valText.replace(/,/g, '')) || 0;
         });
@@ -1060,12 +1063,34 @@
         }
     }
 
-    function renumberRows() {
-        document.querySelectorAll("#items-table tbody tr").forEach((row, index) => {
-            const cell = row.querySelector(".row-serial");
-            if (cell) cell.textContent = index + 1;
+    function renumberTableRows(tbody) {
+        if (tbody) {
+            Array.from(tbody.rows).forEach((row, idx) => {
+                const cell = row.querySelector(".row-serial");
+                if (cell) cell.textContent = idx + 1;
+            });
+            return;
+        }
+        document.querySelectorAll('.items-table tbody').forEach(tb => {
+            Array.from(tb.rows).forEach((row, idx) => {
+                const cell = row.querySelector(".row-serial");
+                if (cell) cell.textContent = idx + 1;
+            });
         });
     }
+
+    function recalcTableRows(tbody) {
+        if (tbody) {
+            Array.from(tbody.rows).forEach(row => recalcRow(row));
+            return;
+        }
+        document.querySelectorAll('.items-table tbody').forEach(tb => {
+            Array.from(tb.rows).forEach(row => recalcRow(row));
+        });
+    }
+
+    function renumberRows() { renumberTableRows(null); }
+    function recalcAllRows() { recalcTableRows(null); }
 
     function clearRowInputs(row) {
         row.querySelectorAll("input").forEach(i => {
@@ -1121,7 +1146,7 @@
 
     function validateAllRows() {
         let allOk = true;
-        document.querySelectorAll("#items-table tbody tr").forEach(row => {
+        document.querySelectorAll(".items-table tbody tr").forEach(row => {
             if (!validateRow(row)) allOk = false;
         });
         return allOk;
@@ -1136,7 +1161,7 @@
         setTimeout(function () {
             if (row.parentNode) row.parentNode.removeChild(row);
             recalcGrandTotal();
-            renumberRows();
+            renumberTableRows(tbody);
             syncTableWidth();
         }, 150);
         showToast("Item removed", null, "Undo", function () {
@@ -1149,19 +1174,18 @@
             row.style.opacity = "1";
             row.style.transform = "scale(1)";
             recalcGrandTotal();
-            renumberRows();
+            renumberTableRows(tbody);
             syncTableWidth();
         });
     }
 
     function removeRow(btn) {
-        const tbody = document.querySelector("#items-table tbody");
+        const row = btn.closest("tr");
+        const tbody = row ? row.closest("tbody") : null;
+        if (!tbody) return;
         if (tbody.rows.length > 1) {
-            const row = btn.closest("tr");
             removeRowWithUndo(tbody, row);
         } else {
-            // Reset row inputs instead of deleting the last remaining row
-            const row = tbody.rows[0];
             clearRowInputs(row);
             const lt = row.querySelector(".line-total");
             if (lt) lt.textContent = "0.00";
@@ -1171,7 +1195,8 @@
     }
 
     function duplicateRow(btn) {
-        const tbody = document.querySelector("#items-table tbody");
+        const tbody = btn.closest("tbody");
+        if (!tbody) return;
         const row = btn.closest("tr");
         if (!row) return;
 
@@ -1186,7 +1211,7 @@
         tr.innerHTML = rowBodyHtml(tbody.rows.length, data);
         row.after(tr);
         attachRowEvents(tr);
-        renumberRows();
+        renumberTableRows(tbody);
         recalcRow(tr);
         syncTableWidth();
 
@@ -1223,7 +1248,20 @@
             coo: {{ li.coo | tojson }},
             quoted: {{ li.quoted | tojson }},
             remark: {{ li.remark | tojson }},
-            custom_values: {{ (li.custom_values or {}) | tojson }}
+            custom_values: {{ (li.custom_values or {}) | tojson }},
+            annexure_id: {{ li.annexure_id | tojson }}
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+        {% endif %}
+    ];
+
+    const INITIAL_ANNEXURES = [
+        {% if annexures %}
+        {% for ann in annexures %}
+        {
+            id: {{ ann.id | tojson }},
+            name: {{ ann.name | tojson }},
+            page_break_before: {{ ann.page_break_before | tojson }}
         }{% if not loop.last %},{% endif %}
         {% endfor %}
         {% endif %}
@@ -1422,7 +1460,7 @@
     }
 
     function recalcAllRows() {
-        document.querySelectorAll("#items-table tbody tr").forEach(row => recalcRow(row));
+        document.querySelectorAll(".items-table tbody tr").forEach(row => recalcRow(row));
     }
 
     function rowsDataFromDom(tbody) {
@@ -1436,12 +1474,10 @@
         });
     }
 
-    function renderTable(rowsDataOverride) {
-        const tbody = document.querySelector("#items-table tbody");
-        const headRow = document.querySelector("#items-table thead tr");
+    function renderTableInto(tableEl, rowsData) {
+        const tbody = tableEl.querySelector('tbody');
+        const headRow = tableEl.querySelector('thead tr');
         if (!tbody || !headRow) return;
-
-        const rowsData = rowsDataOverride || rowsDataFromDom(tbody);
 
         let headHtml = "";
         COLUMNS.forEach(key => {
@@ -1461,11 +1497,11 @@
         if (DOC_TYPE !== "technical") {
             headHtml += `<th style="width:110px; min-width:100px;" class="text-end line-total-th">${thLinesHtml(TH_LINES.total)}</th>`;
         }
-        headHtml += `<th style="width:48px; min-width:48px;" class="text-center col-actions"><button type="button" id="add_col_th_btn" class="btn btn-sm btn-outline-primary rounded-circle p-0" style="width:22px; height:22px; line-height:1;" title="Add a column"><i class="bi bi-plus"></i></button></th>`;
+        headHtml += `<th style="width:48px; min-width:48px;" class="text-center col-actions"><button type="button" class="btn btn-sm btn-outline-primary rounded-circle p-0 add-col-btn" style="width:22px; height:22px; line-height:1;" title="Add a column"><i class="bi bi-plus"></i></button></th>`;
         headRow.innerHTML = headHtml;
 
         tbody.innerHTML = "";
-        const count = Math.max(rowsData.length, 1);
+        const count = rowsData ? rowsData.length : 0;
         for (let r = 0; r < count; r++) {
             const data = rowsData[r] || {};
             data.__serial = String(r + 1);
@@ -1474,9 +1510,18 @@
             tbody.appendChild(tr);
             attachRowEvents(tr);
         }
-        renumberRows();
-        recalcAllRows();
-        syncTableWidth();
+        renumberTableRows(tbody);
+        recalcTableRows(tbody);
+        syncTableWidth(tableEl);
+    }
+
+    function renderAllSections() {
+        sections.forEach(section => {
+            const table = document.querySelector(`.items-table[data-section-id="${section.id}"]`);
+            if (!table) return;
+            const rowsData = section.rowsData || [];
+            renderTableInto(table, rowsData);
+        });
         syncColumnOrder();
         updateColumnsCountBadge();
     }
@@ -1505,14 +1550,18 @@
         document.getElementById("column_widths_json").value = JSON.stringify(out);
     }
 
-    function syncTableWidth() {
-        const table = document.querySelector("#items-table");
-        if (!table) return;
-        if (window.matchMedia && window.matchMedia("(max-width: 767.98px)").matches) {
-            table.style.width = "100%";
+    function syncTableWidth(tableEl) {
+        if (tableEl) {
+            if (window.matchMedia && window.matchMedia("(max-width: 767.98px)").matches) {
+                tableEl.style.width = "100%";
+            } else {
+                tableEl.style.width = "100%";
+            }
             return;
         }
-        table.style.width = "100%";
+        document.querySelectorAll('.items-table').forEach(t => {
+            t.style.width = "100%";
+        });
     }
 
     function updateColumnsCountBadge() {
@@ -1537,7 +1586,7 @@
             row.addEventListener("dragend", () => {
                 dragKey = null;
                 list.querySelectorAll(".col-item").forEach(r => r.classList.remove("opacity-50"));
-                renderTable();
+                renderAllSections();
             });
             row.addEventListener("dragover", (e) => {
                 e.preventDefault();
@@ -1598,7 +1647,7 @@
                     </div>`;
                 row.querySelector(".cf-toggle").addEventListener("change", (e) => {
                     setFieldEnabled(ck, e.target.checked);
-                    renderTable();
+                    renderAllSections();
                 });
                 row.querySelector(".cf-default").addEventListener("change", (e) => {
                     setFieldDefault(ck, e.target.checked);
@@ -1611,7 +1660,7 @@
                     e.target.value = v;
                     WIDTHS[key] = v;
                     syncColumnWidths();
-                    renderTable();
+                    renderAllSections();
                 });
             } else {
                 const meta = BUILTIN_META[key];
@@ -1641,7 +1690,7 @@
                 if (!meta.locked) {
                     row.querySelector(".form-check-input").addEventListener("change", (e) => {
                         BUILTIN_ON[key] = e.target.checked;
-                        renderTable();
+                        renderAllSections();
                     });
                 }
                 row.querySelector(".bi-width").addEventListener("change", (e) => {
@@ -1651,7 +1700,7 @@
                     e.target.value = v;
                     WIDTHS[key] = v;
                     syncColumnWidths();
-                    renderTable();
+                    renderAllSections();
                 });
             }
             list.appendChild(row);
@@ -1678,7 +1727,7 @@
             const ckey = "custom_" + ck;
             if (!COLUMNS.includes(ckey)) COLUMNS.push(ckey);
             renderColumnsList();
-            renderTable();
+            renderAllSections();
             showToast(`"${name}" column enabled — fill it in per item where needed.`);
             return;
         }
@@ -1687,7 +1736,7 @@
         COLUMNS.push("custom_" + key);
         syncNewFieldsJson();
         renderColumnsList();
-        renderTable();
+        renderAllSections();
         document.getElementById("no_cf_hint")?.remove();
         if (isNewColumn) {
             showToast(`Added "${name}" column — fill it in per item where needed.`);
@@ -1719,7 +1768,7 @@
         COLUMNS = COLUMNS.filter(k => k !== "custom_" + key);
         syncNewFieldsJson();
         renderColumnsList();
-        renderTable();
+        renderAllSections();
     }
 
     function resetColumnsToDefault() {
@@ -1733,7 +1782,7 @@
         });
         Object.keys(WIDTHS).forEach(k => delete WIDTHS[k]);
         renderColumnsList();
-        renderTable();
+        renderAllSections();
         showToast("Columns reset to defaults");
     }
 
@@ -1750,42 +1799,23 @@
         });
         renderColumnsList();
 
-        // Seed initial rows: existing line items when editing, one blank row otherwise.
-        let seedRows = null;
-        if (IS_EDIT && Array.isArray(INITIAL_ROWS) && INITIAL_ROWS.length) {
-            seedRows = INITIAL_ROWS.map(li => {
-                const d = {
-                    item_part_no: li.part_no || "",
-                    item_description: li.description || "",
-                    item_unit: li.unit || "Nos",
-                    item_qty: li.qty != null ? String(li.qty) : "1",
-                    item_price: li.unit_price != null ? String(li.unit_price) : "",
-                    item_tax: li.tax_percent != null ? String(li.tax_percent) : "0",
-                    item_specs: li.specs || "",
-                    item_photo_path: li.photo_path || "",
-                    item_coo: li.coo || "",
-                    item_quoted: li.quoted || "",
-                    item_remark: li.remark || "",
-                };
-                const cv = li.custom_values || {};
-                Object.keys(cv).forEach(k => { d["item_custom_" + k] = cv[k]; });
-                return d;
-            });
-        }
-        renderTable(seedRows);
+        initSections();
     }
 
-    function addRow() {
-        const tbody = document.querySelector("#items-table tbody");
+    function addRow(sectionId) {
+        if (!sectionId && sectionId !== 0) sectionId = 'main';
+        const table = document.querySelector(`.items-table[data-section-id="${sectionId}"]`);
+        if (!table) return;
+        const tbody = table.querySelector('tbody');
         if (!tbody) return;
         const tr = document.createElement("tr");
         const data = { __serial: String(tbody.rows.length + 1) };
         tr.innerHTML = rowBodyHtml(tbody.rows.length, data);
         tbody.appendChild(tr);
         attachRowEvents(tr);
-        renumberRows();
+        renumberTableRows(tbody);
         recalcRow(tr);
-        syncTableWidth();
+        syncTableWidth(table);
         tr.style.transition = "opacity 0.18s cubic-bezier(0.16,1,0.3,1), transform 0.18s cubic-bezier(0.16,1,0.3,1)";
         tr.style.opacity = "0";
         tr.style.transform = "translateY(-4px)";
@@ -1972,7 +2002,8 @@
     // Enter-to-advance / Enter-to-add-row: pressing Enter in the last
     // meaningful field of the last row appends a new row and focuses it.
     function handleEnterKey(row, fromInput) {
-        const tbody = document.querySelector("#items-table tbody");
+        const tbody = row.closest('tbody');
+        if (!tbody) return;
         const isLastRow = row === tbody.lastElementChild;
         const focusable = Array.from(row.querySelectorAll("input:not([type=hidden]):not([type=file]), select"));
         const idx = focusable.indexOf(fromInput);
@@ -1983,7 +2014,8 @@
         }
 
         if (isLastRow) {
-            const newRow = addRow();
+            const sectionId = tbody.closest('.items-table')?.dataset.sectionId || 'main';
+            const newRow = addRow(sectionId);
             if (newRow) {
                 const firstField = newRow.querySelector(".item-desc-input");
                 if (firstField) firstField.focus();
@@ -2027,10 +2059,10 @@
     document.getElementById("new_cf_name").addEventListener("input", () => showNewCfError(false));
     document.getElementById("reset_columns_btn")?.addEventListener("click", resetColumnsToDefault);
 
-    const itemsTable = document.getElementById("items-table");
-    if (itemsTable) {
-        itemsTable.addEventListener("click", (e) => {
-            if (e.target.closest && e.target.closest("#add_col_th_btn")) {
+    const firstTable = document.querySelector('.items-table');
+    if (firstTable) {
+        firstTable.addEventListener("click", (e) => {
+            if (e.target.closest && (e.target.closest(".add-col-btn") || e.target.closest("#add_col_th_btn"))) {
                 const drawer = document.getElementById("columnsDrawer");
                 if (!drawer) return;
                 const instance = bootstrap.Offcanvas.getOrCreateInstance(drawer);
@@ -2051,9 +2083,9 @@
     const densityBtn = document.getElementById("density_toggle_btn");
     const densityLabel = document.getElementById("density_toggle_label");
     function applyDensity(mode) {
-        const table = document.getElementById("items-table");
-        if (!table) return;
-        table.classList.toggle("density-compact", mode === "compact");
+        document.querySelectorAll('.items-table').forEach(table => {
+            table.classList.toggle("density-compact", mode === "compact");
+        });
         if (densityLabel) {
             densityLabel.textContent = mode === "compact" ? "Compact" : "Comfortable";
             const icon = densityBtn.querySelector("i");
@@ -2068,31 +2100,32 @@
         try { density = localStorage.getItem("quotation_line_density") || "comfortable"; } catch (e) {}
         applyDensity(density);
         densityBtn.addEventListener("click", () => {
-            const current = document.getElementById("items-table").classList.contains("density-compact") ? "compact" : "comfortable";
+            const current = document.querySelector(".items-table")?.classList.contains("density-compact") ? "compact" : "comfortable";
             applyDensity(current === "compact" ? "comfortable" : "compact");
         });
     }
 
-    // Active-row highlight delegation (hover)
-    const itemsTbody = document.querySelector("#items-table tbody");
-    if (itemsTbody) {
-        itemsTbody.addEventListener("mouseover", (e) => {
-            const row = e.target.closest ? e.target.closest("tr") : null;
-            if (row && row.parentNode === itemsTbody) row.classList.add("active-row");
-        });
-        itemsTbody.addEventListener("mouseout", (e) => {
-            const row = e.target.closest ? e.target.closest("tr") : null;
-            if (row && row.parentNode === itemsTbody && !row.contains(e.relatedTarget)) row.classList.remove("active-row");
-        });
-        itemsTbody.addEventListener("focusin", (e) => {
-            const row = e.target.closest ? e.target.closest("tr") : null;
-            if (row && row.parentNode === itemsTbody) row.classList.add("active-row");
-        });
-        itemsTbody.addEventListener("focusout", (e) => {
-            const row = e.target.closest ? e.target.closest("tr") : null;
-            if (row && !row.contains(e.relatedTarget)) row.classList.remove("active-row");
-        });
-    }
+    // Active-row highlight delegation (hover) for all section tables
+    document.addEventListener('mouseover', (e) => {
+        const row = e.target.closest ? e.target.closest("tr") : null;
+        const tbody = row ? row.closest('tbody') : null;
+        if (row && tbody && tbody.closest('.items-table')) row.classList.add("active-row");
+    });
+    document.addEventListener('mouseout', (e) => {
+        const row = e.target.closest ? e.target.closest("tr") : null;
+        const tbody = row ? row.closest('tbody') : null;
+        if (row && tbody && tbody.closest('.items-table') && !row.contains(e.relatedTarget)) row.classList.remove("active-row");
+    });
+    document.addEventListener('focusin', (e) => {
+        const row = e.target.closest ? e.target.closest("tr") : null;
+        const tbody = row ? row.closest('tbody') : null;
+        if (row && tbody && tbody.closest('.items-table')) row.classList.add("active-row");
+    });
+    document.addEventListener('focusout', (e) => {
+        const row = e.target.closest ? e.target.closest("tr") : null;
+        const tbody = row ? row.closest('tbody') : null;
+        if (row && !row.contains(e.relatedTarget)) row.classList.remove("active-row");
+    });
 
     recalcGrandTotal();
 
@@ -2199,55 +2232,56 @@
                     statusText.innerText = "Extraction Complete!";
                     subStatusText.innerText = `Items parsed successfully using ${modeName}.`;
 
-                    // Populate Line Items Table
-                    const tbody = document.querySelector("#items-table tbody");
-                    tbody.innerHTML = ""; // Clear default initial row
+                    // Populate Line Items
+                    syncSectionData();
+                    const mainSec = sections.find(s => s.id === 'main');
+                    if (mainSec) mainSec.rowsData = [];
 
                     if (data.items && data.items.length > 0) {
+                        const annexureSections = {};
+                        if (data.annexures && data.annexures.length > 0) {
+                            data.annexures.forEach(name => {
+                                const sec = addSection(name, false);
+                                annexureSections[name] = sec;
+                            });
+                        }
+
                         data.items.forEach(item => {
-                            addRow();
-                            const rows = tbody.querySelectorAll("tr");
-                            const row = rows[rows.length - 1];
-
-                            const partNoInp = row.querySelector('[name="item_part_no"]');
-                            if (partNoInp) partNoInp.value = item.part_no || "";
-                            row.querySelector('[name="item_description"]').value = item.description || "";
-                            row.querySelector('[name="item_unit"]').value = item.unit || "Nos";
-                            row.querySelector('[name="item_qty"]').value = item.qty || 1;
-                            const priceInp = row.querySelector('[name="item_price"]');
-                            if (priceInp) priceInp.value = item.unit_price || 0;
-                            const specsInp = row.querySelector('[name="item_specs"]');
-                            if (specsInp && item.specs) specsInp.value = item.specs;
-                            const cooInp = row.querySelector('[name="item_coo"]');
-                            if (cooInp && item.coo) cooInp.value = item.coo;
-                            const quotedSel = row.querySelector('[name="item_quoted"]');
-                            if (quotedSel && item.quoted) quotedSel.value = item.quoted;
-                            const remarkInp = row.querySelector('[name="item_remark"]');
-                            if (remarkInp && item.remarks) remarkInp.value = item.remarks;
-
-                            // Extracted photo (if the backend matched one for this
-                            // item) — mirrors the same hidden-field + preview-img +
-                            // remove-button structure the photo cell template builds,
-                            // see builtinCellHtml()'s "photo" case.
-                            if (item.photo_path) {
-                                const photoHidden = row.querySelector('input[name="item_photo_path"]');
-                                if (photoHidden) photoHidden.value = item.photo_path;
-                                const photoPreview = row.querySelector('.photo-preview');
-                                if (photoPreview) {
-                                    photoPreview.src = "/static/" + item.photo_path.replace(/^\//, "");
-                                    photoPreview.removeAttribute("hidden");
+                            let targetSec = mainSec;
+                            if (item.annexure && annexureSections[item.annexure]) {
+                                targetSec = annexureSections[item.annexure];
+                            }
+                            if (!targetSec) {
+                                if (!mainSec) {
+                                    sections.unshift({ id: 'main', name: 'Main Document', page_break_before: false, rowsData: [] });
+                                    targetSec = sections[0];
+                                } else {
+                                    targetSec = mainSec;
                                 }
-                                const photoRemoveBtn = row.querySelector('.photo-remove');
-                                if (photoRemoveBtn) photoRemoveBtn.removeAttribute("hidden");
                             }
 
-                            recalcRow(row);
+                            const d = {
+                                item_part_no: item.part_no || "",
+                                item_description: item.description || "",
+                                item_unit: item.unit || "Nos",
+                                item_qty: item.qty != null ? String(item.qty) : "1",
+                                item_price: item.unit_price != null ? String(item.unit_price) : "0",
+                                item_specs: item.specs || "",
+                                item_coo: item.coo || "",
+                                item_quoted: item.quoted || "",
+                                item_remark: item.remarks || "",
+                                item_photo_path: item.photo_path || "",
+                            };
+                            targetSec.rowsData.push(d);
                         });
 
+                        renderSections();
+
                         const photoCount = data.items.filter(it => it.photo_path).length;
-                        const photoNote = photoCount ? ` (${photoCount} with a matched photo — please spot-check the pairing)` : "";
+                        const photoNote = photoCount ? ` (${photoCount} with a matched photo)` : "";
+                        const annexNote = (data.annexures && data.annexures.length) ? ` (${data.annexures.length} annexure(s) detected)` : "";
                         alertBox.className = "alert alert-success mt-3 mb-0 small";
-                        alertBox.textContent = `Extracted ${data.items.length} item(s) via ${modeName}${photoNote}. Please review quantities and prices before submitting.`;
+                        alertBox.textContent = `Extracted ${data.items.length} item(s) via ${modeName}${annexNote}${photoNote}. Please review before submitting.`;
                         alertBox.style.display = "block";
                     } else {
                         alertBox.className = "alert alert-warning mt-3 mb-0 small";
@@ -2298,6 +2332,205 @@
     });
     {% endif %}
 
+    /* ── Section Management ── */
+    let sections = [];
+    let sectionIdCounter = 0;
+
+    function initSections() {
+        if (INITIAL_ANNEXURES && INITIAL_ANNEXURES.length) {
+            INITIAL_ANNEXURES.forEach(a => {
+                const sec = {
+                    id: a.id || ++sectionIdCounter,
+                    name: a.name || '',
+                    page_break_before: a.page_break_before || false,
+                    rowsData: []
+                };
+                sections.push(sec);
+                sectionIdCounter = Math.max(sectionIdCounter, sec.id + 1);
+            });
+        }
+
+        if (IS_EDIT && INITIAL_ROWS && INITIAL_ROWS.length) {
+            INITIAL_ROWS.forEach(li => {
+                const d = {
+                    item_part_no: li.part_no || "",
+                    item_description: li.description || "",
+                    item_unit: li.unit || "Nos",
+                    item_qty: li.qty != null ? String(li.qty) : "1",
+                    item_price: li.unit_price != null ? String(li.unit_price) : "",
+                    item_tax: li.tax_percent != null ? String(li.tax_percent) : "0",
+                    item_specs: li.specs || "",
+                    item_photo_path: li.photo_path || "",
+                    item_coo: li.coo || "",
+                    item_quoted: li.quoted || "",
+                    item_remark: li.remark || "",
+                };
+                const cv = li.custom_values || {};
+                Object.keys(cv).forEach(k => { d["item_custom_" + k] = cv[k]; });
+
+                const secId = li.annexure_id || 'main';
+                const sec = sections.find(s => s.id === secId);
+                if (sec) {
+                    sec.rowsData.push(d);
+                } else {
+                    let mainSec = sections.find(s => s.id === 'main');
+                    if (!mainSec) {
+                        mainSec = { id: 'main', name: 'Main Document', page_break_before: false, rowsData: [] };
+                        sections.unshift(mainSec);
+                    }
+                    mainSec.rowsData.push(d);
+                }
+            });
+        } else if (!sections.length) {
+            sections.push({ id: 'main', name: 'Main Document', page_break_before: false, rowsData: [] });
+        }
+
+        renderSections();
+    }
+
+    function addSection(name, pageBreak) {
+        const sec = {
+            id: ++sectionIdCounter,
+            name: name || '',
+            page_break_before: pageBreak || false,
+            rowsData: []
+        };
+        sections.push(sec);
+        renderSections();
+        return sec;
+    }
+
+    function removeSection(id) {
+        if (id === 'main') return;
+        const sec = sections.find(s => s.id === id);
+        if (!sec) return;
+        if (sec.rowsData.length > 0) {
+            if (!confirm(`Delete "${sec.name || 'Annexure'}" and its ${sec.rowsData.length} item(s)?`)) return;
+        }
+        sections = sections.filter(s => s.id !== id);
+        renderSections();
+    }
+
+    function updateSectionName(id, val) {
+        const sec = sections.find(s => s.id === id);
+        if (sec) sec.name = val;
+    }
+
+    function updateSectionPageBreak(id, val) {
+        const sec = sections.find(s => s.id === id);
+        if (sec) sec.page_break_before = val;
+    }
+
+    function toggleSectionCollapse(id) {
+        const body = document.getElementById('section-body-' + id);
+        if (body) body.classList.toggle('collapse');
+    }
+
+    function renderSections() {
+        const container = document.getElementById('sectionsContainer');
+        if (!container) return;
+        container.innerHTML = '';
+
+        const mainSec = sections.find(s => s.id === 'main');
+        if (mainSec) {
+            container.appendChild(buildSectionCard(mainSec, true));
+        }
+
+        sections.filter(s => s.id !== 'main').forEach(sec => {
+            container.appendChild(buildSectionCard(sec, false));
+        });
+
+        if (!sections.some(s => s.rowsData && s.rowsData.length > 0) && !sections.some(s => s.id !== 'main')) {
+            if (!mainSec) {
+                sections.push({ id: 'main', name: 'Main Document', page_break_before: false, rowsData: [] });
+                renderSections();
+                return;
+            }
+        }
+    }
+
+    function buildSectionCard(section, isMain) {
+        const card = document.createElement('div');
+        card.className = 'info-panel section-card mb-3';
+        card.dataset.sectionId = section.id;
+
+        const header = document.createElement('div');
+        header.className = 'panel-header mb-0';
+        header.style.cursor = 'pointer';
+        header.setAttribute('data-bs-toggle', 'collapse');
+        header.setAttribute('data-bs-target', '#section-body-' + section.id);
+        header.innerHTML = `
+            <div class="d-flex align-items-center gap-2">
+                ${!isMain ? '<i class="bi bi-grip-vertical text-muted" style="cursor:grab;" title="Drag to reorder"></i>' : ''}
+                <i class="bi bi-chevron-down text-muted" style="transition:transform 0.2s;"></i>
+                <h6 class="panel-title mb-0">
+                    <i class="bi bi-${isMain ? 'file-earmark-text' : 'folder2-open'} text-primary"></i>
+                    ${isMain ? 'Main Document' : ''}
+                </h6>
+                ${!isMain ? `<input type="text" class="form-control form-control-sm" value="${esc(section.name)}" 
+                    placeholder="Annexure name" style="max-width:200px;" 
+                    oninput="updateSectionName(${section.id}, this.value)" onclick="event.stopPropagation()">
+                <div class="form-check mb-0" onclick="event.stopPropagation()">
+                    <input class="form-check-input" type="checkbox" id="pb_${section.id}" 
+                           ${section.page_break_before ? 'checked' : ''} 
+                           onchange="updateSectionPageBreak(${section.id}, this.checked)">
+                    <label class="form-check-label small" for="pb_${section.id}">Page break</label>
+                </div>` : ''}
+            </div>
+            <div class="d-flex gap-2 align-items-center">
+                <span class="badge bg-light text-muted border small">${(section.rowsData || []).length} items</span>
+                ${!isMain ? `<button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-2" onclick="event.stopPropagation(); removeSection(${section.id})" title="Remove section">
+                    <i class="bi bi-trash"></i>
+                </button>` : ''}
+            </div>
+        `;
+        card.appendChild(header);
+
+        const body = document.createElement('div');
+        body.id = 'section-body-' + section.id;
+        body.className = 'collapse show';
+
+        const tableWrap = document.createElement('div');
+        tableWrap.className = 'table-responsive mb-3';
+
+        const table = document.createElement('table');
+        table.className = 'table table-custom align-middle items-table';
+        table.dataset.sectionId = section.id;
+        table.innerHTML = '<thead><tr></tr></thead><tbody></tbody>';
+        tableWrap.appendChild(table);
+        body.appendChild(tableWrap);
+
+        const addRowBtn = document.createElement('button');
+        addRowBtn.type = 'button';
+        addRowBtn.className = 'btn btn-sm btn-outline-primary rounded-pill px-3 fw-semibold mb-2';
+        addRowBtn.innerHTML = '<i class="bi bi-plus-lg me-1"></i> Add Row';
+        addRowBtn.onclick = (e) => { e.stopPropagation(); addRow(section.id); };
+        body.appendChild(addRowBtn);
+
+        card.appendChild(body);
+
+        renderTableInto(table, section.rowsData || []);
+
+        return card;
+    }
+
+    function syncSectionData() {
+        sections.forEach(sec => {
+            const table = document.querySelector(`.items-table[data-section-id="${sec.id}"]`);
+            if (!table) return;
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            sec.rowsData = Array.from(tbody.querySelectorAll('tr')).map(row => {
+                const data = {};
+                row.querySelectorAll('input, select, textarea').forEach(i => {
+                    if (i.type === 'file') return;
+                    data[i.name] = i.value;
+                });
+                return data;
+            });
+        });
+    }
+
     // Busy-state on submit: PDF generation is synchronous on the server.
     // Also runs a final validation pass so users get an inline signal
     // instead of a silent native-validation jump.
@@ -2307,18 +2540,54 @@
             if (!rowsOk) {
                 e.preventDefault();
                 showToast("Please fill in the highlighted required fields");
-                const firstInvalid = document.querySelector("#items-table tbody tr.row-invalid .field-missing");
+                const firstInvalid = document.querySelector(".items-table tbody tr.row-invalid .field-missing");
                 if (firstInvalid) firstInvalid.focus();
             }
             return;
         }
-        var btn = this.querySelector('button[type="submit"]');
-        if (btn) {
-            btn.disabled = true;
-            var icon = btn.querySelector('.bi-check-lg'); if (icon) icon.style.display = 'none';
-            var label = btn.querySelector('.btn-label'); if (label) label.textContent = 'Generating…';
-            var spin = btn.querySelector('.spinner-border'); if (spin) spin.classList.remove('d-none');
-        }
+
+        syncSectionData();
+
+        const annexureSections = sections.filter(s => s.id !== 'main');
+        document.getElementById('annexureCount').value = annexureSections.length;
+
+        const form = this;
+        annexureSections.forEach((sec, i) => {
+            let nameInput = form.querySelector(`input[name="annexure_name"][data-idx="${i}"]`);
+            if (!nameInput) {
+                nameInput = document.createElement('input');
+                nameInput.type = 'hidden';
+                nameInput.name = 'annexure_name';
+                nameInput.dataset.idx = i;
+                form.appendChild(nameInput);
+            }
+            nameInput.value = sec.name;
+
+            let pbInput = form.querySelector(`input[name="annexure_page_break"][data-idx="${i}"]`);
+            if (!pbInput) {
+                pbInput = document.createElement('input');
+                pbInput.type = 'hidden';
+                pbInput.name = 'annexure_page_break';
+                pbInput.dataset.idx = i;
+                form.appendChild(pbInput);
+            }
+            pbInput.value = sec.page_break_before ? 'on' : '';
+        });
+
+        const annexureIdMap = {};
+        annexureSections.forEach((sec, i) => { annexureIdMap[sec.id] = i + 1; });
+
+        const itemMap = [];
+        sections.forEach(sec => {
+            const table = document.querySelector(`.items-table[data-section-id="${sec.id}"]`);
+            if (!table) return;
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            Array.from(tbody.rows).forEach(() => {
+                itemMap.push(sec.id === 'main' ? '0' : String(annexureIdMap[sec.id] || 0));
+            });
+        });
+        document.getElementById('itemAnnexureMap').value = itemMap.join(',');
     });
 </script>
 {% endblock %}

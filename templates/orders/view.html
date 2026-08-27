@@ -115,6 +115,15 @@
     {% if coq %}
         <div class="text-secondary small mb-3">Quote Number: <strong class="text-dark">{{ coq.quote_number }}</strong> · Date: <strong class="text-dark">{{ coq.quote_date }}</strong> · <span class="badge badge-soft">v{{ coq.pdf_version }}</span></div>
 
+        {% if coq.annexures %}
+        <div class="mb-2">
+            <span class="text-muted small me-1">Annexures:</span>
+            {% for ann in coq.annexures|sort(attribute='sort_order') %}
+                <span class="badge bg-light text-dark border small">{{ ann.name }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         {% if coq.pdf_path %}
             <div class="d-flex w-100 mb-3">
                 <div class="btn-group w-100">
@@ -183,6 +192,15 @@
     {% set toq = order.technical_quotation %}
     {% if toq %}
         <div class="text-secondary small mb-2">Offer Number: <strong class="text-dark">{{ toq.quote_number }}</strong> · Date: <strong class="text-dark">{{ toq.quote_date }}</strong> · <span class="badge badge-soft">v{{ toq.pdf_version }}</span></div>
+
+        {% if toq.annexures %}
+        <div class="mb-2">
+            <span class="text-muted small me-1">Annexures:</span>
+            {% for ann in toq.annexures|sort(attribute='sort_order') %}
+                <span class="badge bg-light text-dark border small">{{ ann.name }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
 
         {% if toq.pdf_path %}
             <div class="d-flex w-100 mb-3">

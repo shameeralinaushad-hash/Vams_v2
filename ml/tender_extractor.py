@@ -118,6 +118,12 @@ _PLAIN_TEXT_IGNORE_KEYWORDS = [
 # (as opposed to a flat quotation-style item table). Seen in Invitation-toTender packets, e.g. HIT's "Appx-II to Anx A" style parameter tables that
 # break each item down into General / Performance / Critical rows.
 _SPEC_TABLE_MARKERS = {"general", "performance", "critical", "parameters"}
+
+# Annexure detection pattern - matches lines like "Annexure A", "Anx-B", "Annexure 1", etc.
+_ANNEXURE_RE = re.compile(
+    r"^\s*(?:annexure|annex|anx)\s*['\"\-]?\s*([A-Za-z0-9]+)",
+    re.IGNORECASE,
+)
 # Words that mark a table as a "Schedule of Requirement" summary table —
 # short list of items with Ser/Description/A-U/Qty/DP columns, typically
 # with NO prices (a tender inquiry, not a priced quotation).
@@ -392,17 +398,19 @@ def _chunk_text_by_tokens(text, max_tokens):
 _AI_SYSTEM_PROMPT = (
     "You are an expert procurement assistant. Extract all line items, goods, or services from "
     "all tables present in the provided document.\n"
+    "IMPORTANT: If the document is organized into annexures (sections labeled 'Annexure A', 'Annexure B', "
+    "'Anx-1', etc.), include the annexure name in each item's 'annexure' field.\n"
     "CRITICAL: Return ONLY a valid raw JSON object matching this exact structure, with NO markdown formatting, NO backticks, and NO extra text:\n"
     "{\n"
     '  "items": [\n'
-    '    {"description": "Item description", "part_no": "", "unit": "Nos", "qty": 1.0, "unit_price": 0.0}\n'
+    '    {"description": "Item description", "part_no": "", "unit": "Nos", "qty": 1.0, "unit_price": 0.0, "annexure": ""}\n'
     "  ]\n"
     "}\n"
     "If a row has a separate Part No / Stock No / P/N column, put ONLY that value in "
     "'part_no' - do NOT prepend or mix it into 'description'. Leave 'part_no' as an empty "
     "string if the document has no such column. Default unit to 'Nos' if unspecified, "
-    "qty to 1.0, and unit_price to 0.0. Output the JSON object and NOTHING else - no "
-    "preamble, no explanation, no closing remarks."
+    "qty to 1.0, unit_price to 0.0, and annexure to '' if no annexure grouping is detected. "
+    "Output the JSON object and NOTHING else - no preamble, no explanation, no closing remarks."
 )
 
 
@@ -422,6 +430,7 @@ def _format_and_dedupe_items(raw_items):
             "unit": str(item.get("unit", "Nos")).strip() or "Nos",
             "qty": float(item.get("qty", 1.0) or 1.0),
             "unit_price": float(item.get("unit_price", 0.0) or 0.0),
+            "annexure": str(item.get("annexure", "") or "").strip(),
         })
     return formatted
 
@@ -2128,11 +2137,20 @@ def _parse_single_table_block(table):
         part_col = None
         start_row = 0
     pending_desc = ""
+    current_annexure = None
     for row in table[start_row:]:
         if not row or all(not str(c or "").strip() for c in row):
             continue
         cleaned_row = [_WHITESPACE_RE.sub(" ", str(c or "")).strip() for c in row]
         row_str = " ".join(cleaned_row).lower()
+
+        # Detect annexure headers
+        annex_match = _ANNEXURE_RE.match(row_str)
+        if annex_match:
+            current_annexure = " ".join(cleaned_row).strip()
+            pending_desc = ""
+            continue
+
         if any(term in row_str for term in ["grand total", "subtotal", "summary", "total for"]) and "description" not in row_str and "name" not in row_str:
             continue
         if any(kw in row_str for kw in ["sr.", "sr. no", "unit price", "rates"]) and any(kw in row_str for kw in ["qty", "quantity", "total", "cost"]):
@@ -2197,13 +2215,16 @@ def _parse_single_table_block(table):
             # matching against a parts catalogue, Excel column widths).
             clean_part_no = part_no if (part_no and not _is_pure_number_or_sno(part_no)) else ""
             if len(full_desc) > 1 and not _is_pure_number_or_sno(full_desc):
-                results.append({
+                item = {
                     "description": full_desc[:250],
                     "part_no": clean_part_no,
                     "unit": unit,
                     "qty": qty if (qty is not None and qty > 0) else 1.0,
                     "unit_price": price,
-                })
+                }
+                if current_annexure:
+                    item["annexure"] = current_annexure
+                results.append(item)
     return results
 
 
@@ -2316,12 +2337,21 @@ def _extract_number(text):
 def _parse_plain_text(text):
     results = []
     buffer_lines = []
+    current_annexure = None
     for line in text.split("\n"):
         if len(results) >= MAX_ITEMS:
             break
         cleaned = line.strip()
         if not cleaned or len(cleaned) < 2:
             continue
+
+        # Detect annexure headers
+        annex_match = _ANNEXURE_RE.match(cleaned)
+        if annex_match:
+            current_annexure = cleaned.strip()
+            buffer_lines.clear()
+            continue
+
         cleaned_lower = cleaned.lower()
         if any(kw in cleaned_lower for kw in _PLAIN_TEXT_IGNORE_KEYWORDS) and not _UNIT_RE.search(cleaned_lower):
             if "total" in cleaned_lower and len(results) > 0:
@@ -2370,13 +2400,16 @@ def _parse_plain_text(text):
             full_description = _LEADING_SNO_RE.sub("", full_description)
             full_description = _LEADING_INDEX_RE.sub("", full_description)
             if len(full_description) > 2 and not _is_pure_number_or_sno(full_description):
-                results.append({
+                item = {
                     "description": full_description[:250],
                     "part_no": "",
                     "unit": unit,
                     "qty": qty if qty > 0 else 1.0,
-                    "unit_price": price
-                })
+                    "unit_price": price,
+                }
+                if current_annexure:
+                    item["annexure"] = current_annexure
+                results.append(item)
         else:
             if not _is_pure_number_or_sno(cleaned):
                 buffer_lines.append(cleaned)

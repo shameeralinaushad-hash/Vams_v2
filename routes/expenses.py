@@ -4,6 +4,7 @@ from models import db, Expense, Order, Client, ExpenseCategory
 from audit import log_action
 from permissions import permission_required
 from utils import parse_float
+from socket_events import emit_company, emit_dashboard_update
 
 expenses_bp = Blueprint("expenses", __name__, url_prefix="/expenses")
 
@@ -55,6 +56,8 @@ def add_expense():
     log_action("add_expense", "Expense", expense.id, f"Logged {category} expense of {amount:.2f}" + (f" for order #{order_id}" if order_id else ""))
 
     flash("Expense logged.")
+    emit_company("list_refresh", {"section": "expenses"}, company_id)
+    emit_dashboard_update(company_id)
     return redirect(request.referrer or url_for("expenses.list_expenses"))
 
 
@@ -70,6 +73,8 @@ def delete_expense(expense_id):
     log_action("delete_expense", "Expense", expense_id, "Deleted expense")
 
     flash("Expense deleted.")
+    emit_company("list_refresh", {"section": "expenses"}, expense.company_id)
+    emit_dashboard_update(expense.company_id)
     if order_id:
         return redirect(url_for("orders.view_order", order_id=order_id))
     return redirect(url_for("expenses.list_expenses"))

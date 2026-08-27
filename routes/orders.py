@@ -13,6 +13,7 @@ from utils import get_order_folder, validate_upload, ALLOWED_DOC_EXTENSIONS
 from audit import log_action
 from permissions import permission_required
 from pdf_templates.stamp_utility import stamp_last_page
+from socket_events import emit_company, emit_dashboard_update
 
 orders_bp = Blueprint("orders", __name__, url_prefix="/orders")
 
@@ -113,6 +114,7 @@ def add_order():
     clients = Client.query.all()
 
     if request.method == "POST":
+        print(f"[DEBUG] add_order POST hit, company_id={company_id}")
         client_id = int(request.form["client_id"])
         subsidiary_id = request.form.get("subsidiary_id") or None
         notes = request.form.get("notes", "")
@@ -143,6 +145,8 @@ def add_order():
             db.session.add(ClientCompanyLink(client_id=client_id, company_id=company_id))
             db.session.commit()
 
+        emit_company("list_refresh", {"section": "orders"}, company_id)
+        emit_dashboard_update(company_id)
         return redirect(url_for("orders.view_order", order_id=order.id))
 
     return render_template("orders/add.html", clients=clients)
@@ -219,6 +223,8 @@ def edit_order(order_id):
         db.session.commit()
 
     flash("Order details updated successfully.")
+    emit_company("list_refresh", {"section": "orders"}, company_id)
+    emit_dashboard_update(company_id)
     return redirect(redirect_target)
 
 
@@ -471,6 +477,8 @@ def delete_order(order_id):
     db.session.delete(order)
     db.session.commit()
     flash("Order deleted.")
+    emit_company("list_refresh", {"section": "orders"}, order.company_id)
+    emit_dashboard_update(order.company_id)
     return redirect(redirect_target)
 
 

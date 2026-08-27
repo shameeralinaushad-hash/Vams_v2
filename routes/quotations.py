@@ -3,13 +3,14 @@ import json
 from datetime import date, datetime
 from flask import Blueprint, render_template, request, redirect, url_for, current_app, flash, session, jsonify
 from werkzeug.utils import secure_filename
-from models import db, Quotation, QuotationLineItem, CatalogItem, Order, ClientDocSequence, PriceHistory, CustomField
+from models import db, Quotation, QuotationLineItem, QuotationAnnexure, CatalogItem, Order, ClientDocSequence, PriceHistory, CustomField
 from utils import get_order_folder, validate_upload, delete_file_if_exists
 from pdf_templates.quotation_template import generate_quotation_pdf
 from audit import log_action
 from numbering import build_quotation_number, build_technical_offer_number
 from permissions import permission_required
 from ml.tender_extractor import extract_items_from_file
+from socket_events import emit_company, emit_dashboard_update
 
 quotations_bp = Blueprint("quotations", __name__, url_prefix="/quotations")
 
@@ -201,6 +202,18 @@ def _parse_quotation_form(order):
     client_ref_number = request.form.get("client_ref_number", "").strip()
     terms_conditions = request.form.get("terms_conditions", "").strip()
 
+    # Annexure data
+    annexure_count = int(request.form.get("annexure_count", "0") or 0)
+    annexure_names = request.form.getlist("annexure_name")
+    annexure_page_breaks = request.form.getlist("annexure_page_break")
+    item_annexure_map = request.form.getlist("item_annexure")  # "0" = main, "1" = first annexure, etc.
+
+    annexures = []
+    for i in range(annexure_count):
+        name = annexure_names[i].strip() if i < len(annexure_names) else f"Annexure {i}"
+        page_break = annexure_page_breaks[i] == "on" if i < len(annexure_page_breaks) else False
+        annexures.append({"name": name, "page_break_before": page_break, "sort_order": i})
+
     return {
         "doc_type": doc_type,
         "part_nos": part_nos, "descriptions": descriptions, "units": units,
@@ -218,11 +231,28 @@ def _parse_quotation_form(order):
         "quote_number": quote_number, "quote_date": quote_date_val,
         "recipient": recipient, "subject": subject,
         "client_ref_number": client_ref_number, "terms_conditions": terms_conditions,
+        "annexures": annexures, "item_annexure_map": item_annexure_map,
     }
 
 
 def _build_quotation_line_items(quotation, data, order):
     line_items = []
+
+    # Create annexure records
+    annexure_records = {}
+    for i, ann_data in enumerate(data.get("annexures", [])):
+        ann = QuotationAnnexure(
+            quotation_id=quotation.id,
+            name=ann_data["name"],
+            sort_order=ann_data["sort_order"],
+            page_break_before=ann_data.get("page_break_before", False),
+        )
+        db.session.add(ann)
+        db.session.flush()
+        annexure_records[i + 1] = ann
+
+    item_map = data.get("item_annexure_map") or []
+
     for idx, (part_no, desc, unit, qty, price, tax) in enumerate(
             zip(data["part_nos"], data["descriptions"], data["units"],
                 data["qtys"], data["prices"], data["taxes"])):
@@ -244,9 +274,17 @@ def _build_quotation_line_items(quotation, data, order):
         remarks = data.get("remarks") or []
         photos = data.get("photo_paths") or []
 
+        # Determine annexure for this item
+        annexure_id = None
+        if idx < len(item_map):
+            ann_idx = int(item_map[idx] or 0)
+            if ann_idx > 0 and ann_idx in annexure_records:
+                annexure_id = annexure_records[ann_idx].id
+
         li = QuotationLineItem(
             quotation_id=quotation.id,
             catalog_item_id=catalog_item.id,
+            annexure_id=annexure_id,
             part_no=part_no.strip() if part_no else "",
             description=desc.strip(),
             unit=unit.strip() if unit else "Nos",
@@ -361,6 +399,8 @@ def create_quotation(order_id):
 
         log_action("create_quotation", "Quotation", quotation.id, f"Created quotation {quote_number} for {order.client.name}")
 
+        emit_company("list_refresh", {"section": "quotations"}, order.company_id)
+        emit_dashboard_update(order.company_id)
         return redirect(url_for("orders.view_order", order_id=order.id))
 
     raw = seq.peek_next_raw_number() if seq else order.id
@@ -423,6 +463,11 @@ def edit_quotation(quotation_id):
 
         old_photo_paths = {li.photo_path for li in quotation.line_items if li.photo_path}
 
+        # Delete old annexures (cascade deletes line_items)
+        for ann in list(quotation.annexures):
+            db.session.delete(ann)
+        db.session.flush()
+
         for li in list(quotation.line_items):
             db.session.delete(li)
         db.session.flush()
@@ -440,6 +485,8 @@ def edit_quotation(quotation_id):
                    f"Edited quotation {quotation.quote_number} for {order.client.name}")
 
         flash("Quotation updated.")
+        emit_company("list_refresh", {"section": "quotations"}, order.company_id)
+        emit_dashboard_update(order.company_id)
         return redirect(url_for("orders.view_order", order_id=order.id))
 
     custom_fields = CustomField.query.filter_by(
@@ -469,6 +516,7 @@ def edit_quotation(quotation_id):
         default_col_keys=col_keys, default_cf_ids=set(cf_map.keys()),
         column_widths=column_widths,
         photo_size_mm=vc.get("photo_size_mm") or 18,
+        annexures=quotation.annexures,
     )
 
 
@@ -497,6 +545,8 @@ def delete_quotation(quotation_id):
     log_action("delete_quotation", "Quotation", quotation_id, f"Deleted quotation {quote_number}")
 
     flash("Quotation deleted.")
+    emit_company("list_refresh", {"section": "quotations"}, quotation.order.company_id)
+    emit_dashboard_update(quotation.order.company_id)
     return redirect(url_for("orders.view_order", order_id=order_id))
 
 
@@ -584,7 +634,12 @@ def extract_from_pdf():
             "error": "Couldn't extract items from this file. You may need to enter items manually."
         })
 
-    return jsonify({"items": items, "error": None})
+    # Collect unique annexure names from extracted items
+    annexure_names = list(dict.fromkeys(
+        item.get("annexure", "") for item in items if item.get("annexure")
+    ))
+
+    return jsonify({"items": items, "error": None, "annexures": annexure_names})
 
 
 @quotations_bp.route("/extract-with-groq", methods=["POST"])
@@ -637,7 +692,11 @@ def extract_with_groq():
             "error": error_msg
         })
 
-    return jsonify({"items": items, "error": None})
+    annexure_names = list(dict.fromkeys(
+        item.get("annexure", "") for item in items if item.get("annexure")
+    ))
+
+    return jsonify({"items": items, "error": None, "annexures": annexure_names})
 
 
 @quotations_bp.route("/extract-with-gemini", methods=["POST"])
@@ -689,4 +748,8 @@ def extract_with_gemini():
             "error": error_msg
         })
 
-    return jsonify({"items": items, "error": None})
+    annexure_names = list(dict.fromkeys(
+        item.get("annexure", "") for item in items if item.get("annexure")
+    ))
+
+    return jsonify({"items": items, "error": None, "annexures": annexure_names})

@@ -1276,7 +1276,7 @@
                     <i class="bi bi-envelope-paper me-2" style="color: #4f8cff;"></i>
                     Client Emails
                     {% if gmail_connected and client_emails %}
-                    <span style="font-size: 0.7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; background: rgba(79,140,255,0.12); color: #4f8cff; margin-left: 8px;">{{ client_emails | length }} new</span>
+                    <span style="font-size: 0.7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; background: rgba(79,140,255,0.12); color: #4f8cff; margin-left: 8px;">{{ client_emails | length }} total</span>
                     {% endif %}
                 </h3>
                 <div class="d-flex gap-2 align-items-center">
@@ -1289,21 +1289,24 @@
             {% if gmail_connected %}
                 {% if client_emails %}
                 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px;">
-                    {% for e in client_emails %}
-                    <div style="display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; background: var(--surface-soft); border-radius: var(--radius-md); cursor: pointer; transition: all 0.15s; border: 1px solid transparent;" onmouseover="this.style.borderColor='var(--border)'; this.style.background='var(--surface)'" onmouseout="this.style.borderColor='transparent'; this.style.background='var(--surface-soft)'" onclick="window.location='{{ url_for('gmail.inbox') }}'">
+                    {% for e in client_emails[:5] %}
+                    <div style="display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; background: var(--surface-soft); border-radius: var(--radius-md); cursor: pointer; transition: all 0.15s; border: 1px solid transparent; border-left: 3px solid {% if e.unread %}#4f8cff{% else %}transparent{% endif %};" onmouseover="this.style.borderColor='var(--border)'; this.style.background='var(--surface)'" onmouseout="this.style.borderColor='var(--border)'; this.style.background='var(--surface-soft)'" onclick="window.location='{{ url_for('gmail.inbox') }}'">
                         <div style="width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; flex-shrink: 0; background: {% if e.client_name %}rgba(79,140,255,0.12); color: #4f8cff{% else %}var(--border); color: var(--text-secondary){% endif %};">
                             {{ e.from[:1] | upper }}
                         </div>
                         <div style="flex: 1; min-width: 0;">
-                            <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 6px;">
-                                <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                    {{ e.from.split('<')[0].strip() | truncate(30) }}
-                                    {% if e.client_name %}<span style="display:inline-block; padding:1px 6px; border-radius:8px; font-size:0.58rem; font-weight:700; background:rgba(79,140,255,0.12); color:#4f8cff; margin-left:4px; vertical-align:middle;">{{ e.client_name }}</span>{% endif %}
-                                </div>
-                                <div style="font-size: 0.68rem; color: var(--text-secondary); white-space: nowrap; flex-shrink: 0;">{{ e.date[:16] if e.date else '' }}</div>
+                            <div style="font-size: 0.88rem; font-weight: {% if e.unread %}700{% else %}600{% endif %}; color: var(--text-primary); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                {{ e.subject }}
+                                {% if e.unread %}<span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:#4f8cff; margin-left:6px; vertical-align:middle;"></span>{% endif %}
                             </div>
-                            <div style="font-size: 0.8rem; font-weight: {% if e.unread %}700{% else %}500{% endif %}; color: var(--text-primary); margin: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ e.subject }}</div>
-                            <div style="font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ e.snippet | truncate(60) }}</div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+                                <div style="font-size: 0.78rem; font-weight: 500; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                    {{ e.from.split('<')[0].strip() | truncate(25) }}
+                                    {% if e.client_name %}<span style="display:inline-block; padding:1px 5px; border-radius:6px; font-size:0.58rem; font-weight:700; background:rgba(79,140,255,0.12); color:#4f8cff; margin-left:4px; vertical-align:middle;">{{ e.client_name }}</span>{% endif %}
+                                </div>
+                                <div style="font-size: 0.68rem; color: var(--text-muted); white-space: nowrap; flex-shrink: 0;">{{ e.date[:16] if e.date else '' }}</div>
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ e.snippet | truncate(60) }}</div>
                         </div>
                     </div>
                     {% endfor %}

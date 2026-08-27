@@ -1240,6 +1240,7 @@
             animation: bellPulse 1.8s ease-out infinite;
         }
         @keyframes bellPulse { 0% { transform: scale(0.8); opacity: 0.7; } 100% { transform: scale(1.25); opacity: 0; } }
+        @keyframes fadeOut { 0% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
         .bell-badge.pop { animation: badgePop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
         @keyframes badgePop { 0% { transform: scale(0.3); } 55% { transform: scale(1.3); } 100% { transform: scale(1); } }
 
@@ -1365,7 +1366,7 @@
     </style>
     {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body data-page="{{ page_id }}" data-company-id="{{ active_company_obj.id if active_company_obj else '' }}">
 
 <div class="sidebar" id="sidebar">
     <!-- Clean, Isolated VAMS Hexagon Logo Trigger -->
@@ -1510,7 +1511,8 @@
                     {% for c in all_companies %}
                     <li>
                         <a class="dropdown-item {% if session.get('active_company_id') == c.id %}active{% endif %}"
-                           href="{{ url_for('companies.switch_company', company_id=c.id) }}">
+                           href="{{ url_for('companies.switch_company', company_id=c.id) }}"
+                           onclick="localStorage.setItem('vams_company_id', '{{ c.id }}')">
                             {{ c.name }}
                             {% if session.get('active_company_id') == c.id %}<i class="bi bi-check-lg float-end"></i>{% endif %}
                         </a>
@@ -1844,14 +1846,7 @@ window.addEventListener('online', updateConnect);
 window.addEventListener('offline', updateConnect);
 updateConnect();
 
-/* ---------- Bell: unread-count polling + badge pop + pulse ---------- */
-var bellCountUrl = '{{ url_for("tasks.notification_unread_count") }}';
-function refreshBellCount() {
-    fetch(bellCountUrl)
-        .then(function(r){ return r.json(); })
-        .then(function(d){ updateBellBadge(d.count || 0); })
-        .catch(function(){});
-}
+/* ---------- Bell: badge pop + pulse (SSE-driven) ---------- */
 function updateBellBadge(count) {
     var btn = document.getElementById('bellBtn'); if (!btn) return;
     var ct = document.getElementById('bellBadge');
@@ -1870,8 +1865,57 @@ function updateBellBadge(count) {
         btn.classList.remove('pulse');
     }
 }
-setInterval(refreshBellCount, 60000);
-setTimeout(refreshBellCount, 4000);
+
+/* ---------- Gmail: push notifications for new client emails ---------- */
+var gmailConnected = {{ "true" if gmail_connected else "false" }};
+var gmailLastSeenId = null;
+var gmailNotifPerm = 'default';
+
+function requestGmailNotifPermission() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') { gmailNotifPerm = 'granted'; return; }
+    if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then(function(p) { gmailNotifPerm = p; });
+    } else {
+        gmailNotifPerm = 'denied';
+    }
+}
+
+function pollGmailInbox() {
+    if (!gmailConnected) return;
+    fetch('/gmail/api/inbox')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d.connected || !d.emails || !d.emails.length) return;
+            var newest = d.emails[0];
+            if (gmailLastSeenId === null) { gmailLastSeenId = newest.id; return; }
+            if (newest.id !== gmailLastSeenId) {
+                var newEmails = [];
+                for (var i = 0; i < d.emails.length; i++) {
+                    if (d.emails[i].id === gmailLastSeenId) break;
+                    newEmails.push(d.emails[i]);
+                }
+                gmailLastSeenId = newest.id;
+                if (newEmails.length > 0 && gmailNotifPerm === 'granted') {
+                    var count = newEmails.length;
+                    var title = count === 1 ? 'New client email' : count + ' new client emails';
+                    var body = newEmails[0].subject || newEmails[0].from || 'Check your inbox';
+                    if (count > 1) body += ' and ' + (count - 1) + ' more';
+                    try {
+                        var n = new Notification(title, { body: body, icon: '/static/images/icon-192.png', tag: 'gmail-new', renotify: true });
+                        n.onclick = function() { window.focus(); window.location.href = '/gmail/inbox'; };
+                    } catch(e) {}
+                }
+            }
+        })
+        .catch(function() {});
+}
+
+if (gmailConnected) {
+    requestGmailNotifPermission();
+    pollGmailInbox();
+    setInterval(pollGmailInbox, 90000);
+}
 
 /* ---------- Command palette ---------- */
 var cmdkOpen = false;
@@ -2162,6 +2206,58 @@ document.addEventListener('keydown', function(e){
         toggleAI();
     }
 });
+</script>
+
+<!-- Live updates via SSE -->
+<script>
+(function() {
+    var companyId = document.body.getAttribute('data-company-id');
+    if (!companyId) return;
+
+    function refreshContent() {
+        var currentPath = window.location.pathname;
+        fetch(currentPath)
+            .then(function(r) { return r.text(); })
+            .then(function(html) {
+                var parser = new DOMParser();
+                var doc = parser.parseFromString(html, 'text/html');
+                var newContent = doc.getElementById('mainContent');
+                var oldContent = document.getElementById('mainContent');
+                if (newContent && oldContent) {
+                    oldContent.innerHTML = newContent.innerHTML;
+                }
+                var newBody = doc.querySelector('body');
+                if (newBody) {
+                    var newPage = newBody.getAttribute('data-page');
+                    var newCompany = newBody.getAttribute('data-company-id');
+                    if (newPage) document.body.setAttribute('data-page', newPage);
+                    if (newCompany) document.body.setAttribute('data-company-id', newCompany);
+                }
+                var indicator = document.createElement('div');
+                indicator.style.cssText = 'position:fixed;top:12px;right:12px;background:rgba(79,140,255,0.9);color:#fff;padding:8px 16px;border-radius:8px;font-size:0.78rem;z-index:9999;animation:fadeOut 2s forwards;box-shadow:0 4px 12px rgba(79,140,255,0.3);';
+                indicator.textContent = 'Updated';
+                document.body.appendChild(indicator);
+                setTimeout(function() { indicator.remove(); }, 2000);
+            });
+    }
+
+    var evtSource = new EventSource('/api/events?company=' + companyId);
+
+    evtSource.addEventListener('refresh', function(e) {
+        refreshContent();
+    });
+
+    evtSource.addEventListener('notification', function(e) {
+        try {
+            var event = JSON.parse(e.data);
+            updateBellBadge(event.data.count || 0);
+        } catch(err) {}
+    });
+
+    evtSource.onerror = function() {
+        // EventSource auto-reconnects with Last-Event-ID
+    };
+})();
 </script>
 
 </body>

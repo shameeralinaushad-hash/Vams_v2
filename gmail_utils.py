@@ -71,6 +71,9 @@ def build_gmail_service(company_id):
 
 
 def get_client_emails(company_id):
+    import logging
+    log = logging.getLogger(__name__)
+
     now = time.time()
     cached = _email_cache.get(company_id)
     if cached and (now - cached["fetched_at"]) < CACHE_TTL:
@@ -78,25 +81,55 @@ def get_client_emails(company_id):
 
     service = build_gmail_service(company_id)
     if not service:
+        log.warning(f"[Gmail] No service for company {company_id}")
         return []
 
     # Get all client email addresses for this company's linked clients
     link_ids = [cl.id for cl in ClientCompanyLink.query.filter_by(company_id=company_id).all()]
     if not link_ids:
+        log.warning(f"[Gmail] No client-company links for company {company_id}")
         return []
-    clients = Client.query.filter(Client.company_links.any(ClientCompanyLink.id.in_(link_ids)), Client.email.isnot(None), Client.email != "").all()
-    client_emails = {c.email.lower().strip(): c.name for c in clients if c.email}
-    if not client_emails:
+    clients = Client.query.filter(
+        Client.company_links.any(ClientCompanyLink.id.in_(link_ids)),
+        (Client.email.isnot(None) & (Client.email != "")) |
+        (Client.emails.isnot(None) & (Client.emails != "")) |
+        (Client.domain.isnot(None) & (Client.domain != ""))
+    ).all()
+    if not clients:
+        log.warning(f"[Gmail] No clients with email/domain found for company {company_id}. Links: {link_ids}")
         return []
 
-    # Build Gmail query: from any client email
-    from_clauses = " OR ".join(f"from:{email}" for email in client_emails.keys())
+    # Build email lookup: all known client emails + domains
+    all_client_emails = set()
+    client_domains = set()
+    email_to_client = {}
+    for c in clients:
+        for addr in c.all_emails():
+            all_client_emails.add(addr)
+            email_to_client[addr] = c.name
+        if c.domain:
+            dom = c.domain.strip().lower()
+            client_domains.add(dom)
+
+    if not all_client_emails and not client_domains:
+        log.warning(f"[Gmail] No emails/domains to search for company {company_id}")
+        return []
+
+    log.info(f"[Gmail] Company {company_id}: {len(all_client_emails)} emails, {len(client_domains)} domains")
+
+    # Build Gmail query: from any client email or domain
+    from_clauses = " OR ".join(f"from:{email}" for email in all_client_emails)
+    if client_domains:
+        from_clauses += " OR " + " OR ".join(f"from:@{dom}" for dom in client_domains)
     query = f"({from_clauses}) -label:spam -label:trash"
+    log.info(f"[Gmail] Query: {query}")
 
     try:
-        results = service.users().messages().list(userId="me", q=query, maxResults=30).execute()
+        results = service.users().messages().list(userId="me", q=query, maxResults=10).execute()
         messages = results.get("messages", [])
-    except Exception:
+        log.info(f"[Gmail] Found {len(messages)} messages for company {company_id}")
+    except Exception as e:
+        log.error(f"[Gmail] Gmail API error for company {company_id}: {e}")
         return []
 
     emails = []
@@ -106,13 +139,18 @@ def get_client_emails(company_id):
                 metadataHeaders=["From", "Subject", "Date"]).execute()
             headers = {h["name"].lower(): h["value"] for h in msg.get("payload", {}).get("headers", [])}
             sender = headers.get("from", "")
-            sender_lower = sender.lower()
-            # Match client email from sender string
+            sender_email = sender.split("<")[-1].rstrip(">").strip().lower() if "<" in sender else sender.strip().lower()
+            # Match client by email address or domain
             matched_client = None
-            for ce, cname in client_emails.items():
-                if ce in sender_lower:
-                    matched_client = cname
-                    break
+            # Direct email match
+            if sender_email in email_to_client:
+                matched_client = email_to_client[sender_email]
+            else:
+                # Domain match
+                for c in clients:
+                    if c.domain and sender_email.endswith("@" + c.domain.strip().lower()):
+                        matched_client = c.name
+                        break
 
             emails.append({
                 "id": msg["id"],
@@ -127,8 +165,14 @@ def get_client_emails(company_id):
         except Exception:
             continue
 
-    # Sort by date descending
-    emails.sort(key=lambda e: e["date"], reverse=True)
+    # Sort by date descending (parse the Date header properly)
+    from email.utils import parsedate_to_datetime
+    def _parse_date(d):
+        try:
+            return parsedate_to_datetime(d)
+        except Exception:
+            return datetime.min.replace(tzinfo=None)
+    emails.sort(key=lambda e: _parse_date(e.get("date", "")), reverse=True)
 
     # Check for new emails and notify admins
     token_row = GmailToken.query.filter_by(company_id=company_id).first()

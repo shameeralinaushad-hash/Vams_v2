@@ -7,7 +7,8 @@ from logging.handlers import RotatingFileHandler
 
 from flask import (
     Flask, render_template, session, redirect, url_for,
-    flash, send_from_directory, jsonify, request, make_response
+    flash, send_from_directory, jsonify, request, make_response,
+    Response, stream_with_context
 )
 from flask_login import LoginManager, login_required, current_user
 from flask_limiter import Limiter
@@ -541,6 +542,14 @@ def create_app():
             "projects": (url_for("projects.list_projects"), "Projects"),
         }
 
+        gmail_connected = False
+        if active_id:
+            try:
+                from gmail_utils import is_connected as gmail_is_connected
+                gmail_connected = gmail_is_connected(active_id)
+            except Exception:
+                pass
+
         return {
             "all_companies": Company.query.all(),
             "active_company_obj": active_company_obj,
@@ -550,6 +559,7 @@ def create_app():
             "page_id": page_id,
             "today_line": today_line,
             "section_meta": section_meta,
+            "gmail_connected": gmail_connected,
         }
 
     @app.errorhandler(404)
@@ -1057,6 +1067,21 @@ def create_app():
         resp.delete_cookie('last_daily_visit')
         return resp
 
+    # ── SSE live updates endpoint ──────────────────────────────────
+    @app.route('/api/events')
+    def sse_events():
+        if not current_user.is_authenticated:
+            return jsonify({"error": "unauthorized"}), 401
+        company_id = session.get("active_company_id")
+        if not company_id:
+            return jsonify({"error": "no company"}), 400
+        import sse
+        return Response(
+            stream_with_context(sse.event_stream(company_id, current_user.id)),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     return app
 
 
@@ -1064,4 +1089,9 @@ app = create_app()
 
 if __name__ == '__main__':
     debug_mode = os.environ.get("FLASK_DEBUG", "True").lower() in ("1", "true", "yes")
-    app.run(debug=debug_mode, port=5003)
+    if debug_mode:
+        app.run(debug=True, port=5003, use_reloader=False)
+    else:
+        from waitress import serve
+        print(" * Serving on http://0.0.0.0:8080")
+        serve(app, host="0.0.0.0", port=8080, threads=6)

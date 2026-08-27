@@ -18,12 +18,16 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 def _get_oauth_flow():
     from gmail_utils import get_google_oauth_credentials
     client_id, client_secret = get_google_oauth_credentials()
-    # Fallback to app config
     if not client_id or not client_secret:
         client_id = current_app.config.get("GOOGLE_CLIENT_ID")
         client_secret = current_app.config.get("GOOGLE_CLIENT_SECRET")
     if not client_id or not client_secret:
         return None
+
+    redirect_uri = current_app.config.get("GOOGLE_REDIRECT_URI")
+    if not redirect_uri:
+        redirect_uri = url_for("gmail.oauth_callback", _external=True)
+
     return Flow.from_client_config(
         {
             "web": {
@@ -34,8 +38,15 @@ def _get_oauth_flow():
             }
         },
         scopes=SCOPES,
-        redirect_uri=url_for("gmail.oauth_callback", _external=True),
+        redirect_uri=redirect_uri,
     )
+
+
+def _get_redirect_uri():
+    redirect_uri = current_app.config.get("GOOGLE_REDIRECT_URI")
+    if not redirect_uri:
+        redirect_uri = url_for("gmail.oauth_callback", _external=True)
+    return redirect_uri
 
 
 @gmail_bp.route("/connect")
@@ -48,27 +59,37 @@ def connect():
 
     flow = _get_oauth_flow()
     if not flow:
-        flash("Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env")
+        flash("Google OAuth is not configured. Set credentials in Settings > Mail & Gmail.")
         return redirect(url_for("gmail.inbox"))
 
     authorization_url, state = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
         prompt="consent",
+        state=str(company_id),
     )
     session["gmail_oauth_state"] = state
-    session["gmail_oauth_company_id"] = company_id
     return redirect(authorization_url)
 
 
 @gmail_bp.route("/callback")
 @login_required
 def oauth_callback():
-    company_id = session.pop("gmail_oauth_company_id", None)
-    state = session.pop("gmail_oauth_state", None)
+    state_from_session = session.pop("gmail_oauth_state", None)
+    state_from_url = request.args.get("state")
 
+    if not state_from_url:
+        flash("OAuth callback missing state parameter. Try again.")
+        return redirect(url_for("gmail.inbox"))
+
+    company_id = int(state_from_url) if state_from_url.isdigit() else None
     if not company_id:
-        flash("OAuth session expired. Try again.")
+        flash("Invalid OAuth state. Try again.")
+        return redirect(url_for("gmail.inbox"))
+
+    error = request.args.get("error")
+    if error:
+        flash(f"Google authorization failed: {error}")
         return redirect(url_for("gmail.inbox"))
 
     flow = _get_oauth_flow()
@@ -76,16 +97,22 @@ def oauth_callback():
         flash("Google OAuth is not configured.")
         return redirect(url_for("gmail.inbox"))
 
-    flow.fetch_token(authorization_response=request.url)
+    # Reconstruct the full callback URL using the configured redirect_uri
+    # so oauthlib sees HTTPS (the tunnel) instead of the local HTTP request.
+    redirect_uri = _get_redirect_uri()
+    callback_url = redirect_uri + "?" + request.query_string.decode("utf-8")
+
+    flow.fetch_token(authorization_response=callback_url)
     creds = flow.credentials
 
-    # Store or update token
     existing = GmailToken.query.filter_by(company_id=company_id).first()
     if existing:
         existing.access_token = encrypt_token(creds.token)
         existing.refresh_token = encrypt_token(creds.refresh_token) if creds.refresh_token else existing.refresh_token
         existing.expiry = creds.expiry
         existing.scopes = json.dumps(list(creds.scopes or SCOPES))
+        existing.client_id = current_app.config.get("GOOGLE_CLIENT_ID", "")
+        existing.client_secret = current_app.config.get("GOOGLE_CLIENT_SECRET", "")
     else:
         from gmail_utils import get_google_oauth_credentials
         cid, csec = get_google_oauth_credentials()

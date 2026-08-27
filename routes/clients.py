@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from flask import Blueprint, render_template, request, redirect, url_for, current_app, flash, jsonify, send_file
+from flask import Blueprint, render_template, request, redirect, url_for, current_app, flash, jsonify, send_file, session
 from flask_login import login_required
 from werkzeug.utils import secure_filename
 from models import db, Client, ClientCompanyLink, Company, ClientDocSequence, Order
@@ -8,6 +8,7 @@ from utils import validate_upload, ALLOWED_IMAGE_EXTENSIONS, delete_file_if_exis
 from permissions import permission_required
 from audit import log_action
 from pdf_templates.statement_template import generate_statement_pdf
+from socket_events import emit_company, emit_dashboard_update
 
 clients_bp = Blueprint("clients", __name__, url_prefix="/clients")
 
@@ -52,6 +53,8 @@ def add_client():
             logo_filename=logo_filename,
             client_code=client_code,
             email=email,
+            emails=request.form.get("emails", "").strip() or None,
+            domain=request.form.get("domain", "").strip() or None,
         )
         db.session.add(client)
         db.session.commit()
@@ -61,6 +64,8 @@ def add_client():
             db.session.add(ClientCompanyLink(client_id=client.id, company_id=int(cid)))
         db.session.commit()
 
+        emit_company("list_refresh", {"section": "clients"}, session.get("active_company_id"))
+        emit_dashboard_update(session.get("active_company_id"))
         return redirect(url_for("clients.list_clients"))
 
     return render_template("clients/add.html", companies=companies)
@@ -78,6 +83,8 @@ def edit_client(client_id):
         client.tax_number = request.form.get("tax_number", "")
         client.client_code = request.form.get("client_code", "")
         client.email = request.form.get("email", "").strip() or None
+        client.emails = request.form.get("emails", "").strip() or None
+        client.domain = request.form.get("domain", "").strip() or None
 
         file = request.files.get("logo")
         if file and file.filename:
@@ -101,6 +108,9 @@ def edit_client(client_id):
         db.session.commit()
 
         flash(f"Client '{client.name}' updated.")
+        cid = client.company_links[0].company_id if client.company_links else session.get("active_company_id")
+        emit_company("list_refresh", {"section": "clients"}, cid)
+        emit_dashboard_update(cid)
         return redirect(url_for("clients.view_profile", client_id=client.id))
 
     return render_template("clients/edit.html", client=client, companies=companies, linked_company_ids=linked_company_ids)
@@ -122,6 +132,9 @@ def delete_client(client_id):
     log_action("delete_client", "Client", client_id, f"Deleted client {client_name}")
 
     flash(f"Client '{client_name}' deleted.")
+    cid = client.company_links[0].company_id if client.company_links else session.get("active_company_id")
+    emit_company("list_refresh", {"section": "clients"}, cid)
+    emit_dashboard_update(cid)
     return redirect(url_for("clients.list_clients"))
 
 

@@ -145,8 +145,33 @@ class Client(db.Model):
     gst_registration_number = db.Column(db.String(100))
     belongs_to_gst = db.Column(db.Boolean, default=False)
     email = db.Column(db.String(200), nullable=True)
+    emails = db.Column(db.Text, nullable=True)  # comma-separated additional emails
+    domain = db.Column(db.String(200), nullable=True)  # e.g. "acme.com" to match any @acme.com email
 
     company_links = db.relationship("ClientCompanyLink", backref="client", cascade="all, delete-orphan")
+
+    def all_emails(self):
+        """Return set of all email addresses for this client."""
+        result = set()
+        if self.email and self.email.strip():
+            result.add(self.email.strip().lower())
+        if self.emails:
+            for e in self.emails.split(","):
+                e = e.strip().lower()
+                if e:
+                    result.add(e)
+        return result
+
+    def match_email(self, sender_email):
+        """Check if sender_email belongs to this client (by address or domain)."""
+        sender = sender_email.strip().lower()
+        # Direct match
+        if sender in self.all_emails():
+            return True
+        # Domain match
+        if self.domain and sender.endswith("@" + self.domain.strip().lower()):
+            return True
+        return False
 
     def __repr__(self):
         return f"<Client {self.name}>"
@@ -329,6 +354,8 @@ class Quotation(db.Model):
     visible_columns = db.Column(db.JSON, nullable=True)
 
     line_items = db.relationship("QuotationLineItem", backref="quotation", cascade="all, delete-orphan")
+    annexures = db.relationship("QuotationAnnexure", backref="quotation", cascade="all, delete-orphan",
+                                order_by="QuotationAnnexure.sort_order")
 
 
 class QuotationLineItem(db.Model):
@@ -337,6 +364,7 @@ class QuotationLineItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     quotation_id = db.Column(db.Integer, db.ForeignKey("quotations.id"), nullable=False, index=True)
     catalog_item_id = db.Column(db.Integer, db.ForeignKey("catalog_items.id"), nullable=False, index=True)
+    annexure_id = db.Column(db.Integer, db.ForeignKey("quotation_annexures.id"), nullable=True, index=True)
     part_no = db.Column(db.String(100))
     description = db.Column(db.String(300))
     unit = db.Column(db.String(50))
@@ -351,6 +379,18 @@ class QuotationLineItem(db.Model):
     photo_path = db.Column(db.String(300), nullable=True)
 
     catalog_item = db.relationship("CatalogItem")
+
+
+class QuotationAnnexure(db.Model):
+    __tablename__ = "quotation_annexures"
+
+    id = db.Column(db.Integer, primary_key=True)
+    quotation_id = db.Column(db.Integer, db.ForeignKey("quotations.id"), nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False)
+    sort_order = db.Column(db.Integer, default=0)
+    page_break_before = db.Column(db.Boolean, default=False)
+
+    line_items = db.relationship("QuotationLineItem", backref="annexure", cascade="all, delete-orphan")
 
 
 class CustomField(db.Model):
@@ -881,6 +921,16 @@ class Notification(db.Model):
         db.session.add(n)
         db.session.commit()
         cls._try_email(user_id, message, link)
+        # Emit real-time notification update
+        try:
+            from socket_events import emit_notification_update
+            from models import User
+            user = db.session.get(User, user_id)
+            if user:
+                unread = cls.query.filter_by(user_id=user_id, is_read=False).count()
+                emit_notification_update(user_id, unread)
+        except Exception:
+            pass
         return n
 
     @classmethod
