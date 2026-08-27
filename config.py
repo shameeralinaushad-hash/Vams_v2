@@ -56,3 +56,7 @@ class Config:
     # Cloudflare Turnstile (optional — leave unset to skip)
     TURNSTILE_SITE_KEY = os.environ.get("TURNSTILE_SITE_KEY", "")
     TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "")
+
+    # Google OAuth (Gmail integration — per-company)
+    GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")

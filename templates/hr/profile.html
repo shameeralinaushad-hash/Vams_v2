@@ -175,6 +175,84 @@
             <div class="text-muted small">No payroll records.</div>
             {% endif %}
         </div>
+        <div class="info-panel">
+            <div class="panel-header" style="padding-bottom:10px;margin-bottom:12px;">
+                <h6 class="panel-title"><i class="bi bi-cash-stack"></i> Finances</h6>
+            </div>
+            <div class="row g-2 mb-3">
+                <div class="col-4"><div class="eff-metric"><div class="num" style="color:var(--text-primary);">{{ loan_total | currency }}</div><div class="lbl">Total Lent</div></div></div>
+                <div class="col-4"><div class="eff-metric"><div class="num" style="color:#b45309;">{{ loan_pending | currency }}</div><div class="lbl">Pending</div></div></div>
+                <div class="col-4"><div class="eff-metric"><div class="num" style="color:var(--success);">{{ loan_resolved | currency }}</div><div class="lbl">Resolved</div></div></div>
+            </div>
+            {% if loans %}
+            <div class="table-responsive">
+                <table class="table table-custom align-middle" style="margin:0;">
+                    <thead><tr><th>Date</th><th>Amount</th><th>Reason</th><th>Status</th><th class="text-end">Actions</th></tr></thead>
+                    <tbody>
+                        {% for l in loans %}
+                        <tr>
+                            <td class="small">{{ l.loan_date.strftime('%d %b %Y') }}</td>
+                            <td class="fw-bold">{{ l.amount | currency }}</td>
+                            <td class="small">{{ l.reason or '—' }}{% if l.notes %}<br><span class="text-muted" style="font-size:0.7rem;">{{ l.notes }}</span>{% endif %}</td>
+                            <td>
+                                {% if l.status == 'pending' %}<span class="badge rounded-pill" style="font-size:0.6rem;background:rgba(217,154,43,0.14);color:#b45309;">Pending</span>
+                                {% elif l.status == 'deducted' %}<span class="badge rounded-pill" style="font-size:0.6rem;background:rgba(30,158,99,0.12);color:var(--success);">Deducted</span>
+                                {% elif l.status == 'waived' %}<span class="badge rounded-pill" style="font-size:0.6rem;background:rgba(79,140,255,0.12);color:#4f8cff;">Waived</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if l.status == 'pending' and current_user.role == 'admin' %}
+                                <div class="d-flex gap-1 justify-content-end">
+                                    <form method="POST" action="{{ url_for('hr.resolve_employee_loan', loan_id=l.id) }}" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="status" value="deducted">
+                                        <button type="submit" class="btn btn-sm btn-outline-success rounded-pill" style="font-size:0.65rem;" title="Deduct from salary"><i class="bi bi-scissors"></i></button>
+                                    </form>
+                                    <form method="POST" action="{{ url_for('hr.resolve_employee_loan', loan_id=l.id) }}" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="hidden" name="status" value="waived">
+                                        <button type="submit" class="btn btn-sm btn-outline-primary rounded-pill" style="font-size:0.65rem;" title="Waive off"><i class="bi bi-heart"></i></button>
+                                    </form>
+                                    <form method="POST" action="{{ url_for('hr.delete_employee_loan', loan_id=l.id) }}" class="d-inline" onsubmit="return confirm('Delete this loan entry?');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill" style="font-size:0.65rem;" title="Delete"><i class="bi bi-trash"></i></button>
+                                    </form>
+                                </div>
+                                {% else %}
+                                <span class="text-muted small" style="font-size:0.65rem;">{% if l.resolved_date %}{{ l.resolved_date.strftime('%d %b %Y') }}{% endif %}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-muted small mb-2">No loans recorded.</div>
+            {% endif %}
+            {% if current_user.role == 'admin' %}
+            <hr style="margin:10px 0;">
+            <h6 class="fw-bold mb-2" style="font-family: 'Space Grotesk', sans-serif; font-size: 0.8rem;"><i class="bi bi-plus-circle"></i> Add Loan</h6>
+            <form method="POST" action="{{ url_for('hr.add_employee_loan', employee_id=emp.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="row g-2">
+                    <div class="col-6"><label class="form-label" style="font-size:0.72rem;font-weight:600;">Amount</label><input type="number" step="0.01" min="0" name="amount" class="form-control form-control-sm" required></div>
+                    <div class="col-6"><label class="form-label" style="font-size:0.72rem;font-weight:600;">Date</label><input type="date" name="loan_date" class="form-control form-control-sm" value="{{ today }}" required></div>
+                </div>
+                <div class="mt-2"><label class="form-label" style="font-size:0.72rem;font-weight:600;">Reason</label>
+                    <select name="reason" class="form-select form-select-sm">
+                        <option value="">Select…</option>
+                        <option value="medical">Medical</option>
+                        <option value="emergency">Emergency</option>
+                        <option value="personal">Personal</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="mt-2"><label class="form-label" style="font-size:0.72rem;font-weight:600;">Notes</label><textarea name="notes" class="form-control form-control-sm" rows="2" placeholder="Optional details…"></textarea></div>
+                <button type="submit" class="btn btn-primary btn-sm rounded-pill px-3 mt-2"><i class="bi bi-plus-lg"></i> Add Loan</button>
+            </form>
+            {% endif %}
+        </div>
     </div>
 </div>
 

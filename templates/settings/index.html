@@ -3,52 +3,455 @@
 {% block pagetitle %}Settings{% endblock %}
 
 {% block content %}
-<div class="fade-in">
-    <!-- Maintenance Mode Card -->
-    <div class="settings-panel mb-4" style="max-width: 640px;">
-        <h6 class="fw-bold mb-3">System Maintenance</h6>
-        <p class="text-muted small mb-4">
-            Enable maintenance mode to restrict access. Staff will see a "back soon" page, while you remain logged in to verify updates.
-        </p>
+<style>
+    .settings-layout {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        gap: 2rem;
+        max-width: 960px;
+    }
+    .settings-sidebar {
+        position: sticky;
+        top: 80px;
+        align-self: start;
+    }
+    .settings-sidebar .nav-pills {
+        gap: 2px;
+    }
+    .settings-sidebar .nav-link {
+        color: var(--text-secondary, #6c757d);
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: all 0.15s ease;
+    }
+    .settings-sidebar .nav-link:hover {
+        color: var(--text-primary, #212529);
+        background: rgba(0,0,0,0.04);
+    }
+    .settings-sidebar .nav-link.active {
+        color: var(--bs-primary, #0d6efd);
+        background: rgba(13,110,253,0.08);
+        font-weight: 600;
+    }
+    .settings-sidebar .nav-link i {
+        font-size: 1rem;
+        width: 20px;
+        text-align: center;
+    }
+    .settings-tab-content {
+        min-width: 0;
+    }
+    .settings-tab-content > .tab-pane {
+        display: none;
+    }
+    .settings-tab-content > .tab-pane.active {
+        display: block;
+    }
+    .settings-section {
+        margin-bottom: 1.75rem;
+    }
+    .settings-section:last-child {
+        margin-bottom: 0;
+    }
+    .settings-section-title {
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-secondary, #6c757d);
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+    }
+    @media (max-width: 768px) {
+        .settings-layout {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
+        .settings-sidebar {
+            position: static;
+        }
+        .settings-sidebar .nav-pills {
+            flex-direction: row;
+            overflow-x: auto;
+            gap: 4px;
+            padding-bottom: 4px;
+        }
+        .settings-sidebar .nav-link {
+            white-space: nowrap;
+            padding: 8px 12px;
+            font-size: 0.82rem;
+        }
+    }
+</style>
 
-        <form method="POST" action="{{ url_for('maintenance.toggle_maintenance') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" role="switch" id="maintenanceSwitch"
-                       name="maintenance_on" {% if maintenance_on %}checked{% endif %}>
-                <label class="form-check-label fw-semibold" for="maintenanceSwitch">
-                    Maintenance Mode is {{ "ON" if maintenance_on else "OFF" }}
-                </label>
+<div class="fade-in settings-layout">
+
+    <!-- Sidebar Navigation -->
+    <nav class="settings-sidebar">
+        <div class="nav flex-column nav-pills" role="tablist">
+            <button class="nav-link active" data-tab="general" role="tab" onclick="switchTab('general')">
+                <i class="bi bi-gear"></i> General
+            </button>
+            <button class="nav-link" data-tab="mail" role="tab" onclick="switchTab('mail')">
+                <i class="bi bi-envelope"></i> Mail & Gmail
+            </button>
+            <button class="nav-link" data-tab="custom-fields" role="tab" onclick="switchTab('custom-fields')">
+                <i class="bi bi-list-check"></i> Custom Fields
+            </button>
+            <button class="nav-link" data-tab="pdf-builder" role="tab" onclick="switchTab('pdf-builder')">
+                <i class="bi bi-file-earmark-pdf"></i> PDF Builder
+            </button>
+            <button class="nav-link" data-tab="backup" role="tab" onclick="switchTab('backup')">
+                <i class="bi bi-database"></i> Backup
+            </button>
+        </div>
+    </nav>
+
+    <!-- Tab Content -->
+    <div class="settings-tab-content">
+
+        <!-- ==================== GENERAL ==================== -->
+        <div class="tab-pane active" id="tab-general">
+
+            <!-- Maintenance Mode -->
+            <div class="settings-section">
+                <div class="settings-section-title">Maintenance Mode</div>
+                <form method="POST" action="{{ url_for('maintenance.toggle_maintenance') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="p-3 border rounded-3">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" role="switch" id="maintenanceSwitch"
+                                   name="maintenance_on" {% if maintenance_on %}checked{% endif %}>
+                            <label class="form-check-label fw-semibold" for="maintenanceSwitch">
+                                Maintenance Mode is
+                                <span class="badge {% if maintenance_on %}bg-danger bg-opacity-10 text-danger{% else %}bg-success bg-opacity-10 text-success{% endif %} px-3 py-1 rounded-pill">
+                                    {{ "ON" if maintenance_on else "OFF" }}
+                                </span>
+                            </label>
+                        </div>
+                        <div class="mb-3">
+                            <label class="small text-muted mb-1 d-block">Message shown to restricted users:</label>
+                            <textarea name="message" class="form-control" rows="2"
+                                      placeholder="e.g. Upgrading features — back in 10 minutes.">{{ current_message or "We'll be back online shortly." }}</textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm rounded-pill px-4">Save Changes</button>
+                    </div>
+                </form>
             </div>
-            <div class="mb-3">
-                <label class="small text-muted mb-1 d-block">Message shown to users:</label>
-                <textarea name="message" class="form-control" rows="2"
-                          placeholder="e.g. Upgrading features — back in 10 minutes.">{{ current_message or "We'll be back online shortly." }}</textarea>
+
+            <!-- Data Management -->
+            <div class="settings-section">
+                <div class="settings-section-title">Data Management</div>
+                <div class="p-3 border rounded-3">
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+                        <div>
+                            <div class="fw-semibold">Import Records</div>
+                            <div class="small text-muted">Import data from legacy systems</div>
+                        </div>
+                        <a href="{{ url_for('reports.import_legacy') }}" class="btn btn-sm btn-outline-secondary rounded-pill px-4">
+                            <i class="bi bi-upload me-1"></i> Import
+                        </a>
+                    </div>
+                </div>
             </div>
-            <button type="submit" class="btn btn-primary rounded-pill px-4">Save Changes</button>
-        </form>
-    </div>
 
-    <!-- Data Management Section -->
-    <div class="settings-panel mb-4" style="max-width: 640px;">
-        <h6 class="fw-bold mb-3">Data Management</h6>
-        <p class="text-muted small mb-3">
-            Import records from legacy systems or perform database maintenance.
-        </p>
-        <a href="{{ url_for('reports.import_legacy') }}" class="btn btn-outline-secondary rounded-pill px-4 mb-2 d-block">
-            <i class="bi bi-cloud-upload me-1"></i> Import Historical Record
-        </a>
-    </div>
+        </div>
 
-    <!-- Backup Card -->
-    <div class="settings-panel" style="max-width: 640px;">
-        <h6 class="fw-bold mb-3">Database Backup</h6>
-        <p class="text-muted small mb-3">
-            Creates a timestamped copy of the database. Good practice to run before any update.
-        </p>
-        <a href="{{ url_for('backup_now') }}" class="btn btn-outline-secondary rounded-pill px-4">
-            <i class="bi bi-download me-1"></i> Backup Database Now
-        </a>
+        <!-- ==================== MAIL & GMAIL ==================== -->
+        <div class="tab-pane" id="tab-mail">
+
+            <!-- SMTP Settings -->
+            <div class="settings-section">
+                <div class="settings-section-title">SMTP Email</div>
+                <form method="POST" action="{{ url_for('settings.mail_settings') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="p-3 border rounded-3">
+                        <div class="form-check form-switch mb-4">
+                            <input class="form-check-input" type="checkbox" name="is_enabled" id="isEnabled" {% if mail_cfg.is_enabled %}checked{% endif %}>
+                            <label class="form-check-label fw-medium" for="isEnabled">Enable Email Notifications</label>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-md-8">
+                                <label class="form-label small text-muted">SMTP Server</label>
+                                <input type="text" name="smtp_server" class="form-control" value="{{ mail_cfg.smtp_server }}" placeholder="smtp.gmail.com">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted">Port</label>
+                                <input type="number" name="smtp_port" class="form-control" value="{{ mail_cfg.smtp_port }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Username</label>
+                                <input type="text" name="smtp_username" class="form-control" value="{{ mail_cfg.smtp_username }}" autocomplete="off">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Password</label>
+                                <input type="password" name="smtp_password" class="form-control" value="" placeholder="Leave blank to keep current" autocomplete="off">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">From Email</label>
+                                <input type="email" name="from_email" class="form-control" value="{{ mail_cfg.from_email }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">From Name</label>
+                                <input type="text" name="from_name" class="form-control" value="{{ mail_cfg.from_name }}" placeholder="VAMS Business System">
+                            </div>
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="use_tls" id="useTLS" {% if mail_cfg.use_tls %}checked{% endif %}>
+                                    <label class="form-check-label" for="useTLS">Use TLS (STARTTLS)</label>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-dark rounded-pill px-4 mt-3">Save SMTP Settings</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Test Email -->
+            {% if mail_cfg.smtp_server %}
+            <div class="settings-section">
+                <div class="settings-section-title">Test Email</div>
+                <form method="POST" action="{{ url_for('settings.test_mail') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="p-3 border rounded-3">
+                        <div class="input-group">
+                            <input type="email" name="test_email" class="form-control" placeholder="your@email.com" required>
+                            <button type="submit" class="btn btn-outline-dark">Send Test</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            {% endif %}
+
+            <!-- Google OAuth -->
+            <div class="settings-section">
+                <div class="settings-section-title">Google OAuth (Gmail Integration)</div>
+                <form method="POST" action="{{ url_for('settings.mail_settings') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="p-3 border rounded-3">
+                        <p class="text-muted small mb-3">Set Google Cloud OAuth credentials here. Required for Gmail inbox integration.</p>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label small text-muted">Google Client ID</label>
+                                <input type="text" name="google_client_id" class="form-control" value="{{ mail_cfg.google_client_id or '' }}" placeholder="xxxx.apps.googleusercontent.com">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small text-muted">Google Client Secret</label>
+                                <input type="password" name="google_client_secret" class="form-control" value="" placeholder="Leave blank to keep current">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-dark rounded-pill px-4 mt-3">Save Google OAuth</button>
+                    </div>
+                </form>
+            </div>
+
+        </div>
+
+        <!-- ==================== CUSTOM FIELDS ==================== -->
+        <div class="tab-pane" id="tab-custom-fields">
+
+            <div class="settings-section">
+                <div class="settings-section-title">Add Custom Field</div>
+                <div class="p-3 border rounded-3">
+                    <p class="text-muted small mb-3">
+                        Custom fields appear as extra item-table columns in quotations for
+                        <strong>{{ company.name if company else 'the active company' }}</strong>.
+                    </p>
+                    <form method="POST" action="{{ url_for('settings.custom_fields') }}" class="row g-3">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="col-md-5">
+                            <label class="form-label small text-muted">Field Name</label>
+                            <input type="text" name="name" class="form-control" placeholder="e.g. Brand / HS Code / Warranty" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted">Type</label>
+                            <select name="field_type" class="form-select">
+                                <option value="text">Text</option>
+                                <option value="number">Number</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary rounded-pill px-4 w-100">
+                                <i class="bi bi-plus-lg me-1"></i> Add Field
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">Existing Fields</div>
+                <div class="p-3 border rounded-3">
+                    {% if custom_fields %}
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr class="text-muted small text-uppercase">
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th class="text-center">Status</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for f in custom_fields %}
+                            <tr>
+                                <td class="fw-semibold">{{ f.name }}</td>
+                                <td class="text-muted small">{{ "Number" if f.field_type == "number" else "Text" }}</td>
+                                <td class="text-center">
+                                    <form method="POST" action="{{ url_for('settings.toggle_custom_field', field_id=f.id) }}" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <div class="form-check form-switch justify-content-center">
+                                            <input class="form-check-input" type="checkbox" role="switch"
+                                                   name="is_active" {% if f.is_active %}checked{% endif %}
+                                                   onchange="this.form.submit()">
+                                        </div>
+                                    </form>
+                                </td>
+                                <td class="text-end">
+                                    <form method="POST" action="{{ url_for('settings.delete_custom_field', field_id=f.id) }}" class="d-inline"
+                                          onsubmit="return confirm('Delete field \'{{ f.name }}\'?');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-3">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p class="text-muted small mb-0">No custom fields yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ==================== PDF BUILDER ==================== -->
+        <div class="tab-pane" id="tab-pdf-builder">
+
+            <div class="settings-section">
+                <div class="settings-section-title">Quotation Item-Table Columns</div>
+                <div class="p-3 border rounded-3">
+                    <p class="text-muted small mb-3">
+                        Choose which columns appear by default in quotations for <strong>{{ company.name if company else 'the active company' }}</strong>.
+                        Nomenclature, Unit Price and Total cannot be removed.
+                    </p>
+
+                    <form method="POST" action="{{ url_for('settings.pdf_builder') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                        <div id="columnList" class="d-flex flex-column gap-2 mb-3">
+                            {% for col in all_columns %}
+                            {% set checked = not current_columns or col.key in current_columns %}
+                            {% set fixed = col.key in ['nomenclature', 'price', 'total'] %}
+                            <div class="d-flex align-items-center gap-3 border rounded p-2 px-3 bg-white"
+                                 data-col-key="{{ col.key }}">
+                                <i class="bi bi-grip-vertical text-muted" style="cursor: grab;"></i>
+                                <div class="form-check mb-0">
+                                    <input class="form-check-input column-toggle" type="checkbox" name="column"
+                                           value="{{ col.key }}" id="col_{{ col.key }}"
+                                           {% if checked %}checked{% endif %}
+                                           {% if fixed %}disabled{% endif %}>
+                                    <label class="form-check-label fw-semibold" for="col_{{ col.key }}">
+                                        {{ col.label }}
+                                        {% if fixed %}<span class="text-muted fw-normal small">(always shown)</span>{% endif %}
+                                    </label>
+                                </div>
+                                <input type="hidden" name="column_order" value="{{ col.key }}" class="column-order">
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <button type="submit" class="btn btn-primary rounded-pill px-4">
+                            <i class="bi bi-check-lg me-1"></i> Save Layout
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ==================== BACKUP ==================== -->
+        <div class="tab-pane" id="tab-backup">
+
+            <div class="settings-section">
+                <div class="settings-section-title">Database Backup</div>
+                <div class="p-3 border rounded-3">
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+                        <div>
+                            <div class="fw-semibold">Manual Backup</div>
+                            <div class="small text-muted">Creates a timestamped copy of the database. Run before updates.</div>
+                        </div>
+                        <a href="{{ url_for('backup_now') }}" class="btn btn-sm btn-outline-secondary rounded-pill px-4">
+                            <i class="bi bi-download me-1"></i> Backup Now
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
     </div>
 </div>
+
+<script>
+function switchTab(tab) {
+    document.querySelectorAll('.settings-sidebar .nav-link').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.tab === tab);
+    });
+    document.querySelectorAll('.settings-tab-content > .tab-pane').forEach(function(pane) {
+        pane.classList.toggle('active', pane.id === 'tab-' + tab);
+    });
+}
+
+// Handle hash navigation
+(function() {
+    var hash = window.location.hash.replace('#', '');
+    if (hash && document.getElementById('tab-' + hash)) {
+        switchTab(hash);
+    }
+})();
+
+// PDF Builder drag-and-drop
+(function() {
+    var FIXED_KEYS = ['nomenclature', 'price', 'total'];
+    var columnList = document.getElementById('columnList');
+    if (!columnList) return;
+
+    function persistColumnOrder() {
+        columnList.querySelectorAll(":scope > div").forEach(function(row) {
+            row.querySelector(".column-order").value = row.dataset.colKey;
+        });
+    }
+
+    var dragRow = null;
+    columnList.querySelectorAll(":scope > div").forEach(function(row) {
+        row.addEventListener("dragstart", function(e) {
+            if (FIXED_KEYS.includes(row.dataset.colKey)) { e.preventDefault(); return; }
+            dragRow = row;
+            row.style.opacity = "0.5";
+        });
+        row.addEventListener("dragend", function() {
+            dragRow = null;
+            row.style.opacity = "1";
+        });
+        row.addEventListener("dragover", function(e) {
+            e.preventDefault();
+            if (!dragRow || dragRow === row) return;
+            if (FIXED_KEYS.includes(row.dataset.colKey) && !FIXED_KEYS.includes(dragRow.dataset.colKey)) return;
+            var after = row === dragRow.nextSibling ? null : row;
+            columnList.insertBefore(dragRow, after);
+            persistColumnOrder();
+        });
+    });
+})();
+</script>
 {% endblock %}

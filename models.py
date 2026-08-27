@@ -144,6 +144,7 @@ class Client(db.Model):
     gst_registration = db.Column(db.Boolean, default=False)
     gst_registration_number = db.Column(db.String(100))
     belongs_to_gst = db.Column(db.Boolean, default=False)
+    email = db.Column(db.String(200), nullable=True)
 
     company_links = db.relationship("ClientCompanyLink", backref="client", cascade="all, delete-orphan")
 
@@ -742,6 +743,28 @@ class PayrollRecord(db.Model):
     __table_args__ = (db.UniqueConstraint("employee_id", "month", "year", name="_emp_month_uc"),)
 
 
+class EmployeeLoan(db.Model):
+    __tablename__ = "employee_loans"
+
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=False, index=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=True)
+    amount = db.Column(db.Float, nullable=False)
+    loan_date = db.Column(db.Date, nullable=False)
+    reason = db.Column(db.String(50))
+    notes = db.Column(db.Text)
+    status = db.Column(db.String(20), default="pending")
+    resolved_date = db.Column(db.Date, nullable=True)
+    resolved_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    employee = db.relationship("Employee", backref=db.backref("loans", lazy="dynamic"))
+    company = db.relationship("Company")
+    resolver = db.relationship("User", foreign_keys=[resolved_by])
+    creator = db.relationship("User", foreign_keys=[created_by])
+
+
 class Payable(db.Model):
     __tablename__ = "payables"
 
@@ -1139,6 +1162,10 @@ class MailConfig(db.Model):
     from_name = db.Column(db.String(200), nullable=False, default="")
     is_enabled = db.Column(db.Boolean, default=False)
 
+    # Google OAuth (Gmail integration)
+    google_client_id = db.Column(db.String(200), nullable=False, default="")
+    google_client_secret = db.Column(db.String(300), nullable=False, default="")
+
 
 class ActionSnooze(db.Model):
     __tablename__ = "action_snoozes"
@@ -1154,3 +1181,23 @@ class ActionSnooze(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     company = db.relationship("Company", backref="action_snoozes", lazy=True)
+
+
+class GmailToken(db.Model):
+    __tablename__ = "gmail_tokens"
+
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), unique=True, nullable=False, index=True)
+    connected_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    access_token = db.Column(db.Text, nullable=False)
+    refresh_token = db.Column(db.Text, nullable=False)
+    token_uri = db.Column(db.String(200), default="https://oauth2.googleapis.com/token")
+    client_id = db.Column(db.String(200))
+    client_secret = db.Column(db.String(200))
+    scopes = db.Column(db.Text)
+    expiry = db.Column(db.DateTime)
+    last_seen_msg_id = db.Column(db.String(100))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    company = db.relationship("Company", backref="gmail_token")
+    connector = db.relationship("User")

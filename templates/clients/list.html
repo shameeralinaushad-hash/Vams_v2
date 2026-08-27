@@ -122,6 +122,12 @@
                     <i class="bi bi-envelope-paper mt-1"></i>
                     <span style="line-height: 1.4;">{{ c.contact_info or "No contact info provided." }}</span>
                 </div>
+                {% if c.email %}
+                <div class="d-flex align-items-start gap-2 text-muted small mt-1">
+                    <i class="bi bi-envelope mt-1"></i>
+                    <span style="line-height: 1.4;">{{ c.email }}</span>
+                </div>
+                {% endif %}
             </div>
 
             <!-- Action Buttons Footer -->

@@ -151,6 +151,7 @@ def create_app():
     from routes.projects import projects_bp
     from routes.ai import ai_bp
     from routes.mobile import mobile_bp
+    from routes.gmail import gmail_bp
     app.register_blueprint(mobile_bp)
     app.register_blueprint(pdf_view_bp)
     app.register_blueprint(accounts_bp)
@@ -174,6 +175,7 @@ def create_app():
     app.register_blueprint(reports_bp)
     app.register_blueprint(todos_bp)
     app.register_blueprint(company_documents_bp)
+    app.register_blueprint(gmail_bp)
 
     # --- PWA Service Worker Route ---
     @app.route('/sw.js')
@@ -915,6 +917,17 @@ def create_app():
             )
 
         # Render template using make_response so we can attach the daily cookie
+        client_emails = []
+        gmail_connected = False
+        if company_id:
+            try:
+                from gmail_utils import is_connected as gmail_is_connected, get_client_emails
+                gmail_connected = gmail_is_connected(company_id)
+                if gmail_connected:
+                    client_emails = get_client_emails(company_id)[:5]
+            except Exception:
+                pass
+
         resp = make_response(render_template(
             "dashboard.html", stats=stats, recent_orders=recent_orders,
             chart_labels=chart_labels, chart_revenue=chart_revenue,
@@ -926,6 +939,7 @@ def create_app():
             insight_items=insight_items, actions=actions,
             greeting=greeting, first_name=first_name,
             task_overdue_count=task_overdue_count, task_due_today_count=task_due_today_count,
+            client_emails=client_emails, gmail_connected=gmail_connected,
         ))
 
         # If it's a new day, update the cookie so it won't show again until tomorrow

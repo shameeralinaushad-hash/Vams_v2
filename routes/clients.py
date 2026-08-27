@@ -33,6 +33,7 @@ def add_client():
         contact_info = request.form.get("contact_info", "")
         tax_number = request.form.get("tax_number", "")
         client_code = request.form.get("client_code", "")
+        email = request.form.get("email", "").strip() or None
 
         logo_filename = None
         file = request.files.get("logo")
@@ -50,6 +51,7 @@ def add_client():
             tax_number=tax_number,
             logo_filename=logo_filename,
             client_code=client_code,
+            email=email,
         )
         db.session.add(client)
         db.session.commit()
@@ -75,6 +77,7 @@ def edit_client(client_id):
         client.contact_info = request.form.get("contact_info", "")
         client.tax_number = request.form.get("tax_number", "")
         client.client_code = request.form.get("client_code", "")
+        client.email = request.form.get("email", "").strip() or None
 
         file = request.files.get("logo")
         if file and file.filename:

@@ -1269,6 +1269,62 @@
     <!-- ===== MAIN BENTO GRID ===== -->
     <div class="zentra-grid">
 
+        <!-- GMAIL: Client Emails (Top Priority) -->
+        <div class="zentra-card span-12">
+            <div class="zentra-card-header" style="margin-bottom: {% if gmail_connected and client_emails %}16px{% else %}0{% endif %};">
+                <h3 class="zentra-card-title" style="font-size: 1rem;">
+                    <i class="bi bi-envelope-paper me-2" style="color: #4f8cff;"></i>
+                    Client Emails
+                    {% if gmail_connected and client_emails %}
+                    <span style="font-size: 0.7rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; background: rgba(79,140,255,0.12); color: #4f8cff; margin-left: 8px;">{{ client_emails | length }} new</span>
+                    {% endif %}
+                </h3>
+                <div class="d-flex gap-2 align-items-center">
+                    {% if gmail_connected %}
+                    <span style="font-size: 0.72rem; color: var(--success);"><i class="bi bi-check-circle-fill"></i> Connected</span>
+                    {% endif %}
+                    <a href="{{ url_for('gmail.inbox') }}" style="font-size: 0.82rem; font-weight: 700; color: #4f8cff; text-decoration: none;">View Inbox →</a>
+                </div>
+            </div>
+            {% if gmail_connected %}
+                {% if client_emails %}
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px;">
+                    {% for e in client_emails %}
+                    <div style="display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; background: var(--surface-soft); border-radius: var(--radius-md); cursor: pointer; transition: all 0.15s; border: 1px solid transparent;" onmouseover="this.style.borderColor='var(--border)'; this.style.background='var(--surface)'" onmouseout="this.style.borderColor='transparent'; this.style.background='var(--surface-soft)'" onclick="window.location='{{ url_for('gmail.inbox') }}'">
+                        <div style="width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; flex-shrink: 0; background: {% if e.client_name %}rgba(79,140,255,0.12); color: #4f8cff{% else %}var(--border); color: var(--text-secondary){% endif %};">
+                            {{ e.from[:1] | upper }}
+                        </div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 6px;">
+                                <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                    {{ e.from.split('<')[0].strip() | truncate(30) }}
+                                    {% if e.client_name %}<span style="display:inline-block; padding:1px 6px; border-radius:8px; font-size:0.58rem; font-weight:700; background:rgba(79,140,255,0.12); color:#4f8cff; margin-left:4px; vertical-align:middle;">{{ e.client_name }}</span>{% endif %}
+                                </div>
+                                <div style="font-size: 0.68rem; color: var(--text-secondary); white-space: nowrap; flex-shrink: 0;">{{ e.date[:16] if e.date else '' }}</div>
+                            </div>
+                            <div style="font-size: 0.8rem; font-weight: {% if e.unread %}700{% else %}500{% endif %}; color: var(--text-primary); margin: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ e.subject }}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ e.snippet | truncate(60) }}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div style="text-align: center; padding: 24px 20px;">
+                    <i class="bi bi-inbox" style="font-size: 1.8rem; color: var(--text-secondary);"></i>
+                    <p style="color: var(--text-muted); margin: 8px 0 0; font-size: 0.82rem;">No client emails found. Add email addresses to your clients.</p>
+                </div>
+                {% endif %}
+            {% else %}
+            <div style="display: flex; align-items: center; justify-content: center; gap: 20px; padding: 28px 20px; background: linear-gradient(135deg, rgba(79,140,255,0.04), rgba(79,140,255,0.01)); border-radius: var(--radius-md); border: 1px dashed #4f8cff;">
+                <div style="text-align: left;">
+                    <div style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">Stay on top of client emails</div>
+                    <div style="font-size: 0.82rem; color: var(--text-muted);">Connect your company Gmail to see client messages right here.</div>
+                </div>
+                <a href="{{ url_for('gmail.connect') }}" class="btn btn-primary rounded-pill px-4" style="white-space: nowrap;"><i class="bi bi-google me-1"></i> Connect Gmail</a>
+            </div>
+            {% endif %}
+        </div>
+
         <!-- CARD 1: Payments / Pipeline Funnel (Span 7 Top Left) -->
         {% set p = doc_pipeline or {} %}
         <div class="zentra-card span-7">

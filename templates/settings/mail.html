@@ -55,5 +55,20 @@
         </div>
     </form>
     {% endif %}
+
+    <hr class="my-4">
+    <h6 class="fw-bold mb-3">Google OAuth (for Gmail Integration)</h6>
+    <p class="text-muted small mb-3">Set Google Cloud OAuth credentials here. Required for Gmail inbox integration. Once configured, companies can connect their Gmail accounts via the Emails page.</p>
+    <div class="row g-3">
+        <div class="col-12">
+            <label class="form-label">Google Client ID</label>
+            <input type="text" name="google_client_id" class="form-control" value="{{ cfg.google_client_id or '' }}" placeholder="xxxx.apps.googleusercontent.com">
+        </div>
+        <div class="col-12">
+            <label class="form-label">Google Client Secret</label>
+            <input type="password" name="google_client_secret" class="form-control" value="" placeholder="Leave blank to keep current">
+        </div>
+    </div>
+    <button type="submit" class="btn btn-dark rounded-pill px-4 mt-3">Save Settings</button>
 </div>
 {% endblock %}

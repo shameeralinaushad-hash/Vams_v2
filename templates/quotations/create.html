@@ -742,6 +742,10 @@
                     <!-- Rows are rendered entirely by renderTable() on load for a single consistent code path -->
                 </tbody>
             </table>
+            <datalist id="coo-options">
+                <option value="Imported">
+                <option value="Local">
+            </datalist>
         </div>
     </div>
 
@@ -1365,7 +1369,7 @@
             case "specs":
                 return `<td class="col-specs ${imp}${hid}" data-label="${label}"><input type="text" name="item_specs" class="form-control" placeholder="Details / Specs" value="${esc(v("item_specs"))}"></td>`;
             case "coo":
-                return `<td class="col-coo ${imp}${hid}" data-label="${label}"><input type="text" name="item_coo" class="form-control text-center" placeholder="COO" value="${esc(v("item_coo"))}"></td>`;
+                return `<td class="col-coo ${imp}${hid}" data-label="${label}"><input type="text" name="item_coo" class="form-control text-center" placeholder="COO" value="${esc(v("item_coo"))}" list="coo-options" autocomplete="off"></td>`;
             case "quoted":
                 return `<td class="col-quoted ${imp}${hid}" data-label="${label}"><select name="item_quoted" class="form-select text-center"><option value="" ${v("item_quoted") === "" ? "selected" : ""}>—</option><option value="Quoted" ${v("item_quoted") === "Quoted" ? "selected" : ""}>Quoted</option><option value="NQ" ${v("item_quoted") === "NQ" ? "selected" : ""}>NQ</option></select></td>`;
             case "remark":

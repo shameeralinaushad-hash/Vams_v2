@@ -455,7 +455,7 @@ def personal_expenses():
         this_month=this_month, last_month=last_month, ytd=ytd,
         cat_totals=cat_totals, selected_category=category_id, search=search,
         page=pagination.page, pages=pagination.pages, total=pagination.total,
-        budget_rows=budget_rows, budget_summary=budget_summary, today=today,
+        budget_rows=budget_rows, budget_summary=budget_summary,
     )
 
 
@@ -480,6 +480,7 @@ def personal_add_expense():
     db.session.add(e)
     db.session.commit()
     log_action("add_expense", "Expense", e.id, f"Personal expense {amount}")
+    _check_budget_notifications(None)
     flash("Personal expense logged.")
     return redirect(url_for("accounts.personal_expenses"))
 
@@ -503,6 +504,7 @@ def personal_edit_expense(expense_id):
     e.updated_by = current_user.id
     db.session.commit()
     log_action("edit_expense", "Expense", e.id, f"Edited personal expense {e.amount}")
+    _check_budget_notifications(None)
     flash("Expense updated.")
     return redirect(url_for("accounts.personal_expenses"))
 
@@ -555,7 +557,7 @@ def general_expenses():
         overall_spent=overall_spent, selected_category=category_id, search=search,
         page=pagination.page, pages=pagination.pages, total=pagination.total,
         recurring_url=url_for("accounts.list_recurring_templates"),
-        budget_rows=budget_rows, budget_summary=budget_summary, today=today,
+        budget_rows=budget_rows, budget_summary=budget_summary,
     )
 
 
@@ -581,6 +583,7 @@ def general_add_expense():
     db.session.add(e)
     db.session.commit()
     log_action("add_expense", "Expense", e.id, f"General expense {amount}")
+    _check_budget_notifications(None)
     flash("General expense logged.")
     return redirect(url_for("accounts.general_expenses"))
 
@@ -608,6 +611,7 @@ def general_edit_expense(expense_id):
     e.updated_by = current_user.id
     db.session.commit()
     log_action("edit_expense", "Expense", e.id, f"Edited general expense {e.amount}")
+    _check_budget_notifications(None)
     flash("Expense updated.")
     return redirect(url_for("accounts.general_expenses"))
 
@@ -716,7 +720,7 @@ def company_accounts():
         monthly_labels=monthly_labels, monthly_revenue=monthly_revenue,
         monthly_collected=monthly_collected, monthly_exp=monthly_exp,
         page=pagination.page, pages=pagination.pages, total=pagination.total,
-        budget_rows=budget_rows, budget_summary=budget_summary, today=today,
+        budget_rows=budget_rows, budget_summary=budget_summary,
     )
 
 
@@ -747,6 +751,7 @@ def company_add_expense():
     db.session.add(e)
     db.session.commit()
     log_action("add_expense", "Expense", e.id, f"Company expense {amount} for {company_id}")
+    _check_budget_notifications(company_id)
     flash("Company expense logged.")
     return redirect(url_for("accounts.company_accounts", company_id=company_id))
 
@@ -775,6 +780,7 @@ def company_edit_expense(expense_id):
     e.updated_by = current_user.id
     db.session.commit()
     log_action("edit_expense", "Expense", e.id, f"Edited company expense {e.amount}")
+    _check_budget_notifications(cid)
     flash("Expense updated.")
     return redirect(url_for("accounts.company_accounts", company_id=cid))
 
@@ -1037,10 +1043,12 @@ def budgets():
 
     rows = _budget_rows(month, year, company_id, scope)
     summary = _budget_summary(rows)
+    categories = _categories_for_scope(scope)
+    today = date.today()
     return render_template(
         "accounts/budgets.html",
         scopes=BUDGET_SCOPES, active_scope=scope, month=month, year=year,
-        rows=rows, summary=summary, category_count_hint=_categories_for_scope(scope),
+        rows=rows, summary=summary, categories=categories, today=today,
     )
 
 
@@ -1062,28 +1070,29 @@ def delete_budget(budget_id):
 
 
 def _check_budget_notifications(company_id):
-    if not company_id:
-        return
     today = date.today()
     rows = []
     for s in BUDGET_SCOPES:
         rows += _budget_rows(today.month, today.year, company_id, s)
     over = [r for r in rows if r["status"] == "over"]
-    if not over:
+    warning = [r for r in rows if r["status"] == "warn"]
+    alerts = []
+    if over:
+        alerts.append(f"{len(over)} category(ies) over budget")
+    if warning:
+        alerts.append(f"{len(warning)} category(ies) at 75%+ usage")
+    if not alerts:
         return
     admins = User.query.filter(User.role == "admin", User.is_active_user == True).all()
     link = url_for("accounts.budgets", month=today.month, year=today.year)
+    top = max(over, key=lambda r: r["pct"]) if over else max(warning, key=lambda r: r["pct"])
+    msg = "; ".join(alerts) + f" — '{top['category']}' at {top['pct']:.0f}%."
     for admin in admins:
         existing = Notification.query.filter_by(user_id=admin.id, is_read=False, link=link).filter(
             Notification.message.like("%budget%")
         ).first()
         if not existing:
-            top = max(over, key=lambda r: r["pct"])
-            Notification.send(
-                admin.id,
-                f"{len(over)} budget category(ies) over budget this month — '{top['category']}' at {top['pct']:.0f}% used.",
-                link=link,
-            )
+            Notification.send(admin.id, msg, link=link)
 
 
 # --- Bulk Actions ---

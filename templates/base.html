@@ -1393,6 +1393,7 @@
         <a href="{{ url_for('companies.list_companies') }}" title="Companies" data-short="Cos" class="{% if request.endpoint and request.endpoint.startswith('companies.') %}active{% endif %}"><i class="bi bi-briefcase"></i><span class="nav-label">Companies</span></a>
         <a href="{{ url_for('clients.list_clients') }}" title="Clients" data-short="Clients" class="{% if request.endpoint and request.endpoint.startswith('clients.') %}active{% endif %}"><i class="bi bi-people"></i><span class="nav-label">Clients</span></a>
         <a href="{{ url_for('orders.list_orders') }}" title="Orders" data-short="Orders" class="{% if request.endpoint and request.endpoint.startswith('orders.') %}active{% endif %}"><i class="bi bi-clipboard-data"></i><span class="nav-label">Orders</span></a>
+        <a href="{{ url_for('gmail.inbox') }}" title="Emails" data-short="Emails" class="{% if request.endpoint and request.endpoint.startswith('gmail.') %}active{% endif %}"><i class="bi bi-envelope-paper"></i><span class="nav-label">Emails</span></a>
 
         <div class="nav-group" id="documentsGroup">
             <button type="button" class="nav-group-toggle {% if request.endpoint and (request.endpoint.startswith('quotations.') or request.endpoint.startswith('invoices.') or request.endpoint.startswith('challans.') or request.endpoint.startswith('company_documents.')) %}active{% endif %}" id="documentsToggle" title="Documents" data-short="Docs">
@@ -1428,17 +1429,7 @@
 
         {% if current_user.role == 'admin' %}
         <a href="{{ url_for('auth.list_users') }}" title="Users" data-short="Users" class="{% if request.endpoint and (request.endpoint == 'auth.list_users' or request.endpoint == 'auth.add_user' or request.endpoint == 'auth.edit_user') %}active{% endif %}"><i class="bi bi-person-gear"></i><span class="nav-label">Users</span></a>
-        <div class="nav-group">
-            <button type="button" class="nav-group-toggle {% if request.endpoint and request.endpoint.startswith('settings.') %}active{% endif %}" id="settingsToggle" title="Settings" data-short="Settings">
-                <i class="bi bi-gear"></i><span class="nav-label">Settings</span>
-            </button>
-            <div class="nav-group-items" id="settingsItems">
-                <a href="{{ url_for('settings.view_settings') }}" title="General" class="{% if request.endpoint == 'settings.view_settings' %}active{% endif %}"><i class="bi bi-sliders"></i><span class="nav-label">General</span></a>
-                <a href="{{ url_for('settings.mail_settings') }}" title="Mail" class="{% if request.endpoint == 'settings.mail_settings' %}active{% endif %}"><i class="bi bi-envelope"></i><span class="nav-label">Mail</span></a>
-                <a href="{{ url_for('settings.pdf_builder') }}" title="PDF Builder" class="{% if request.endpoint == 'settings.pdf_builder' %}active{% endif %}"><i class="bi bi-layout-three-columns"></i><span class="nav-label">PDF Builder</span></a>
-                <a href="{{ url_for('settings.custom_fields') }}" title="Custom Fields" class="{% if request.endpoint == 'settings.custom_fields' %}active{% endif %}"><i class="bi bi-list-check"></i><span class="nav-label">Custom Fields</span></a>
-            </div>
-        </div>
+        <a href="{{ url_for('settings.view_settings') }}" title="Settings" data-short="Settings" class="{% if request.endpoint and request.endpoint.startswith('settings.') %}active{% endif %}"><i class="bi bi-gear"></i><span class="nav-label">Settings</span></a>
         {% endif %}
         {% endif %}
     </div>

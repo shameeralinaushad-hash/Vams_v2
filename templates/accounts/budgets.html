@@ -4,6 +4,16 @@
 
 {% block extra_head %}
 <style>
+    .scope-tabs { display: flex; gap: 6px; }
+    .scope-tabs a {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 8px 18px; border-radius: 8px; font-size: 0.82rem; font-weight: 600;
+        text-decoration: none; color: var(--text-secondary); background: var(--surface);
+        border: 1px solid var(--border); transition: all 0.2s;
+    }
+    .scope-tabs a:hover { background: var(--surface-soft); color: var(--text-primary); }
+    .scope-tabs a.active { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.25); }
+    .scope-tabs a i { font-size: 0.9rem; }
     .budget-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; }
     .budget-panel h6 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 0.95rem; }
     .budget-widget { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: 0 2px 10px rgba(20,24,31,0.03); height: 100%; }
@@ -24,15 +34,22 @@
     .budget-recur-toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: #ffffff; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
     .budget-recur-toggle:checked { background: var(--accent); }
     .budget-recur-toggle:checked::after { transform: translateX(15px); }
+    .add-budget-bar { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-top: 2px dashed var(--border); margin-top: 8px; }
+    .add-budget-bar .form-control, .add-budget-bar .form-select { font-size: 0.82rem; }
 </style>
 {% endblock %}
 
 {% block content %}
 
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-    <div class="pill-filter">
+    <div class="scope-tabs">
         {% for s, label in scopes.items() %}
-        <a href="{{ url_for('accounts.budgets', scope=s, month=month, year=year) }}" class="{% if active_scope == s %}active{% endif %}">{{ label }}</a>
+        <a href="{{ url_for('accounts.budgets', scope=s, month=month, year=year) }}" class="{% if active_scope == s %}active{% endif %}">
+            {% if s == 'personal' %}<i class="bi bi-person"></i>
+            {% elif s == 'general' %}<i class="bi bi-building"></i>
+            {% elif s == 'company' %}<i class="bi bi-briefcase"></i>
+            {% endif %}{{ label }}
+        </a>
         {% endfor %}
     </div>
     <form method="GET" class="d-flex align-items-center gap-2 flex-wrap">
@@ -164,13 +181,8 @@
                         </td>
                         <td class="text-end">
                             {% if r.explicit and r.budget %}
-                            <form method="POST" action="{{ url_for('accounts.delete_budget', budget_id=r.budget.id) }}" class="d-inline" onsubmit="return confirm('Remove this budget?');">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <input type="hidden" name="scope" value="{{ active_scope }}">
-                                <input type="hidden" name="month" value="{{ month }}">
-                                <input type="hidden" name="year" value="{{ year }}">
-                                <button type="submit" class="btn btn-sm btn-outline-secondary rounded-pill" style="font-size:0.7rem;" title="Delete"><i class="bi bi-trash"></i></button>
-                            </form>
+                            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" style="font-size:0.7rem;" title="Delete"
+                                onclick="if(confirm('Remove this budget?'))document.getElementById('del-budget-{{ r.budget.id }}').submit();"><i class="bi bi-trash"></i></button>
                             {% else %}
                             <span style="font-size:0.7rem;color:var(--text-secondary);">carry-over</span>
                             {% endif %}
@@ -186,8 +198,37 @@
                 <span style="font-size:0.75rem;color:var(--text-secondary);margin-left:10px;">Checking <strong>Recurring</strong> rolls the amount into future months automatically.</span>
             </div>
         </form>
+
+        <form method="POST" action="{{ url_for('accounts.budgets') }}" class="add-budget-bar">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="scope" value="{{ active_scope }}">
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="year" value="{{ year }}">
+            <select name="category_id" class="form-select" required style="min-width:160px;">
+                <option value="" disabled selected>Add budget for…</option>
+                {% for cat in categories %}
+                <option value="{{ cat.id }}">{{ cat.name }}</option>
+                {% endfor %}
+            </select>
+            <input type="number" step="0.01" min="0" name="budget_amount" class="form-control" placeholder="Amount" required style="width:130px;">
+            <label class="d-flex align-items-center gap-1" style="font-size:0.78rem; color:var(--text-secondary); white-space:nowrap;">
+                <input type="checkbox" name="recurring" value="1" style="width:15px;height:15px;"> Recurring
+            </label>
+            <button type="submit" class="btn btn-sm btn-primary rounded-pill px-3"><i class="bi bi-plus-lg"></i> Add Budget</button>
+        </form>
     </div>
 </div>
+
+{% for r in rows %}
+{% if r.explicit and r.budget %}
+<form id="del-budget-{{ r.budget.id }}" method="POST" action="{{ url_for('accounts.delete_budget', budget_id=r.budget.id) }}" style="display:none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="scope" value="{{ active_scope }}">
+    <input type="hidden" name="month" value="{{ month }}">
+    <input type="hidden" name="year" value="{{ year }}">
+</form>
+{% endif %}
+{% endfor %}
 
 <script>
     document.querySelectorAll('.budget-bar-fill').forEach(function (bar) {

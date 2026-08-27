@@ -5,9 +5,9 @@ import io, os, zipfile, math, base64
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, send_file, current_app
 from flask_login import login_required, current_user
 from sqlalchemy import func, extract
-from models import db, Company, User, Employee, AttendanceRecord, PayrollRecord, Todo, AuditLog, ExpenseCategory, Expense, Holiday, Notification, TeamTask
+from models import db, Company, User, Employee, AttendanceRecord, PayrollRecord, Todo, AuditLog, ExpenseCategory, Expense, Holiday, Notification, TeamTask, EmployeeLoan
 from audit import log_action
-from routes.auth import hr_required
+from routes.auth import hr_required, admin_required
 from utils import parse_float
 from pdf_templates.salary_slip_template import generate_salary_slip_pdf
 from qrcode.main import make as make_qr
@@ -345,6 +345,11 @@ def employee_profile(employee_id):
 
     todos = Todo.query.filter_by(assignee_id=emp.user_id).order_by(Todo.due_date.asc()).all() if emp.user_id else []
 
+    loans = EmployeeLoan.query.filter_by(employee_id=emp.id).order_by(EmployeeLoan.loan_date.desc()).all()
+    loan_total = sum(l.amount for l in loans)
+    loan_pending = sum(l.amount for l in loans if l.status == "pending")
+    loan_resolved = sum(l.amount for l in loans if l.status in ("waived", "deducted"))
+
     current_month_present = AttendanceRecord.query.filter_by(employee_id=emp.id, status="present").filter(
         extract("month", AttendanceRecord.date) == now.month,
         extract("year", AttendanceRecord.date) == now.year,
@@ -364,7 +369,76 @@ def employee_profile(employee_id):
         users=users, todos=todos,
         task_done_this_month=task_done_this_month, task_rolling_avg=task_rolling_avg,
         leave_stats=leave_stats,
+        loans=loans, loan_total=loan_total, loan_pending=loan_pending, loan_resolved=loan_resolved,
+        today=date.today().isoformat(),
     )
+
+
+# --- Employee Loans ---
+
+@hr_bp.route("/employees/<int:employee_id>/loans", methods=["POST"])
+@login_required
+@admin_required
+def add_employee_loan(employee_id):
+    emp = db.session.get(Employee, employee_id)
+    if not emp:
+        flash("Employee not found.")
+        return redirect(url_for("hr.employee_list"))
+    amount = parse_float(request.form.get("amount"))
+    if amount <= 0:
+        flash("Amount must be greater than 0.")
+        return redirect(url_for("hr.employee_profile", employee_id=employee_id))
+    loan_date_str = request.form.get("loan_date", "")
+    loan_date = datetime.strptime(loan_date_str, "%Y-%m-%d").date() if loan_date_str else date.today()
+    reason = request.form.get("reason", "").strip() or None
+    notes = request.form.get("notes", "").strip() or None
+    loan = EmployeeLoan(
+        employee_id=employee_id, company_id=emp.company_id,
+        amount=amount, loan_date=loan_date, reason=reason, notes=notes,
+        created_by=current_user.id,
+    )
+    db.session.add(loan)
+    db.session.commit()
+    log_action("add_employee_loan", "EmployeeLoan", loan.id, f"Loan {amount} for {emp.name}")
+    flash(f"Loan of {amount} recorded for {emp.name}.")
+    return redirect(url_for("hr.employee_profile", employee_id=employee_id))
+
+
+@hr_bp.route("/loans/<int:loan_id>/resolve", methods=["POST"])
+@login_required
+@admin_required
+def resolve_employee_loan(loan_id):
+    loan = db.session.get(EmployeeLoan, loan_id)
+    if not loan:
+        flash("Loan not found.")
+        return redirect(url_for("hr.employee_list"))
+    status = request.form.get("status", "").strip()
+    if status not in ("waived", "deducted"):
+        flash("Invalid status.")
+        return redirect(url_for("hr.employee_profile", employee_id=loan.employee_id))
+    loan.status = status
+    loan.resolved_date = date.today()
+    loan.resolved_by = current_user.id
+    db.session.commit()
+    log_action("resolve_employee_loan", "EmployeeLoan", loan.id, f"Loan {loan.amount} marked as {status}")
+    flash(f"Loan of {loan.amount} marked as {status}.")
+    return redirect(url_for("hr.employee_profile", employee_id=loan.employee_id))
+
+
+@hr_bp.route("/loans/<int:loan_id>/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_employee_loan(loan_id):
+    loan = db.session.get(EmployeeLoan, loan_id)
+    if not loan:
+        flash("Loan not found.")
+        return redirect(url_for("hr.employee_list"))
+    emp_id = loan.employee_id
+    db.session.delete(loan)
+    db.session.commit()
+    log_action("delete_employee_loan", "EmployeeLoan", loan_id, f"Deleted loan {loan.amount}")
+    flash("Loan entry deleted.")
+    return redirect(url_for("hr.employee_profile", employee_id=emp_id))
 
 
 # --- Attendance ---
