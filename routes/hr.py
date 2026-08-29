@@ -71,15 +71,23 @@ def dashboard():
     paid_count = PayrollRecord.query.filter_by(month=month, year=year, status="paid").count()
 
     efficiency_data = []
+    # Batch attendance queries: one query per employee instead of 2 per employee
+    emp_attendance = {}
+    if employees:
+        emp_ids = [e.id for e in employees]
+        rows = db.session.query(
+            AttendanceRecord.employee_id,
+            db.func.count(AttendanceRecord.id).label("total_d"),
+            db.func.count(db.case((AttendanceRecord.status == "present", 1))).label("present_d"),
+        ).filter(
+            AttendanceRecord.employee_id.in_(emp_ids),
+            extract("month", AttendanceRecord.date) == month,
+            extract("year", AttendanceRecord.date) == year,
+        ).group_by(AttendanceRecord.employee_id).all()
+        emp_attendance = {row.employee_id: (row.total_d, row.present_d) for row in rows}
+
     for emp in employees:
-        total_d = AttendanceRecord.query.filter_by(employee_id=emp.id).filter(
-            extract("month", AttendanceRecord.date) == month,
-            extract("year", AttendanceRecord.date) == year,
-        ).count()
-        present_d = AttendanceRecord.query.filter_by(employee_id=emp.id, status="present").filter(
-            extract("month", AttendanceRecord.date) == month,
-            extract("year", AttendanceRecord.date) == year,
-        ).count()
+        total_d, present_d = emp_attendance.get(emp.id, (0, 0))
         pct = (present_d / total_d * 100) if total_d > 0 else 0
         task_vel = _task_velocity_score(emp.id, month, year)
         combined = round(pct * 0.6 + task_vel * 0.4, 1)
@@ -99,17 +107,19 @@ def dashboard():
     if payroll_count == 0 and total_employees > 0:
         attention.append({"text": f"Payroll not yet generated for {month}/{year}", "severity": "warning"})
 
+    # Batch monthly attendance: one query instead of 24
+    monthly_rows = db.session.query(
+        extract("month", AttendanceRecord.date).label("m"),
+        db.func.count(AttendanceRecord.id).label("total"),
+        db.func.count(db.case((AttendanceRecord.status == "present", 1))).label("present"),
+    ).filter(
+        extract("year", AttendanceRecord.date) == year,
+    ).group_by(extract("month", AttendanceRecord.date)).all()
+    monthly_map = {int(row.m): (row.total, row.present) for row in monthly_rows}
+
     monthly_attn = []
     for m in range(1, 13):
-        t = AttendanceRecord.query.filter(
-            extract("month", AttendanceRecord.date) == m,
-            extract("year", AttendanceRecord.date) == year,
-        ).count()
-        p = AttendanceRecord.query.filter(
-            extract("month", AttendanceRecord.date) == m,
-            extract("year", AttendanceRecord.date) == year,
-            AttendanceRecord.status == "present",
-        ).count()
+        t, p = monthly_map.get(m, (0, 0))
         monthly_attn.append(round((p / t * 100), 1) if t > 0 else 0)
 
     hr_entities = ["Employee", "AttendanceRecord", "PayrollRecord"]

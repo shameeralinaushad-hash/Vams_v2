@@ -344,7 +344,8 @@ def extract_po(order_id):
             return jsonify({"error": _last_extraction_error}), 422
         return jsonify({"items": items})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        current_app.logger.error("Extraction error: %s", e)
+        return jsonify({"error": "Extraction failed. Please try again."}), 500
 
 
 @orders_bp.route("/<int:order_id>/re-stamp-po", methods=["POST"])

@@ -17,6 +17,12 @@ class Config:
         f"sqlite:///{os.path.join(BASE_DIR, 'database', 'business.db')}"
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_size": 10,
+        "max_overflow": 20,
+        "pool_recycle": 3600,
+        "pool_pre_ping": True,
+    }
     SEND_FILE_MAX_AGE_DEFAULT = 31536000  # cache static files (letterheads, PDFs, etc.) for 1 year
 
     # Upload paths

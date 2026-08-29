@@ -1102,11 +1102,11 @@ function askAI(id, msg, mode) {
                 renderMermaid(id, d.reply);
             } else {
                 respDiv.style.display = '';
-                respDiv.innerHTML = d.reply.replace(/\n/g, '<br>');
+                respDiv.innerHTML = escapeHtml(d.reply).replace(/\n/g, '<br>');
             }
         } else {
             respDiv.style.display = '';
-            respDiv.innerHTML = '<span style="color:var(--danger)">Error: ' + (d.error||'Unknown') + '</span>';
+            respDiv.innerHTML = '<span style="color:var(--danger)">Error: ' + escapeHtml(d.error||'Unknown') + '</span>';
         }
     })
     .catch(function(e){

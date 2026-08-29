@@ -1532,6 +1532,10 @@
 </div>
 
 <script>
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
     function printPdfUrl(url) {
         let iframe = document.getElementById("pdfPrintFrame");
         if (!iframe) {
@@ -1710,8 +1714,9 @@ function loadBellNotifications() {
             }
             dd.innerHTML = data.map(function(n){
                 var cls = n.is_read ? 'read' : 'unread';
-                var link = n.link ? ' onclick="bellMarkRead('+n.id+');window.location.href=\''+n.link+'\'"' : ' onclick="bellMarkRead('+n.id+')"';
-                return '<div class="bd-item '+cls+'"'+link+'><div class="bd-icon"><i class="bi bi-bell"></i></div><div class="bd-body"><div class="bd-msg">'+escapeHtml(n.message)+'</div><div class="bd-time">'+n.created_at+'</div></div></div>';
+                var safeLink = n.link && n.link.charAt(0) === '/' ? n.link : '';
+                var link = safeLink ? ' onclick="bellMarkRead('+n.id+');window.location.href=\''+escapeHtml(safeLink)+'\'"' : ' onclick="bellMarkRead('+n.id+')"';
+                return '<div class="bd-item '+cls+'"'+link+'><div class="bd-icon"><i class="bi bi-bell"></i></div><div class="bd-body"><div class="bd-msg">'+escapeHtml(n.message)+'</div><div class="bd-time">'+escapeHtml(n.created_at)+'</div></div></div>';
             }).join('');
             dd.innerHTML += '<div class="bd-footer"><a href="'+bellListUrl+'"><i class="bi bi-eye"></i> View All</a><button onclick="bellMarkAllRead()"><i class="bi bi-check2-all"></i> Mark All Read</button><button onclick="bellClearAll()" style="color:var(--danger);"><i class="bi bi-trash3"></i> Clear All</button></div>';
         })

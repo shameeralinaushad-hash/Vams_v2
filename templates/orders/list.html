@@ -215,10 +215,10 @@
                         a.className = "list-group-item list-group-item-action d-flex justify-content-between align-items-center";
                         a.innerHTML = `
                             <div>
-                                <div class="fw-bold text-dark small">${o.title}</div>
-                                <div class="small text-muted">${o.client} ${o.quote_number ? " · " + o.quote_number : ""}</div>
+                                <div class="fw-bold text-dark small">${escapeHtml(o.title)}</div>
+                                <div class="small text-muted">${escapeHtml(o.client)} ${o.quote_number ? " · " + escapeHtml(o.quote_number) : ""}</div>
                             </div>
-                            <span class="badge bg-secondary bg-opacity-10 text-secondary rounded-pill" style="font-size:0.65rem;">${o.status}</span>
+                            <span class="badge bg-secondary bg-opacity-10 text-secondary rounded-pill" style="font-size:0.65rem;">${escapeHtml(o.status)}</span>
                         `;
                         livePreview.appendChild(a);
                     });

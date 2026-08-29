@@ -341,7 +341,11 @@ def delete_company(company_id):
 
 @companies_bp.route("/switch/<int:company_id>")
 def switch_company(company_id):
+    from flask_login import current_user
     company = Company.query.get_or_404(company_id)
+    if company_id not in [c.id for c in current_user.companies]:
+        flash("You don't have access to that company.")
+        return redirect(url_for("home"))
     session["active_company_id"] = company.id
     session["active_company_name"] = company.name
     return redirect(request.referrer or url_for("home"))

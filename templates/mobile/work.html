@@ -1,0 +1,74 @@
+{% extends "mobile/layout.html" %}
+{% block title %}Work - VAMS{% endblock %}
+{% block header %}Work{% endblock %}
+
+{% block content %}
+<!-- Sub-tabs -->
+<div class="pill-tabs">
+    <a href="{{ url_for('mobile.work', tab='orders') }}" class="pill-tab {% if tab == 'orders' %}active{% endif %}">Orders</a>
+    <a href="{{ url_for('mobile.work', tab='quotations') }}" class="pill-tab {% if tab == 'quotations' %}active{% endif %}">Quotes</a>
+    <a href="{{ url_for('mobile.work', tab='invoices') }}" class="pill-tab {% if tab == 'invoices' %}active{% endif %}">Invoices</a>
+    <a href="{{ url_for('mobile.work', tab='challans') }}" class="pill-tab {% if tab == 'challans' %}active{% endif %}">Challans</a>
+    <a href="{{ url_for('mobile.work', tab='clients') }}" class="pill-tab {% if tab == 'clients' %}active{% endif %}">Clients</a>
+</div>
+
+<!-- Search -->
+<div class="search-bar">
+    <i class="bi bi-search"></i>
+    <input type="text" id="searchInput" placeholder="Search {{ tab }}..." oninput="filterList()">
+</div>
+
+<!-- Stats row -->
+{% if stats %}
+<div class="stat-row" style="margin-bottom:12px;">
+    {% for s in stats %}
+    <div class="stat-box">
+        <div class="stat-value" style="font-size:1.1rem;">{{ s.value }}</div>
+        <div class="stat-label">{{ s.label }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- List -->
+<div id="entityList">
+{% if items %}
+    {% for item in items %}
+    <a href="{{ item.url }}" class="entity-card">
+        <div class="entity-avatar" style="background:{{ item.color }};">
+            {{ item.initials }}
+        </div>
+        <div class="entity-body">
+            <div class="entity-title">{{ item.title }}</div>
+            <div class="entity-sub">{{ item.subtitle }}</div>
+            {% if item.meta %}
+            <div class="entity-meta">{{ item.meta }}</div>
+            {% endif %}
+        </div>
+        {% if item.badge %}
+        <span class="badge {{ item.badge_class }}">{{ item.badge }}</span>
+        {% endif %}
+        <i class="bi bi-chevron-right entity-arrow"></i>
+    </a>
+    {% endfor %}
+{% else %}
+    <div class="empty">
+        <i class="bi bi-inbox"></i>
+        No {{ tab }} found
+    </div>
+{% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterList() {
+    var q = document.getElementById('searchInput').value.toLowerCase();
+    var cards = document.querySelectorAll('.entity-card');
+    cards.forEach(function(card) {
+        var text = card.textContent.toLowerCase();
+        card.style.display = text.indexOf(q) > -1 ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}

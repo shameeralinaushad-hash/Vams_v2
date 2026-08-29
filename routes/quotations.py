@@ -554,25 +554,32 @@ def delete_quotation(quotation_id):
 def regenerate_quotation(quotation_id):
     quotation = Quotation.query.get_or_404(quotation_id)
     order = quotation.order
+    quotation_id = quotation.id
 
-    quotation.pdf_version = (quotation.pdf_version or 1) + 1
-    version_suffix = f"_v{quotation.pdf_version}" if quotation.pdf_version > 1 else ""
+    def _generate():
+        with current_app.app_context():
+            q = db.session.get(Quotation, quotation_id)
+            if not q:
+                return
+            o = q.order
+            q.pdf_version = (q.pdf_version or 1) + 1
+            version_suffix = f"_v{q.pdf_version}" if q.pdf_version > 1 else ""
+            folder = get_order_folder(current_app, o)
+            filename = f"Quotation_{q.quote_number.replace('/', '-')}{version_suffix}.pdf"
+            output_path = os.path.join(folder, filename)
+            generate_quotation_pdf(
+                o.company, o.client, q, q.line_items, output_path,
+                skip_letterhead=bool(q.skip_letterhead)
+            )
+            safe_title = secure_filename(o.title) if o.title else "untitled"
+            folder_name = f"{o.id}_{safe_title}"
+            q.pdf_path = f"documents/company_{o.company_id}/{folder_name}/{filename}"
+            db.session.commit()
 
-    folder = get_order_folder(current_app, order)
-    filename = f"Quotation_{quotation.quote_number.replace('/', '-')}{version_suffix}.pdf"
-    output_path = os.path.join(folder, filename)
+    from background import run_in_background
+    run_in_background(_generate)
 
-    generate_quotation_pdf(
-        order.company, order.client, quotation, quotation.line_items, output_path,
-        skip_letterhead=bool(quotation.skip_letterhead)
-    )
-
-    safe_title = secure_filename(order.title) if order.title else "untitled"
-    folder_name = f"{order.id}_{safe_title}"
-    quotation.pdf_path = f"documents/company_{order.company_id}/{folder_name}/{filename}"
-    db.session.commit()
-
-    flash(f"Quotation PDF regenerated (version {quotation.pdf_version}). Previous version file kept on disk.")
+    flash("Quotation PDF generating in background. It will be ready shortly.")
     return redirect(url_for("orders.view_order", order_id=order.id))
 
 

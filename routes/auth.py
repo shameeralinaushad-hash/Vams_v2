@@ -7,6 +7,7 @@ from sqlalchemy import or_, extract, text
 from permissions import AVAILABLE_PERMISSIONS
 from login_throttle import is_locked_out, record_failure, clear_failures, minutes_until_unlock, MAX_ATTEMPTS
 from audit import log_action
+from rate_limiter import limiter
 import requests as http_requests
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
@@ -39,6 +40,7 @@ def hr_required(f):
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def login():
     if current_user.is_authenticated:
         return redirect(url_for("home"))
@@ -78,6 +80,8 @@ def login():
                 if emp and not emp.user_id:
                     flash("Your email matches an employee profile. Visit your profile to link it.", "info")
             next_page = request.args.get("next")
+            if next_page and (not next_page.startswith("/") or next_page.startswith("//")):
+                next_page = None
             return redirect(next_page or url_for("home"))
 
         record_failure(email)

@@ -231,24 +231,30 @@ def delete_challan(challan_id):
 def regenerate_challan(challan_id):
     challan = DeliveryChallan.query.get_or_404(challan_id)
     order = challan.order
+    challan_id = challan.id
 
-    challan.pdf_version = (challan.pdf_version or 1) + 1
-    version_suffix = f"_v{challan.pdf_version}" if challan.pdf_version > 1 else ""
+    def _generate():
+        with current_app.app_context():
+            c = db.session.get(DeliveryChallan, challan_id)
+            if not c:
+                return
+            o = c.order
+            c.pdf_version = (c.pdf_version or 1) + 1
+            version_suffix = f"_v{c.pdf_version}" if c.pdf_version > 1 else ""
+            folder = get_order_folder(current_app, o)
+            filename = f"Challan_{c.challan_number.replace('/', '-')}{version_suffix}.pdf"
+            output_path = os.path.join(folder, filename)
+            generate_challan_pdf(
+                o.company, o.client, c, c.line_items, output_path,
+                skip_letterhead=bool(c.skip_letterhead)
+            )
+            safe_title = secure_filename(o.title) if o.title else "untitled"
+            folder_name = f"{o.id}_{safe_title}"
+            c.pdf_path = f"documents/company_{o.company_id}/{folder_name}/{filename}"
+            db.session.commit()
 
-    folder = get_order_folder(current_app, order)
-    filename = f"Challan_{challan.challan_number.replace('/', '-')}{version_suffix}.pdf"
-    output_path = os.path.join(folder, filename)
+    from background import run_in_background
+    run_in_background(_generate)
 
-    # FIXED: Uses saved model property on regeneration
-    generate_challan_pdf(
-        order.company, order.client, challan, challan.line_items, output_path,
-        skip_letterhead=bool(challan.skip_letterhead)
-    )
-
-    safe_title = secure_filename(order.title) if order.title else "untitled"
-    folder_name = f"{order.id}_{safe_title}"
-    challan.pdf_path = f"documents/company_{order.company_id}/{folder_name}/{filename}"
-    db.session.commit()
-
-    flash(f"Delivery Challan PDF regenerated (version {challan.pdf_version}). Previous version file kept on disk.")
+    flash("Delivery Challan PDF generating in background. It will be ready shortly.")
     return redirect(url_for("orders.view_order", order_id=order.id))

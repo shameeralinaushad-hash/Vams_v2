@@ -284,7 +284,7 @@
                     results.forEach(item => {
                         const a = document.createElement("a");
                         a.className = "list-group-item list-group-item-action";
-                        a.innerHTML = `<div class="fw-bold small">${item.description}</div>`;
+                        a.innerHTML = `<div class="fw-bold small">${escapeHtml(item.description)}</div>`;
                         a.href = "{{ url_for('catalog.list_catalog') }}?highlight=" + item.id + "#item-" + item.id;
                         livePreview.appendChild(a);
                     });
@@ -328,7 +328,7 @@
                         const a = document.createElement("a");
                         a.href = "#";
                         a.className = "list-group-item list-group-item-action";
-                        a.innerHTML = `<div class="fw-bold small">${item.description}</div>`;
+                        a.innerHTML = `<div class="fw-bold small">${escapeHtml(item.description)}</div>`;
                         a.addEventListener("click", function(e) {
                             e.preventDefault();
                             runMarketPriceCheck(item.id, item.description, a);
@@ -342,14 +342,14 @@
     async function runMarketPriceCheck(itemId, description, resultEl) {
         marketSearchResults.querySelectorAll(".list-group-item").forEach(el => el.classList.remove("active"));
         resultEl.classList.add("active");
-        marketPriceOutput.innerHTML = `<div class="text-muted small mt-2"><span class="spinner-border spinner-border-sm"></span> Checking market price for "${description}"...</div>`;
+        marketPriceOutput.innerHTML = `<div class="text-muted small mt-2"><span class="spinner-border spinner-border-sm"></span> Checking market price for "${escapeHtml(description)}"...</div>`;
 
         try {
             const resp = await fetch(`/catalog/market_price/${itemId}`);
             const data = await resp.json();
 
             if (data.error) {
-                marketPriceOutput.innerHTML = `<div class="alert alert-danger small mt-2 mb-0">${data.error}</div>`;
+                marketPriceOutput.innerHTML = `<div class="alert alert-danger small mt-2 mb-0">${escapeHtml(data.error)}</div>`;
             } else if (data.suggested_price === null) {
                 marketPriceOutput.innerHTML = `<div class="text-muted small mt-2">No prices found in search results for this item.</div>`;
             } else {
@@ -360,7 +360,7 @@
                         const pricesFormatted = s.extracted_prices
                             .map(p => (typeof p === 'object' && p.formatted) ? p.formatted : (typeof p === 'number' ? p.toLocaleString() : p))
                             .join(", ");
-                        return `<li><a href="${s.link}" target="_blank">${s.title || s.link}</a> — ${pricesFormatted}</li>`;
+                        return `<li><a href="${s.link}" target="_blank">${escapeHtml(s.title || s.link)}</a> — ${escapeHtml(pricesFormatted)}</li>`;
                     })
                     .join("");
 
@@ -370,8 +370,8 @@
 
                 marketPriceOutput.innerHTML = `
                     <div class="p-3 bg-light rounded mt-2">
-                        <div class="fw-bold small">${description}</div>
-                        <div class="fs-4 fw-bold text-primary mt-1">${displayPrice}</div>
+                        <div class="fw-bold small">${escapeHtml(description)}</div>
+                        <div class="fs-4 fw-bold text-primary mt-1">${escapeHtml(displayPrice)}</div>
                         <div class="text-muted small">from ${data.num_data_points} price mention${data.num_data_points === 1 ? '' : 's'} found (${data.currency || 'Native Currency'})</div>
                         <div class="text-muted small mt-1">AI-free estimate — verify against sources below before quoting.</div>
                         <ul class="mb-0 mt-2 ps-3 small">${sourcesHtml}</ul>

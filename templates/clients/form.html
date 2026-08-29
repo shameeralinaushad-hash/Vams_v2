@@ -7,6 +7,7 @@
     </div>
 </div>
 <form method="post" enctype="multipart/form-data" class="panel form-panel">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="mb-3">
         <label class="form-label-custom">Client name</label>
         <input type="text" name="name" class="form-control w-100" value="{{ client.name if client else '' }}" required>

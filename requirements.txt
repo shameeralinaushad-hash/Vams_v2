@@ -24,6 +24,8 @@ google_auth_httplib2==0.4.2
 google_auth_oauthlib==1.2.1
 google_genai==2.13.0
 googleapis_common_protos==1.75.2
+gevent==26.8.0
+gevent-websocket==0.10.1
 greenlet==3.5.3
 groq==1.5.0
 h11==0.16.0

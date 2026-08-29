@@ -82,6 +82,10 @@ def oauth_callback():
         flash("OAuth callback missing state parameter. Try again.")
         return redirect(url_for("gmail.inbox"))
 
+    if state_from_session and state_from_session != state_from_url:
+        flash("OAuth state mismatch — possible CSRF. Try again.")
+        return redirect(url_for("gmail.inbox"))
+
     company_id = int(state_from_url) if state_from_url.isdigit() else None
     if not company_id:
         flash("Invalid OAuth state. Try again.")

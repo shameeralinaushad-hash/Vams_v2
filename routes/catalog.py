@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, request, jsonify, session, current_app
+from sqlalchemy.orm import selectinload
 from models import db, CatalogItem, PriceHistory
 from market_price import check_market_price
 
@@ -7,8 +8,10 @@ catalog_bp = Blueprint("catalog", __name__, url_prefix="/catalog")
 
 @catalog_bp.route("/")
 def list_catalog():
-    # 1. Fetch all items
-    items = CatalogItem.query.order_by(CatalogItem.description).all()
+    # 1. Fetch all items with price_history eagerly loaded (fixes N+1)
+    items = CatalogItem.query.options(
+        selectinload(CatalogItem.price_history)
+    ).order_by(CatalogItem.description).all()
 
     # 2. Capture highlight ID for the "shine" effect
     highlight_id = request.args.get("highlight", type=int)

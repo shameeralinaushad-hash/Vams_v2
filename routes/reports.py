@@ -48,7 +48,11 @@ def list_reports():
     if date_from and date_to:
         query = query.filter(Invoice.invoice_date >= date_from, Invoice.invoice_date <= date_to)
 
-    all_invoices = query.order_by(Invoice.invoice_date.desc()).all()
+    from sqlalchemy.orm import selectinload
+    all_invoices = query.options(
+        selectinload(Invoice.order).selectinload(Order.expenses),
+        selectinload(Invoice.payments),
+    ).order_by(Invoice.invoice_date.desc()).all()
 
     revenue = sum(i.net_revenue() for i in all_invoices)
     total_expenses = sum(

@@ -5,14 +5,16 @@ from calendar import monthrange
 from datetime import datetime, date, timedelta
 from logging.handlers import RotatingFileHandler
 
+# gevent monkey patching must happen before all other imports
+from gevent import monkey
+monkey.patch_all()
+
 from flask import (
     Flask, render_template, session, redirect, url_for,
     flash, send_from_directory, jsonify, request, make_response,
     Response, stream_with_context
 )
 from flask_login import LoginManager, login_required, current_user
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from flask_wtf import CSRFProtect
 from flask_migrate import Migrate
 from dotenv import load_dotenv
@@ -23,6 +25,7 @@ from config import Config
 from models import db, Company, User, Order, Invoice, Todo, Expense, ExpenseCategory, Employee, AttendanceRecord, PayrollRecord, Holiday, Notification, TeamTask, Quotation, DeliveryChallan, PersonalItem, ActionSnooze, PurchaseOrder, PurchaseOrderLineItem
 from important_actions import build_actions, DEFAULT_SNOOZE_HOURS
 from ml.tender_extractor import extract_items_from_file
+from rate_limiter import limiter
 
 load_dotenv()
 
@@ -30,6 +33,9 @@ load_dotenv()
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+
+    # --- Rate Limiter (from shared module) ---
+    limiter.init_app(app)
 
     # --- Custom Currency Filter ---
     @app.template_filter('currency')
@@ -100,14 +106,6 @@ def create_app():
     migrate = Migrate(app, db)
     csrf = CSRFProtect(app)
 
-    limiter = Limiter(
-        get_remote_address,
-        app=app,
-        default_limits=[app.config.get("RATELIMIT_DEFAULT", "120 per minute")],
-        storage_uri="memory://",
-        enabled=app.config.get("RATELIMIT_ENABLED", True),
-    )
-
     # --- Security headers ---
     @app.after_request
     def add_security_headers(response):
@@ -117,6 +115,9 @@ def create_app():
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         if app.config.get("SESSION_COOKIE_SECURE", False):
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        if request.path.startswith("/api/events"):
+            response.headers["Cache-Control"] = "no-cache"
+            response.headers["X-Accel-Buffering"] = "no"
         return response
 
     login_manager = LoginManager()
@@ -216,7 +217,7 @@ def create_app():
 
     @app.before_request
     def require_login():
-        allowed_endpoints = {"auth.login", "static", "offline_page", "hr.qr_landing", "hr.qr_scan", "mobile.login", "mobile.home", "mobile.attendance", "mobile.qr_scan", "mobile.tasks", "mobile.toggle_task", "mobile.logout"}
+        allowed_endpoints = {"auth.login", "static", "offline_page", "hr.qr_landing", "hr.qr_scan", "mobile.login", "mobile.home", "mobile.attendance", "mobile.qr_scan", "mobile.tasks", "mobile.toggle_task", "mobile.logout", "mobile.install_page"}
         if request.endpoint and request.endpoint not in allowed_endpoints and not current_user.is_authenticated:
             return redirect(url_for("auth.login", next=request.path))
 
@@ -479,9 +480,15 @@ def create_app():
 
         overdue_count = 0
         if active_id:
-            invoices = Invoice.query.join(Order).filter(Order.company_id == active_id).all()
-            overdue_count = len([inv for inv in invoices if
-                                 not inv.is_fully_paid() and not inv.is_cancelled() and inv.days_overdue() > 30])
+            from sqlalchemy import and_
+            overdue_count = db.session.query(db.func.count(Invoice.id)).join(Order).filter(
+                and_(
+                    Order.company_id == active_id,
+                    Invoice.is_current.is_(True),
+                    Invoice.status != "cancelled",
+                    Invoice.invoice_date < date.today(),
+                )
+            ).scalar() or 0
 
         unread_notifs = 0
         try:
@@ -743,9 +750,17 @@ def create_app():
                 else:
                     stats["po_none"] += 1
 
-            expenses = Expense.query.filter_by(company_id=company_id).all()
-            in_range_exp = [e for e in expenses if _exp_in_range(e, date_from, date_to)]
-            stats["total_expenses"] = sum(e.amount for e in in_range_exp)
+            # Use SQL SUM instead of loading all expenses into Python
+            exp_q = Expense.query.filter_by(company_id=company_id)
+            if date_from:
+                exp_q = exp_q.filter(Expense.expense_date >= date_from)
+            if date_to:
+                exp_q = exp_q.filter(Expense.expense_date <= date_to)
+            stats["total_expenses"] = db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0)).filter(
+                Expense.company_id == company_id,
+                Expense.expense_date >= date_from if date_from else True,
+                Expense.expense_date <= date_to if date_to else True,
+            ).scalar()
             stats["estimated_profit"] = stats["total_invoiced"] - stats["total_expenses"]
 
             # --- Prior-period deltas for comparison badges ---
@@ -755,7 +770,11 @@ def create_app():
             }
             if compare and prior_from is not None:
                 prior_rev = sum(po.total_amount for po in pos if _po_in_range(po, prior_from, prior_to))
-                prior_exp = sum(e.amount for e in expenses if _exp_in_range(e, prior_from, prior_to))
+                prior_exp = db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0)).filter(
+                    Expense.company_id == company_id,
+                    Expense.expense_date >= prior_from,
+                    Expense.expense_date <= prior_to,
+                ).scalar()
                 prior_profit = prior_rev - prior_exp
                 prior_orders = sum(1 for o in orders if o.created_at.date() and prior_from <= o.created_at.date() <= prior_to) if orders else 0
 
@@ -1090,8 +1109,9 @@ app = create_app()
 if __name__ == '__main__':
     debug_mode = os.environ.get("FLASK_DEBUG", "True").lower() in ("1", "true", "yes")
     if debug_mode:
+        print(" * Dev server on http://127.0.0.1:5003")
         app.run(debug=True, port=5003, use_reloader=False)
     else:
         from waitress import serve
         print(" * Serving on http://0.0.0.0:8080")
-        serve(app, host="0.0.0.0", port=8080, threads=6)
+        serve(app, host="0.0.0.0", port=8080, threads=6, channel_timeout=300)

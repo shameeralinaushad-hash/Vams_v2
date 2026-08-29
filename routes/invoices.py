@@ -267,24 +267,31 @@ def delete_invoice(invoice_id):
 def regenerate_invoice(invoice_id):
     invoice = Invoice.query.get_or_404(invoice_id)
     order = invoice.order
+    invoice_id = invoice.id
 
-    invoice.pdf_version = (invoice.pdf_version or 1) + 1
-    version_suffix = f"_v{invoice.pdf_version}" if invoice.pdf_version > 1 else ""
+    def _generate():
+        with current_app.app_context():
+            inv = db.session.get(Invoice, invoice_id)
+            if not inv:
+                return
+            o = inv.order
+            inv.pdf_version = (inv.pdf_version or 1) + 1
+            version_suffix = f"_v{inv.pdf_version}" if inv.pdf_version > 1 else ""
+            folder = get_order_folder(current_app, o)
+            filename = f"Invoice_{inv.invoice_number.replace('/', '-')}{version_suffix}.pdf"
+            output_path = os.path.join(folder, filename)
+            total = generate_invoice_pdf(o.company, o.client, inv, inv.line_items, output_path,
+                                         skip_letterhead=bool(inv.skip_letterhead))
+            safe_title = secure_filename(o.title) if o.title else "untitled"
+            folder_name = f"{o.id}_{safe_title}"
+            inv.pdf_path = f"documents/company_{o.company_id}/{folder_name}/{filename}"
+            inv.total_amount = total
+            db.session.commit()
 
-    folder = get_order_folder(current_app, order)
-    filename = f"Invoice_{invoice.invoice_number.replace('/', '-')}{version_suffix}.pdf"
-    output_path = os.path.join(folder, filename)
+    from background import run_in_background
+    run_in_background(_generate)
 
-    total = generate_invoice_pdf(order.company, order.client, invoice, invoice.line_items, output_path,
-                                 skip_letterhead=bool(invoice.skip_letterhead))
-
-    safe_title = secure_filename(order.title) if order.title else "untitled"
-    folder_name = f"{order.id}_{safe_title}"
-    invoice.pdf_path = f"documents/company_{order.company_id}/{folder_name}/{filename}"
-    invoice.total_amount = total
-    db.session.commit()
-
-    flash(f"Invoice PDF regenerated (version {invoice.pdf_version}). Previous version file kept on disk.")
+    flash("Invoice PDF generating in background. It will be ready shortly.")
     return redirect(url_for("orders.view_order", order_id=order.id))
 
 

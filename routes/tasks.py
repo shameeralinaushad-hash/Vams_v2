@@ -1,8 +1,9 @@
 import csv, io, json, re
 from datetime import date, datetime, timedelta
 from calendar import monthrange, month_name, day_name
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, Response, session
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, Response, session, current_app
 from flask_login import login_required, current_user
+from rate_limiter import limiter
 from sqlalchemy.orm import selectinload
 from models import db, PersonalItem, PersonalItemMilestone, TeamTask, TeamTaskComment, TeamTaskSubItem, TeamTaskActivityLog, Discussion, DiscussionReply, Employee, Notification, User, Order
 from audit import log_action
@@ -491,6 +492,7 @@ def promote_item(item_id):
 
 @tasks_bp.route("/mine/ai-idea", methods=["POST"])
 @login_required
+@limiter.limit("10 per minute")
 def idea_ai_assist():
     import os, json as j
     item_id = request.form.get("item_id", type=int)
@@ -524,11 +526,13 @@ def idea_ai_assist():
         reply = resp.choices[0].message.content.strip()
         return jsonify({"ok": True, "reply": reply, "mode": mode})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        current_app.logger.error("AI suggest error: %s", e)
+        return jsonify({"ok": False, "error": "AI request failed. Please try again."}), 500
 
 
 @tasks_bp.route("/mine/ai-chat", methods=["POST"])
 @login_required
+@limiter.limit("15 per minute")
 def personal_ai_chat():
     import os, json as j
     message = request.form.get("message", "").strip()
@@ -614,7 +618,8 @@ def personal_ai_chat():
         reply = response.choices[0].message.content.strip()
         return jsonify({"ok": True, "reply": reply})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        current_app.logger.error("AI chat error: %s", e)
+        return jsonify({"ok": False, "error": "AI request failed. Please try again."}), 500
 
 
 # --- Team Tasks (§4b/4c) — Upgraded ---

@@ -3,6 +3,7 @@ from datetime import date, datetime
 from flask import Blueprint, request, jsonify, session
 from flask_login import login_required, current_user
 from models import db, PersonalItem, Order, Client, ClientCompanyLink, Employee, Expense, Invoice, Company
+from rate_limiter import limiter
 
 ai_bp = Blueprint("ai", __name__, url_prefix="/ai")
 
@@ -147,6 +148,7 @@ def _build_system_prompt(ctx):
 
 @ai_bp.route("/chat", methods=["POST"])
 @login_required
+@limiter.limit("15 per minute")
 def ai_chat():
     message = request.form.get("message", "").strip()
     conversation_raw = request.form.get("conversation", "[]")
@@ -187,4 +189,5 @@ def ai_chat():
         reply = response.choices[0].message.content.strip()
         return jsonify({"ok": True, "reply": reply})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        current_app.logger.error("AI error: %s", e)
+        return jsonify({"ok": False, "error": "AI request failed. Please try again."}), 500

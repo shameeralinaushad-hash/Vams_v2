@@ -8,6 +8,7 @@
 </div>
 
 <form method="post" class="panel">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="row g-3 mb-3">
         <div class="col-md-6">
             <label class="form-label-custom">Client</label>
