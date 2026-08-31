@@ -2,10 +2,47 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../../core/storage.dart';
 import '../../../core/theme.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
+
+  void _showServerUrlDialog(BuildContext context, WidgetRef ref) async {
+    final currentUrl = await AppStorage.getServerUrl() ?? '';
+    final controller = TextEditingController(text: currentUrl);
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Server URL'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'https://vams.example.com',
+            prefixIcon: Icon(Icons.link),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty && context.mounted) {
+      final url = result.replaceAll(RegExp(r'/+$'), '');
+      await AppStorage.setServerUrl(url);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Server URL updated. Restart the app to apply.')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -37,6 +74,14 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () {
               // Navigate to company detail for user's company
             },
+          ),
+
+          const _SectionHeader('Connection'),
+          _SettingsTile(
+            icon: Icons.dns_outlined,
+            title: 'Server URL',
+            subtitle: 'Change the server address',
+            onTap: () => _showServerUrlDialog(context, ref),
           ),
 
           const _SectionHeader('Admin'),

@@ -63,7 +63,11 @@ String? _handleRedirect(AuthState authState, String location) {
     return (isServerConfig || isLogin) ? '/' : null;
   }
 
-  if (authState is AuthLoading || authState is AuthInitial) {
+  if (authState is AuthInitial) {
+    return null;
+  }
+
+  if (authState is AuthLoading) {
     return isLogin ? null : '/login';
   }
 
