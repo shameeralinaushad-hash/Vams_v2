@@ -141,7 +141,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('VAMS'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('VAMS', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            if (auth is AuthAuthenticated && auth.user.companyName != null)
+              Text(auth.user.companyName!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400)),
+          ],
+        ),
         actions: [
           if (auth is AuthAuthenticated)
             PopupMenuButton<String>(
