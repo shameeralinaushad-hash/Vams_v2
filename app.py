@@ -1,18 +1,15 @@
 import os
+import time
 import logging
 import zoneinfo
 from calendar import monthrange
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from logging.handlers import RotatingFileHandler
-
-# gevent monkey patching must happen before all other imports
-from gevent import monkey
-monkey.patch_all()
 
 from flask import (
     Flask, render_template, session, redirect, url_for,
     flash, send_from_directory, jsonify, request, make_response,
-    Response, stream_with_context
+    Response, stream_with_context, g
 )
 from flask_login import LoginManager, login_required, current_user
 from flask_wtf import CSRFProtect
@@ -85,7 +82,7 @@ def create_app():
     file_handler.setFormatter(logging.Formatter(
         "%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]"
     ))
-    file_handler.setLevel(logging.WARNING)
+    file_handler.setLevel(logging.INFO)
     app.logger.addHandler(file_handler)
 
     console = logging.StreamHandler()
@@ -115,9 +112,6 @@ def create_app():
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         if app.config.get("SESSION_COOKIE_SECURE", False):
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        if request.path.startswith("/api/events"):
-            response.headers["Cache-Control"] = "no-cache"
-            response.headers["X-Accel-Buffering"] = "no"
         return response
 
     login_manager = LoginManager()
@@ -152,9 +146,23 @@ def create_app():
     from routes.tasks import tasks_bp
     from routes.projects import projects_bp
     from routes.ai import ai_bp
-    from routes.mobile import mobile_bp
     from routes.gmail import gmail_bp
-    app.register_blueprint(mobile_bp)
+    from routes.app_update import app_update_bp
+    from routes.api_auth import api_auth_bp, init_jwt
+    from routes.api_orders import api_orders_bp
+    from routes.api_clients import api_clients_bp
+    from routes.api_invoices import api_invoices_bp
+    from routes.api_dashboard import api_dashboard_bp
+    from routes.api_quotations import api_quotations_bp
+    from routes.api_challans import api_challans_bp
+    from routes.api_notifications import api_notifications_bp
+    from routes.api_tasks import api_tasks_bp
+    from routes.api_hr import api_hr_bp
+    from routes.api_accounts import api_accounts_bp
+    from routes.api_companies import api_companies_bp
+    from routes.api_catalog import api_catalog_bp
+    from routes.api_projects import api_projects_bp
+    from routes.api_todos import api_todos_bp
     app.register_blueprint(pdf_view_bp)
     app.register_blueprint(accounts_bp)
     app.register_blueprint(hr_bp)
@@ -178,47 +186,67 @@ def create_app():
     app.register_blueprint(todos_bp)
     app.register_blueprint(company_documents_bp)
     app.register_blueprint(gmail_bp)
-
-    # --- PWA Service Worker Route ---
-    @app.route('/sw.js')
-    def serve_service_worker():
-        return send_from_directory('static', 'sw.js')
-
-    @app.route('/offline/')
-    def offline_page():
-        return render_template("errors/offline.html")
-
-    # Mobile device detection via user-agent
-    MOBILE_UA_PATTERNS = (
-        "android", "iphone", "ipad", "ipod", "blackberry",
-        "windows phone", "opera mini", "iemobile", "mobile"
-    )
-    def _is_mobile():
-        ua = (request.user_agent.string or "").lower()
-        return any(p in ua for p in MOBILE_UA_PATTERNS)
+    app.register_blueprint(app_update_bp)
+    app.register_blueprint(api_auth_bp)
+    app.register_blueprint(api_orders_bp)
+    app.register_blueprint(api_clients_bp)
+    app.register_blueprint(api_invoices_bp)
+    app.register_blueprint(api_dashboard_bp)
+    app.register_blueprint(api_quotations_bp)
+    app.register_blueprint(api_challans_bp)
+    app.register_blueprint(api_notifications_bp)
+    app.register_blueprint(api_tasks_bp)
+    app.register_blueprint(api_hr_bp)
+    app.register_blueprint(api_accounts_bp)
+    app.register_blueprint(api_companies_bp)
+    app.register_blueprint(api_catalog_bp)
+    app.register_blueprint(api_projects_bp)
+    app.register_blueprint(api_todos_bp)
+    # Exempt API blueprints from CSRF — mobile app uses JWT, not cookies
+    csrf.exempt(api_auth_bp)
+    csrf.exempt(api_orders_bp)
+    csrf.exempt(api_clients_bp)
+    csrf.exempt(api_invoices_bp)
+    csrf.exempt(api_dashboard_bp)
+    csrf.exempt(api_quotations_bp)
+    csrf.exempt(api_challans_bp)
+    csrf.exempt(api_notifications_bp)
+    csrf.exempt(api_tasks_bp)
+    csrf.exempt(api_hr_bp)
+    csrf.exempt(api_accounts_bp)
+    csrf.exempt(api_companies_bp)
+    csrf.exempt(api_catalog_bp)
+    csrf.exempt(api_projects_bp)
+    csrf.exempt(api_todos_bp)
+    init_jwt(app)
 
     @app.before_request
-    def redirect_mobile():
-        if not _is_mobile():
-            return None
-        if request.endpoint and request.endpoint.startswith("mobile."):
-            return None
-        if request.endpoint in ("static", "offline_page", "hr.qr_landing", "hr.qr_scan", "serve_service_worker"):
-            return None
-        if request.endpoint and request.endpoint.startswith("ai."):
-            return None
-        if session.get("desktop_mode") or request.args.get("desktop") == "1":
-            if request.args.get("desktop") == "1":
-                session["desktop_mode"] = True
-            return None
-        if current_user.is_authenticated:
-            return redirect(url_for("mobile.home"))
-        return redirect(url_for("mobile.login"))
+    def log_request():
+        g.start_time = time.time()
+        app.logger.info(f"REQUEST: {request.method} {request.path} endpoint={request.endpoint}")
+
+    @app.after_request
+    def log_response(response):
+        elapsed_ms = (time.time() - getattr(g, 'start_time', time.time())) * 1000
+        if elapsed_ms > 500:
+            app.logger.warning(f"RESPONSE: {request.method} {request.path} -> {response.status_code} [{elapsed_ms:.0f}ms]")
+        elif request.path.startswith("/api/"):
+            app.logger.info(f"RESPONSE: {request.method} {request.path} -> {response.status_code} [{elapsed_ms:.0f}ms]")
+        return response
 
     @app.before_request
     def require_login():
-        allowed_endpoints = {"auth.login", "static", "offline_page", "hr.qr_landing", "hr.qr_scan", "mobile.login", "mobile.home", "mobile.attendance", "mobile.qr_scan", "mobile.tasks", "mobile.toggle_task", "mobile.logout", "mobile.install_page"}
+        allowed_endpoints = {
+            "auth.login", "static",
+            "hr.qr_landing", "hr.qr_scan",
+            "app_update.get_app_version", "app_update.download_page", "app_update.download_file", "app_update.download_qr",
+            "api_auth.api_login", "api_auth.api_refresh", "api_auth.api_me",
+            "api_auth.api_select_company",
+        }
         if request.endpoint and request.endpoint not in allowed_endpoints and not current_user.is_authenticated:
+            # Skip session auth for API endpoints — they use JWT via @jwt_required
+            if request.endpoint and request.endpoint.startswith("api_"):
+                return
             return redirect(url_for("auth.login", next=request.path))
 
     with app.app_context():
@@ -1085,21 +1113,6 @@ def create_app():
         resp = make_response(redirect(url_for('home')))
         resp.delete_cookie('last_daily_visit')
         return resp
-
-    # ── SSE live updates endpoint ──────────────────────────────────
-    @app.route('/api/events')
-    def sse_events():
-        if not current_user.is_authenticated:
-            return jsonify({"error": "unauthorized"}), 401
-        company_id = session.get("active_company_id")
-        if not company_id:
-            return jsonify({"error": "no company"}), 400
-        import sse
-        return Response(
-            stream_with_context(sse.event_stream(company_id, current_user.id)),
-            mimetype="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
 
     return app
 

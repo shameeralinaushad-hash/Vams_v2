@@ -2,15 +2,17 @@
 Server-Sent Events (SSE) manager for VAMS live updates.
 
 Routes call push_event() to broadcast to all connected clients in a company.
-Each client gets an event_stream() generator that yields SSE-formatted messages.
+Generators yield SSE-formatted messages for connected clients.
 """
 import json
+import asyncio
 import threading
 from queue import Queue, Empty
 
 _connections = {}   # {company_id: [{queue, user_id}]}
 _lock = threading.Lock()
 _event_id = 0
+_flask_app = None  # Set by asgi.py after creating the Flask app
 
 
 def register(company_id, user_id):
@@ -71,6 +73,41 @@ def event_stream(company_id, user_id):
                 # Keepalive: check if notification count changed
                 try:
                     count = _get_unread_count(user_id)
+                except Exception:
+                    count = last_count
+                if count != last_count:
+                    last_count = count
+                    yield f"event: notification\ndata: {json.dumps({'count': count})}\n\n"
+                else:
+                    yield ": keepalive\n\n"
+    except GeneratorExit:
+        pass
+    finally:
+        unregister(company_id, entry)
+
+
+async def async_event_stream(company_id, user_id, request=None):
+    """Async SSE generator for FastAPI — no threads consumed."""
+    global _flask_app
+    entry = register(company_id, user_id)
+    q = entry["queue"]
+    last_count = None
+    try:
+        with _flask_app.app_context():
+            count = _get_unread_count(user_id)
+        last_count = count
+        yield f"event: notification\ndata: {json.dumps({'count': count})}\n\n"
+
+        while True:
+            try:
+                msg = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: q.get(timeout=5)
+                )
+                yield msg
+            except Empty:
+                try:
+                    with _flask_app.app_context():
+                        count = _get_unread_count(user_id)
                 except Exception:
                     count = last_count
                 if count != last_count:

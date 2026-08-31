@@ -110,6 +110,9 @@
             <button class="nav-link" data-tab="backup" role="tab" onclick="switchTab('backup')">
                 <i class="bi bi-database"></i> Backup
             </button>
+            <button class="nav-link" data-tab="mobile-app" role="tab" onclick="switchTab('mobile-app')">
+                <i class="bi bi-phone"></i> Mobile App
+            </button>
         </div>
     </nav>
 
@@ -397,6 +400,35 @@
                 </div>
             </div>
 
+        </div>
+
+        <!-- ==================== MOBILE APP ==================== -->
+        <div class="tab-pane" id="tab-mobile-app">
+            <div class="settings-section">
+                <div class="settings-section-title">VAMS Mobile — Android</div>
+                <div class="p-4 border rounded-3">
+                    <div class="d-flex align-items-start gap-4 flex-wrap">
+                        <div class="text-center flex-shrink-0">
+                            <img src="{{ url_for('app_update.download_qr') }}" alt="Download QR Code"
+                                 style="width:160px;height:160px;border:1px solid var(--bs-border-color);border-radius:12px;">
+                            <div class="small text-muted mt-2">Scan to download</div>
+                        </div>
+                        <div class="flex-grow-1">
+                            <h6 class="fw-bold mb-2"><i class="bi bi-phone me-2"></i>VAMS Mobile App</h6>
+                            <p class="text-muted small mb-3">Download the VAMS mobile app for Android. Scan the QR code or click the button below.</p>
+                            <div class="d-flex flex-column gap-2" style="max-width:280px;">
+                                <a href="{{ url_for('app_update.download_page') }}" class="btn btn-primary btn-sm rounded-pill px-4">
+                                    <i class="bi bi-download me-1"></i> Download APK
+                                </a>
+                                <div class="small text-muted">
+                                    <div><strong>Version:</strong> {{ version_config.latest_version if version_config else '—' }}</div>
+                                    <div><strong>Direct URL:</strong> <code class="small">{{ request.host_url.rstrip('/') }}/downloads</code></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
     </div>

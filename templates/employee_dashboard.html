@@ -94,7 +94,7 @@
             <div style="max-height:320px;overflow-y:auto;">
                 {% for t in tasks %}
                 <div class="d-flex align-items-center gap-2 py-2 border-bottom" style="border-color:var(--border) !important;">
-                    <form method="POST" action="{{ url_for('mobile.toggle_task', task_id=t.id) }}">
+                    <form method="POST" action="{{ url_for('tasks.toggle_task', task_id=t.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button class="btn btn-sm" style="border:none;background:transparent;padding:0;font-size:1.1rem;cursor:pointer;"
                             {% if t.status == 'done' %}><i class="bi bi-check-circle-fill" style="color:var(--success);"></i>

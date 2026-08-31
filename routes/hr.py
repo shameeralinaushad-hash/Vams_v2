@@ -968,10 +968,6 @@ def qr_setup():
 def qr_landing():
     if current_user.is_authenticated:
         if current_user.employee:
-            ua = (request.user_agent.string or "").lower()
-            mobile_patterns = ("android", "iphone", "ipad", "ipod", "blackberry", "windows phone", "opera mini", "iemobile", "mobile")
-            if any(p in ua for p in mobile_patterns):
-                return redirect(url_for("mobile.qr_scan"))
             return redirect(url_for("hr.qr_scan"))
         flash("No employee profile linked to your account.")
         return redirect(url_for("auth.login"))

@@ -206,13 +206,17 @@ def _parse_quotation_form(order):
     annexure_count = int(request.form.get("annexure_count", "0") or 0)
     annexure_names = request.form.getlist("annexure_name")
     annexure_page_breaks = request.form.getlist("annexure_page_break")
-    item_annexure_map = request.form.getlist("item_annexure")  # "0" = main, "1" = first annexure, etc.
+    annexure_show_totals = request.form.getlist("annexure_show_totals")
+    item_annexure_raw = request.form.get("item_annexure", "")
+    item_annexure_map = [x.strip() for x in item_annexure_raw.split(",") if x.strip()] if item_annexure_raw else []
+    main_show_totals = request.form.get("main_show_totals", "on") == "on"
 
     annexures = []
     for i in range(annexure_count):
         name = annexure_names[i].strip() if i < len(annexure_names) else f"Annexure {i}"
         page_break = annexure_page_breaks[i] == "on" if i < len(annexure_page_breaks) else False
-        annexures.append({"name": name, "page_break_before": page_break, "sort_order": i})
+        show_totals = annexure_show_totals[i] == "on" if i < len(annexure_show_totals) else True
+        annexures.append({"name": name, "page_break_before": page_break, "show_totals": show_totals, "sort_order": i})
 
     return {
         "doc_type": doc_type,
@@ -232,6 +236,7 @@ def _parse_quotation_form(order):
         "recipient": recipient, "subject": subject,
         "client_ref_number": client_ref_number, "terms_conditions": terms_conditions,
         "annexures": annexures, "item_annexure_map": item_annexure_map,
+        "show_totals": main_show_totals,
     }
 
 
@@ -246,6 +251,7 @@ def _build_quotation_line_items(quotation, data, order):
             name=ann_data["name"],
             sort_order=ann_data["sort_order"],
             page_break_before=ann_data.get("page_break_before", False),
+            show_totals=ann_data.get("show_totals", True),
         )
         db.session.add(ann)
         db.session.flush()
@@ -387,6 +393,7 @@ def create_quotation(order_id):
             discount_amount=data["discount_amount"], installation_charges=data["installation_charges"],
             transportation_charges=data["transportation_charges"],
             skip_letterhead=data["skip_letterhead"],
+            show_totals=data.get("show_totals", True),
             visible_columns=data["visible_columns"],
         )
         db.session.add(quotation)
@@ -458,6 +465,7 @@ def edit_quotation(quotation_id):
         quotation.installation_charges = data["installation_charges"]
         quotation.transportation_charges = data["transportation_charges"]
         quotation.skip_letterhead = data["skip_letterhead"]
+        quotation.show_totals = data.get("show_totals", True)
         quotation.visible_columns = data["visible_columns"]
         quotation.pdf_version = (quotation.pdf_version or 1) + 1
 
@@ -527,6 +535,7 @@ def delete_quotation(quotation_id):
     order_id = quotation.order_id
     was_current = quotation.is_current
     quote_number = quotation.quote_number
+    company_id = quotation.order.company_id
 
     if quotation.pdf_path:
         full_path = os.path.join(current_app.root_path, "static", quotation.pdf_path)
@@ -545,8 +554,8 @@ def delete_quotation(quotation_id):
     log_action("delete_quotation", "Quotation", quotation_id, f"Deleted quotation {quote_number}")
 
     flash("Quotation deleted.")
-    emit_company("list_refresh", {"section": "quotations"}, quotation.order.company_id)
-    emit_dashboard_update(quotation.order.company_id)
+    emit_company("list_refresh", {"section": "quotations"}, company_id)
+    emit_dashboard_update(company_id)
     return redirect(url_for("orders.view_order", order_id=order_id))
 
 
@@ -577,7 +586,7 @@ def regenerate_quotation(quotation_id):
             db.session.commit()
 
     from background import run_in_background
-    run_in_background(_generate)
+    run_in_background(_generate, _app=current_app._get_current_object())
 
     flash("Quotation PDF generating in background. It will be ready shortly.")
     return redirect(url_for("orders.view_order", order_id=order.id))

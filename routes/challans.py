@@ -254,7 +254,7 @@ def regenerate_challan(challan_id):
             db.session.commit()
 
     from background import run_in_background
-    run_in_background(_generate)
+    run_in_background(_generate, _app=current_app._get_current_object())
 
     flash("Delivery Challan PDF generating in background. It will be ready shortly.")
     return redirect(url_for("orders.view_order", order_id=order.id))

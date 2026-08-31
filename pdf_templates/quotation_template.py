@@ -489,7 +489,7 @@ def _build_technical_offer_story(theme, company, quotation, line_items, content_
     # Group items by annexure
     annexure_groups = _group_items_by_annexure(line_items, quotation)
 
-    for group_name, group_items, page_break in annexure_groups:
+    for group_name, group_items, page_break, group_show_totals in annexure_groups:
         if page_break:
             from reportlab.platypus import PageBreak as _PB
             story.append(_PB())
@@ -782,14 +782,45 @@ def _build_tender_annex_story(theme, company, quotation, line_items, content_wid
     doc_title = get_doc_title(theme, doc_type_key)
     story = _build_tender_header(theme, quotation, doc_title, content_width)
 
-    if doc_type_key == "technical":
-        story.append(_build_tender_technical_table(theme, line_items, content_width))
-        subtotal = sum(item.qty * item.unit_price for item in line_items)
-    else:
-        table, subtotal = _build_tender_commercial_table(theme, line_items, content_width)
-        story.append(table)
+    annexure_groups = _group_items_by_annexure(line_items, quotation)
+    subtotal = 0.0
 
-    story.append(Spacer(1, 8 * mm))
+    for group_name, group_items, page_break, group_show_totals in annexure_groups:
+        if page_break:
+            story.append(PageBreak())
+
+        if group_name:
+            story.append(_make_annexure_header(group_name, theme, content_width))
+            story.append(Spacer(1, 3 * mm))
+
+        if doc_type_key == "technical":
+            story.append(_build_tender_technical_table(theme, group_items, content_width))
+            group_subtotal = sum(item.qty * item.unit_price for item in group_items)
+        else:
+            table, group_subtotal = _build_tender_commercial_table(theme, group_items, content_width)
+            story.append(table)
+
+        subtotal += group_subtotal
+
+        if group_show_totals and (group_name or len(annexure_groups) > 1):
+            sub_label_style = ParagraphStyle("tender_sub", fontName=theme["font_bold"], fontSize=9, alignment=TA_RIGHT)
+            sub_val_style = ParagraphStyle("tender_sub_v", fontName=theme["font_bold"], fontSize=9, alignment=TA_RIGHT)
+            sub_tbl = Table(
+                [[Paragraph("Subtotal", sub_label_style), Paragraph(f"{group_subtotal:,.2f}", sub_val_style)]],
+                colWidths=[content_width * 0.8, content_width * 0.2],
+            )
+            sub_tbl.setStyle(TableStyle([
+                ("LINEABOVE", (0, 0), (-1, 0), 0.75, theme["accent_color"]),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]))
+            story.append(sub_tbl)
+
+        story.append(Spacer(1, 4 * mm))
+
+    story.append(Spacer(1, 4 * mm))
 
     if quotation.terms_conditions:
         terms_block = [Paragraph("Terms &amp; Conditions:", style_terms_head), Spacer(1, 2 * mm)]
@@ -818,11 +849,13 @@ def _build_tender_annex_story(theme, company, quotation, line_items, content_wid
 
 
 def _group_items_by_annexure(line_items, quotation):
-    """Group line items by annexure. Returns list of (annexure_name, items, page_break)
-    tuples. Items with no annexure come first (name=None)."""
+    """Group line items by annexure. Returns list of
+    (annexure_name, items, page_break, show_totals) tuples.
+    Items with no annexure come first (name=None, show_totals from quotation)."""
     annexures = quotation.annexures if hasattr(quotation, 'annexures') else []
+    main_show_totals = getattr(quotation, 'show_totals', True)
     if not annexures:
-        return [(None, line_items, False)]
+        return [(None, line_items, False, main_show_totals)]
 
     ann_map = {ann.id: ann for ann in annexures}
     main_items = []
@@ -836,14 +869,14 @@ def _group_items_by_annexure(line_items, quotation):
 
     result = []
     if main_items:
-        result.append((None, main_items, False))
+        result.append((None, main_items, False, main_show_totals))
 
     for ann in annexures:
         items = groups.get(ann.id, [])
         if items:
-            result.append((ann.name, items, ann.page_break_before))
+            result.append((ann.name, items, ann.page_break_before, getattr(ann, 'show_totals', True)))
 
-    return result if result else [(None, line_items, False)]
+    return result if result else [(None, line_items, False, main_show_totals)]
 
 
 def _make_annexure_header(name, theme, content_width):
@@ -1204,7 +1237,7 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
         subtotal = 0.0
         total_gst = 0.0
 
-        for group_name, group_items, page_break in annexure_groups:
+        for group_name, group_items, page_break, group_show_totals in annexure_groups:
             if page_break:
                 story.append(PageBreak())
 
@@ -1257,65 +1290,86 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
                     rcmds.append(("ALIGN", (c, 0), (c, -1), "RIGHT"))
             it.setStyle(TableStyle(rcmds))
             story.append(it)
+
+            # Per-annexure subtotal
+            if group_show_totals and (group_name or len(annexure_groups) > 1):
+                sub_data = [[""] * ncols]
+                sub_data[0][0] = "Subtotal"
+                sub_data[0][-1] = f"{group_subtotal:,.2f}"
+                sub_tbl = Table(sub_data, colWidths=roww)
+                sub_style = [
+                    ("FONTNAME", (0, 0), (-1, -1), theme["font_bold"]),
+                    ("FONTSIZE", (0, 0), (-1, -1), 9),
+                    ("SPAN", (0, 0), (ncols - 2, 0)),
+                    ("ALIGN", (0, 0), (ncols - 2, 0), "LEFT"),
+                    ("ALIGN", (ncols - 1, 0), (ncols - 1, 0), "RIGHT"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                    ("LINEABOVE", (0, 0), (-1, 0), 0.75, theme["accent_color"]),
+                ]
+                sub_tbl.setStyle(TableStyle(sub_style))
+                story.append(sub_tbl)
+
             story.append(Spacer(1, 4 * mm))
 
         # Summary rows (after all annexure groups)
-        tax_pct = float(getattr(quotation, "tax_amount", 0) or 0)
-        discount = float(getattr(quotation, "discount_amount", 0) or 0)
-        installation = float(getattr(quotation, "installation_charges", 0) or 0)
-        transportation = float(getattr(quotation, "transportation_charges", 0) or 0)
+        if getattr(quotation, 'show_totals', True):
+            tax_pct = float(getattr(quotation, "tax_amount", 0) or 0)
+            discount = float(getattr(quotation, "discount_amount", 0) or 0)
+            installation = float(getattr(quotation, "installation_charges", 0) or 0)
+            transportation = float(getattr(quotation, "transportation_charges", 0) or 0)
 
-        if total_gst:
-            gst_value = round(total_gst, 2)
-            gst_value_label = gst_label
-        elif tax_pct:
-            gst_value = round(subtotal * tax_pct / 100, 2)
-            gst_value_label = f"GST ({tax_pct:g}%)"
-        else:
-            gst_value = None
-            gst_value_label = None
+            if total_gst:
+                gst_value = round(total_gst, 2)
+                gst_value_label = gst_label
+            elif tax_pct:
+                gst_value = round(subtotal * tax_pct / 100, 2)
+                gst_value_label = f"GST ({tax_pct:g}%)"
+            else:
+                gst_value = None
+                gst_value_label = None
 
-        # Build summary table
-        summary_data = []
-        def summary_row(label, value):
-            row = [""] * ncols
-            row[0] = label
-            row[-1] = value
-            summary_data.append(row)
+            # Build summary table
+            summary_data = []
+            def summary_row(label, value):
+                row = [""] * ncols
+                row[0] = label
+                row[-1] = value
+                summary_data.append(row)
 
-        if gst_value is not None:
-            summary_row(gst_value_label, f"{gst_value:,.2f}")
-        summary_row("Subtotal", f"{subtotal:,.2f}")
-        if discount:
-            summary_row("Discount", f"-{discount:,.2f}")
-        if installation:
-            summary_row("Installation Charges", f"{installation:,.2f}")
-        if transportation:
-            summary_row("Transportation Charges", f"{transportation:,.2f}")
-        grand_total_ros = subtotal - discount + installation + transportation
-        if gst_value is not None:
-            grand_total_ros += gst_value
-        summary_row("Grand Total", f"{grand_total_ros:,.2f}")
+            if gst_value is not None:
+                summary_row(gst_value_label, f"{gst_value:,.2f}")
+            summary_row("Subtotal", f"{subtotal:,.2f}")
+            if discount:
+                summary_row("Discount", f"-{discount:,.2f}")
+            if installation:
+                summary_row("Installation Charges", f"{installation:,.2f}")
+            if transportation:
+                summary_row("Transportation Charges", f"{transportation:,.2f}")
+            grand_total_ros = subtotal - discount + installation + transportation
+            if gst_value is not None:
+                grand_total_ros += gst_value
+            summary_row("Grand Total", f"{grand_total_ros:,.2f}")
 
-        if summary_data:
-            stbl = Table(summary_data, colWidths=roww)
-            summary_rcmds = []
-            for r in range(len(summary_data)):
-                summary_rcmds.append(("SPAN", (0, r), (ncols - 2, r)))
-                summary_rcmds.append(("FONTNAME", (0, r), (-1, r), theme["font_bold"]))
-                summary_rcmds.append(("FONTSIZE", (0, r), (-1, r), 9))
-                summary_rcmds.append(("ALIGN", (0, r), (ncols - 2, r), "LEFT"))
-                summary_rcmds.append(("ALIGN", (ncols - 1, r), (ncols - 1, r), "RIGHT"))
-                summary_rcmds.append(("LEFTPADDING", (0, r), (ncols - 2, r), 4))
-                summary_rcmds.append(("TOPPADDING", (0, r), (-1, r), 3))
-                summary_rcmds.append(("BOTTOMPADDING", (0, r), (-1, r), 3))
-            if len(summary_data) > 1:
-                summary_rcmds.append(("LINEABOVE", (0, 0), (-1, 0), 0.75, colors.black))
-            summary_rcmds.append(("BACKGROUND", (0, len(summary_data) - 1), (-1, len(summary_data) - 1), theme["table_header_bg"]))
-            summary_rcmds.append(("TEXTCOLOR", (0, len(summary_data) - 1), (-1, len(summary_data) - 1), theme["table_header_text_color"]))
-            stbl.setStyle(TableStyle(summary_rcmds))
-            story.append(stbl)
-        story.append(it)
+            if summary_data:
+                stbl = Table(summary_data, colWidths=roww)
+                summary_rcmds = []
+                for r in range(len(summary_data)):
+                    summary_rcmds.append(("SPAN", (0, r), (ncols - 2, r)))
+                    summary_rcmds.append(("FONTNAME", (0, r), (-1, r), theme["font_bold"]))
+                    summary_rcmds.append(("FONTSIZE", (0, r), (-1, r), 9))
+                    summary_rcmds.append(("ALIGN", (0, r), (ncols - 2, r), "LEFT"))
+                    summary_rcmds.append(("ALIGN", (ncols - 1, r), (ncols - 1, r), "RIGHT"))
+                    summary_rcmds.append(("LEFTPADDING", (0, r), (ncols - 2, r), 4))
+                    summary_rcmds.append(("TOPPADDING", (0, r), (-1, r), 3))
+                    summary_rcmds.append(("BOTTOMPADDING", (0, r), (-1, r), 3))
+                if len(summary_data) > 1:
+                    summary_rcmds.append(("LINEABOVE", (0, 0), (-1, 0), 0.75, colors.black))
+                summary_rcmds.append(("BACKGROUND", (0, len(summary_data) - 1), (-1, len(summary_data) - 1), theme["table_header_bg"]))
+                summary_rcmds.append(("TEXTCOLOR", (0, len(summary_data) - 1), (-1, len(summary_data) - 1), theme["table_header_text_color"]))
+                stbl.setStyle(TableStyle(summary_rcmds))
+                story.append(stbl)
         story.append(Spacer(1, 8 * mm))
 
         if quotation.terms_conditions:
@@ -1436,7 +1490,7 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
     annexure_groups = _group_items_by_annexure(line_items, quotation)
 
     subtotal = 0
-    for group_name, group_items, page_break in annexure_groups:
+    for group_name, group_items, page_break, group_show_totals in annexure_groups:
         if page_break:
             story.append(PageBreak())
 
@@ -1456,86 +1510,97 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
         item_table = Table(table_data, colWidths=col_widths, repeatRows=1)
         item_table.setStyle(TableStyle(build_item_table_style(theme, 0, mode, len(table_data))))
         story.append(item_table)
+
+        # Per-annexure subtotal
+        if group_show_totals and (group_name or len(annexure_groups) > 1):
+            sub_row = ["Total"] + [""] * (len(header_labels) - 2) + [f"{group_subtotal:,.2f}"]
+            sub_tbl = Table([sub_row], colWidths=col_widths)
+            sub_tbl.setStyle(TableStyle(build_item_table_style(theme, 0, mode, 1)))
+            story.append(sub_tbl)
+
         story.append(Spacer(1, 4 * mm))
 
-    tax_pct = float(getattr(quotation, "tax_amount", 0) or 0)
-    discount = float(getattr(quotation, "discount_amount", 0) or 0)
-    installation = float(getattr(quotation, "installation_charges", 0) or 0)
-    transportation = float(getattr(quotation, "transportation_charges", 0) or 0)
+    if getattr(quotation, 'show_totals', True):
+        tax_pct = float(getattr(quotation, "tax_amount", 0) or 0)
+        discount = float(getattr(quotation, "discount_amount", 0) or 0)
+        installation = float(getattr(quotation, "installation_charges", 0) or 0)
+        transportation = float(getattr(quotation, "transportation_charges", 0) or 0)
 
-    tax = round(subtotal * tax_pct / 100, 2) if tax_pct else 0
-    charges = None
+        tax = round(subtotal * tax_pct / 100, 2) if tax_pct else 0
+        charges = None
 
-    if layout == "billed_summary":
-        summary_table_data = [["Total"] + [""] * (len(header_labels) - 2) + [f"{subtotal:,.2f}"]]
-        grand_total_placeholder = subtotal
-    else:
-        charges = []
-        if is_vision:
-            final_total = subtotal
-            if tax_pct:
-                tax_val = round(subtotal * tax_pct / 100, 2)
-                charges.append((f"GST ({tax_pct:g}%)", tax_val))
-                final_total += tax_val
-            if discount:
-                charges.append(("Discount", discount))
-                final_total -= discount
-            if installation:
-                charges.append(("Installation Charges", installation))
-                final_total += installation
-            if transportation:
-                charges.append(("Transportation Charges", transportation))
-                final_total += transportation
-        else:
-            final_total = subtotal + tax
-        if charges:
+        if layout == "billed_summary":
             summary_table_data = [["Total"] + [""] * (len(header_labels) - 2) + [f"{subtotal:,.2f}"]]
-            first_summary = 0
-            for label, val in charges:
-                summary_table_data.append([label] + [""] * (len(header_labels) - 2) + [f"{val:,.2f}"])
-            summary_table_data.append(["Grand Total"] + [""] * (len(header_labels) - 2) + [f"{final_total:,.2f}"])
-            total_row_idx = first_summary
+            grand_total_placeholder = subtotal
         else:
-            summary_rows = theme.get("total_summary_rows")
-            if summary_rows:
-                summary_amounts = {
-                    "Total Amount": subtotal, "Subtotal": subtotal,
-                    "Tax": tax, "Grand Total": final_total,
-                }
-                summary_table_data = []
-                for label in summary_rows:
-                    amount = summary_amounts.get(label, final_total)
-                    row = [label] + [""] * (len(header_labels) - 2) + [f"{amount:,.2f}"]
-                    summary_table_data.append(row)
-                total_row_idx = 0
+            charges = []
+            if is_vision:
+                final_total = subtotal
+                if tax_pct:
+                    tax_val = round(subtotal * tax_pct / 100, 2)
+                    charges.append((f"GST ({tax_pct:g}%)", tax_val))
+                    final_total += tax_val
+                if discount:
+                    charges.append(("Discount", discount))
+                    final_total -= discount
+                if installation:
+                    charges.append(("Installation Charges", installation))
+                    final_total += installation
+                if transportation:
+                    charges.append(("Transportation Charges", transportation))
+                    final_total += transportation
             else:
-                summary_table_data = [["Total"] + [""] * (len(header_labels) - 2) + [f"{final_total:,.2f}"]]
-                total_row_idx = 0
-        grand_total_placeholder = final_total
+                final_total = subtotal + tax
+            if charges:
+                summary_table_data = [["Total"] + [""] * (len(header_labels) - 2) + [f"{subtotal:,.2f}"]]
+                first_summary = 0
+                for label, val in charges:
+                    summary_table_data.append([label] + [""] * (len(header_labels) - 2) + [f"{val:,.2f}"])
+                summary_table_data.append(["Grand Total"] + [""] * (len(header_labels) - 2) + [f"{final_total:,.2f}"])
+                total_row_idx = first_summary
+            else:
+                summary_rows = theme.get("total_summary_rows")
+                if summary_rows:
+                    summary_amounts = {
+                        "Total Amount": subtotal, "Subtotal": subtotal,
+                        "Tax": tax, "Grand Total": final_total,
+                    }
+                    summary_table_data = []
+                    for label in summary_rows:
+                        amount = summary_amounts.get(label, final_total)
+                        row = [label] + [""] * (len(header_labels) - 2) + [f"{amount:,.2f}"]
+                        summary_table_data.append(row)
+                    total_row_idx = 0
+                else:
+                    summary_table_data = [["Total"] + [""] * (len(header_labels) - 2) + [f"{final_total:,.2f}"]]
+                    total_row_idx = 0
+            grand_total_placeholder = final_total
 
-    # Render summary table
-    if layout == "billed_summary":
-        summary_table = Table(summary_table_data, colWidths=col_widths, repeatRows=1)
-        summary_table.setStyle(TableStyle(build_item_table_style(theme, 0, mode, len(summary_table_data))))
-        story.append(summary_table)
-        story.append(Spacer(1, 8 * mm))
-    elif charges:
-        summary_table = Table(summary_table_data, colWidths=col_widths)
-        summary_table.setStyle(TableStyle(build_item_table_style(theme, total_row_idx, mode, len(summary_table_data))))
-        extra = []
-        for r in range(total_row_idx, len(summary_table_data) - 1):
-            extra.append(("FONTSIZE", (0, r), (-1, r), 9))
-            extra.append(("ALIGN", (0, r), (0, r), "LEFT"))
-            extra.append(("LEFTPADDING", (0, r), (0, r), 4))
-            extra.append(("LINEABOVE", (0, r), (-1, r), 1.2, theme["accent_color"]))
-        summary_table.setStyle(TableStyle(extra))
-        story.append(summary_table)
-        story.append(Spacer(1, 8 * mm))
+        # Render summary table
+        if layout == "billed_summary":
+            summary_table = Table(summary_table_data, colWidths=col_widths, repeatRows=1)
+            summary_table.setStyle(TableStyle(build_item_table_style(theme, 0, mode, len(summary_table_data))))
+            story.append(summary_table)
+            story.append(Spacer(1, 8 * mm))
+        elif charges:
+            summary_table = Table(summary_table_data, colWidths=col_widths)
+            summary_table.setStyle(TableStyle(build_item_table_style(theme, total_row_idx, mode, len(summary_table_data))))
+            extra = []
+            for r in range(total_row_idx, len(summary_table_data) - 1):
+                extra.append(("FONTSIZE", (0, r), (-1, r), 9))
+                extra.append(("ALIGN", (0, r), (0, r), "LEFT"))
+                extra.append(("LEFTPADDING", (0, r), (0, r), 4))
+                extra.append(("LINEABOVE", (0, r), (-1, r), 1.2, theme["accent_color"]))
+            summary_table.setStyle(TableStyle(extra))
+            story.append(summary_table)
+            story.append(Spacer(1, 8 * mm))
+        else:
+            summary_table = Table(summary_table_data, colWidths=col_widths)
+            summary_table.setStyle(TableStyle(build_item_table_style(theme, total_row_idx, mode, len(summary_table_data))))
+            story.append(summary_table)
+            story.append(Spacer(1, 8 * mm))
     else:
-        summary_table = Table(summary_table_data, colWidths=col_widths)
-        summary_table.setStyle(TableStyle(build_item_table_style(theme, total_row_idx, mode, len(summary_table_data))))
-        story.append(summary_table)
-        story.append(Spacer(1, 8 * mm))
+        grand_total_placeholder = subtotal + tax if not charges else final_total
 
     if layout == "billed_summary":
         summary_col_width = content_width * 0.46

@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required
 from routes.auth import admin_required
 from routes.maintenance import is_maintenance_mode_on
+from routes.app_update import _load_version_config
 from models import db, MailConfig, CustomField, Company
 from email_utils import send_email
 
@@ -68,6 +69,7 @@ def view_settings():
         custom_fields=custom_fields,
         all_columns=QUOTATION_COLUMNS,
         current_columns=current_columns,
+        version_config=_load_version_config(),
     )
 
 

@@ -355,6 +355,7 @@ class Quotation(db.Model):
     installation_charges = db.Column(db.Float, default=0)
     transportation_charges = db.Column(db.Float, default=0)
     skip_letterhead = db.Column(db.Boolean, default=False)
+    show_totals = db.Column(db.Boolean, default=True)
     recipient = db.Column(db.Text, nullable=True)
     visible_columns = db.Column(db.JSON, nullable=True)
 
@@ -394,6 +395,7 @@ class QuotationAnnexure(db.Model):
     name = db.Column(db.String(200), nullable=False)
     sort_order = db.Column(db.Integer, default=0)
     page_break_before = db.Column(db.Boolean, default=False)
+    show_totals = db.Column(db.Boolean, default=True)
 
     line_items = db.relationship("QuotationLineItem", backref="annexure", cascade="all, delete-orphan")
 

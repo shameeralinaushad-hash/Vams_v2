@@ -9,15 +9,20 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def run_in_background(func, *args, **kwargs):
+def run_in_background(func, *args, _app=None, **kwargs):
     """Run a function in a daemon thread. Fire-and-forget.
 
     Usage:
         run_in_background(generate_quotation_pdf, company, client, quotation, items, path)
+        run_in_background(fn, app=current_app._get_current_object())
     """
     def wrapper():
         try:
-            func(*args, **kwargs)
+            if _app:
+                with _app.app_context():
+                    func(*args, **kwargs)
+            else:
+                func(*args, **kwargs)
         except Exception:
             logger.exception("Background task failed: %s", func.__name__)
 

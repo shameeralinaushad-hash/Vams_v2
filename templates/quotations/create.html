@@ -1261,7 +1261,8 @@
         {
             id: {{ ann.id | tojson }},
             name: {{ ann.name | tojson }},
-            page_break_before: {{ ann.page_break_before | tojson }}
+            page_break_before: {{ ann.page_break_before | tojson }},
+            show_totals: {{ ann.show_totals | tojson if ann.show_totals is not none else 'true' }}
         }{% if not loop.last %},{% endif %}
         {% endfor %}
         {% endif %}
@@ -1785,6 +1786,10 @@
         renderAllSections();
         showToast("Columns reset to defaults");
     }
+
+    /* ── Section Management ── */
+    var sections = [];
+    var sectionIdCounter = 0;
 
     function initCustomColumns() {
         if (Array.isArray(DEFAULT_COL_KEYS) && DEFAULT_COL_KEYS.length) {
@@ -2332,10 +2337,6 @@
     });
     {% endif %}
 
-    /* ── Section Management ── */
-    let sections = [];
-    let sectionIdCounter = 0;
-
     function initSections() {
         if (INITIAL_ANNEXURES && INITIAL_ANNEXURES.length) {
             INITIAL_ANNEXURES.forEach(a => {
@@ -2343,6 +2344,7 @@
                     id: a.id || ++sectionIdCounter,
                     name: a.name || '',
                     page_break_before: a.page_break_before || false,
+                    show_totals: a.show_totals !== false,
                     rowsData: []
                 };
                 sections.push(sec);
@@ -2375,24 +2377,29 @@
                 } else {
                     let mainSec = sections.find(s => s.id === 'main');
                     if (!mainSec) {
-                        mainSec = { id: 'main', name: 'Main Document', page_break_before: false, rowsData: [] };
+                        mainSec = { id: 'main', name: 'Main Document', page_break_before: false, show_totals: true, rowsData: [] };
                         sections.unshift(mainSec);
                     }
                     mainSec.rowsData.push(d);
                 }
             });
         } else if (!sections.length) {
-            sections.push({ id: 'main', name: 'Main Document', page_break_before: false, rowsData: [] });
+            const mainSec = { id: 'main', name: 'Main Document', page_break_before: false, show_totals: true, rowsData: [] };
+            {% if quotation %}
+            mainSec.show_totals = {{ quotation.show_totals | tojson if quotation.show_totals is not none else 'true' }};
+            {% endif %}
+            sections.push(mainSec);
         }
 
         renderSections();
     }
 
-    function addSection(name, pageBreak) {
+    function addSection(name, pageBreak, showTotals) {
         const sec = {
             id: ++sectionIdCounter,
             name: name || '',
             page_break_before: pageBreak || false,
+            show_totals: showTotals !== undefined ? showTotals : true,
             rowsData: []
         };
         sections.push(sec);
@@ -2419,6 +2426,11 @@
     function updateSectionPageBreak(id, val) {
         const sec = sections.find(s => s.id === id);
         if (sec) sec.page_break_before = val;
+    }
+
+    function updateSectionShowTotals(id, val) {
+        const sec = sections.find(s => s.id === id);
+        if (sec) sec.show_totals = val;
     }
 
     function toggleSectionCollapse(id) {
@@ -2476,6 +2488,12 @@
                            onchange="updateSectionPageBreak(${section.id}, this.checked)">
                     <label class="form-check-label small" for="pb_${section.id}">Page break</label>
                 </div>` : ''}
+                <div class="form-check mb-0" onclick="event.stopPropagation()">
+                    <input class="form-check-input" type="checkbox" id="st_${section.id}" 
+                           ${section.show_totals !== false ? 'checked' : ''} 
+                           onchange="updateSectionShowTotals(${section.id}, this.checked)">
+                    <label class="form-check-label small" for="st_${section.id}">Show totals</label>
+                </div>
             </div>
             <div class="d-flex gap-2 align-items-center">
                 <span class="badge bg-light text-muted border small">${(section.rowsData || []).length} items</span>
@@ -2572,7 +2590,27 @@
                 form.appendChild(pbInput);
             }
             pbInput.value = sec.page_break_before ? 'on' : '';
+
+            let stInput = form.querySelector(`input[name="annexure_show_totals"][data-idx="${i}"]`);
+            if (!stInput) {
+                stInput = document.createElement('input');
+                stInput.type = 'hidden';
+                stInput.name = 'annexure_show_totals';
+                stInput.dataset.idx = i;
+                form.appendChild(stInput);
+            }
+            stInput.value = sec.show_totals !== false ? 'on' : '';
         });
+
+        const mainSection = sections.find(s => s.id === 'main');
+        let mainStInput = form.querySelector('input[name="main_show_totals"]');
+        if (!mainStInput) {
+            mainStInput = document.createElement('input');
+            mainStInput.type = 'hidden';
+            mainStInput.name = 'main_show_totals';
+            form.appendChild(mainStInput);
+        }
+        mainStInput.value = (mainSection && mainSection.show_totals !== false) ? 'on' : '';
 
         const annexureIdMap = {};
         annexureSections.forEach((sec, i) => { annexureIdMap[sec.id] = i + 1; });

@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     <meta name="theme-color" content="#eef1f5">
     <link rel="icon" type="svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1366,7 +1365,7 @@
     </style>
     {% block extra_head %}{% endblock %}
 </head>
-<body data-page="{{ page_id }}" data-company-id="{{ active_company_obj.id if active_company_obj else '' }}">
+<body data-page="{{ page_id }}" data-company-id="{{ active_company_obj.id if active_company_obj else '' }}" data-user-id="{{ current_user.id if current_user.is_authenticated else '' }}">
 
 <div class="sidebar" id="sidebar">
     <!-- Clean, Isolated VAMS Hexagon Logo Trigger -->
@@ -1493,9 +1492,6 @@
                     <div class="bd-empty" id="bellLoading"><i class="bi bi-hourglass-split"></i> Loading…</div>
                 </div>
             </div>
-            {% if session.get('desktop_mode') %}
-            <a href="{{ url_for('mobile.home') }}" style="font-size:0.75rem;color:var(--text-secondary);text-decoration:none;white-space:nowrap;">Mobile</a>
-            {% endif %}
             <div class="dropdown">
                 <button class="company-switcher-btn dropdown-toggle" type="button" data-bs-toggle="dropdown">
                     <span class="logo-circle-sm">
@@ -1770,15 +1766,6 @@ function bellClearAll() {
     flashMessages.forEach(function(msg, i) {
         setTimeout(function(){showToast(msg);}, i * 150);
     });
-</script>
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js')
-        .then(reg => console.log('Service Worker registered!', reg))
-        .catch(err => console.error('Service Worker registration failed:', err));
-    });
-  }
 </script>
 {% endif %}
 {% endwith %}
@@ -2217,7 +2204,8 @@ document.addEventListener('keydown', function(e){
 <script>
 (function() {
     var companyId = document.body.getAttribute('data-company-id');
-    if (!companyId) return;
+    var userId = document.body.getAttribute('data-user-id');
+    if (!companyId || !userId) return;
 
     function refreshContent() {
         var currentPath = window.location.pathname;
@@ -2246,7 +2234,7 @@ document.addEventListener('keydown', function(e){
             });
     }
 
-    var evtSource = new EventSource('/api/events?company=' + companyId);
+    var evtSource = new EventSource('/api/events?company=' + companyId + '&user=' + userId);
 
     evtSource.addEventListener('refresh', function(e) {
         refreshContent();

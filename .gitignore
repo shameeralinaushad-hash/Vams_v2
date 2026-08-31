@@ -50,3 +50,7 @@ test_infobox.pdf
 AGENTS.md
 .agents/
 skills-lock.json
+
+# Flutter keystore
+mobile_app/android/key.properties
+mobile_app/android/app/vams-release.jks

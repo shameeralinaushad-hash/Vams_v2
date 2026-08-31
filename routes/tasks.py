@@ -1649,3 +1649,22 @@ def notification_clear_all():
     Notification.query.filter_by(user_id=current_user.id).delete()
     db.session.commit()
     return jsonify({"ok": True})
+
+
+@tasks_bp.route("/toggle/<task_id>", methods=["POST"])
+@login_required
+def toggle_task(task_id):
+    emp = current_user.employee
+    if not emp:
+        return jsonify({"ok": False, "error": "No employee profile"}), 400
+    task = db.session.get(TeamTask, int(task_id))
+    if not task or task.assignee_id != emp.id:
+        return jsonify({"ok": False, "error": "Not found"}), 404
+    if task.status == "done":
+        task.status = "to_do"
+        task.completed_at = None
+    else:
+        task.status = "done"
+        task.completed_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({"ok": True, "status": task.status})

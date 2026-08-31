@@ -233,6 +233,7 @@ def edit_invoice(invoice_id):
 def delete_invoice(invoice_id):
     invoice = Invoice.query.get_or_404(invoice_id)
     order_id = invoice.order_id
+    company_id = invoice.order.company_id
 
     if invoice.payments:
         flash("Cannot delete this invoice — it has payment(s) logged against it. Remove the payments first.")
@@ -258,8 +259,8 @@ def delete_invoice(invoice_id):
     log_action("delete_invoice", "Invoice", invoice_id, f"Deleted invoice {invoice_number}")
 
     flash("Invoice deleted.")
-    emit_company("list_refresh", {"section": "invoices"}, invoice.order.company_id)
-    emit_dashboard_update(invoice.order.company_id)
+    emit_company("list_refresh", {"section": "invoices"}, company_id)
+    emit_dashboard_update(company_id)
     return redirect(url_for("orders.view_order", order_id=order_id))
 
 
@@ -289,7 +290,7 @@ def regenerate_invoice(invoice_id):
             db.session.commit()
 
     from background import run_in_background
-    run_in_background(_generate)
+    run_in_background(_generate, _app=current_app._get_current_object())
 
     flash("Invoice PDF generating in background. It will be ready shortly.")
     return redirect(url_for("orders.view_order", order_id=order.id))

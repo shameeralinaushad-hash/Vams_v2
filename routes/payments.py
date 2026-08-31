@@ -152,6 +152,7 @@ def delete_payment(payment_id):
     payment = Payment.query.get_or_404(payment_id)
     invoice = payment.invoice
     order_id = invoice.order_id
+    company_id = invoice.order.company_id
     invoice_number = invoice.invoice_number
     amount = payment.amount
 
@@ -164,8 +165,8 @@ def delete_payment(payment_id):
                f"Deleted payment of {amount:.2f} against invoice {invoice_number}")
 
     flash(f"Payment of {amount:.2f} removed from invoice {invoice_number}.")
-    emit_company("list_refresh", {"section": "payments"}, invoice.order.company_id)
-    emit_dashboard_update(invoice.order.company_id)
+    emit_company("list_refresh", {"section": "payments"}, company_id)
+    emit_dashboard_update(company_id)
     return redirect(redirect_target)
 
 
