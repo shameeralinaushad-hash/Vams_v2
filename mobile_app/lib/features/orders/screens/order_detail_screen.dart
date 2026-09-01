@@ -366,7 +366,7 @@ Future<void> _launchPdf(String? pdfPath, BuildContext context) async {
   if (pdfPath == null || pdfPath.isEmpty) return;
   final serverUrl = await AppStorage.getServerUrl();
   if (serverUrl == null) return;
-  final fullUrl = '$serverUrl/$pdfPath';
+  final fullUrl = '$serverUrl/static/$pdfPath';
   final uri = Uri.parse(fullUrl);
   if (await canLaunchUrl(uri)) {
     await launchUrl(uri, mode: LaunchMode.externalApplication);

@@ -59,20 +59,22 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.person_outline,
             title: 'Edit Profile',
             subtitle: 'Update your name and email',
-            onTap: () => context.push('/profile/edit'),
+            onTap: () => context.push('/more/profile/edit'),
           ),
           _SettingsTile(
             icon: Icons.lock_outline,
             title: 'Change Password',
             subtitle: 'Update your password',
-            onTap: () => context.push('/profile/change-password'),
+            onTap: () => context.push('/more/profile/change-password'),
           ),
           _SettingsTile(
             icon: Icons.business,
             title: 'Company Details',
             subtitle: 'View and edit company information',
             onTap: () {
-              // Navigate to company detail for user's company
+              if (user?.companyId != null) {
+                context.push('/companies/${user!.companyId}');
+              }
             },
           ),
 
@@ -90,19 +92,19 @@ class SettingsScreen extends ConsumerWidget {
               icon: Icons.people_outline,
               title: 'User Management',
               subtitle: 'Manage user accounts',
-              onTap: () => context.push('/users'),
+              onTap: () => context.push('/more/users'),
             ),
             _SettingsTile(
               icon: Icons.receipt_long,
               title: 'Expense Categories',
               subtitle: 'Manage categories',
-              onTap: () => context.push('/accounts/categories'),
+              onTap: () => context.push('/more/accounts/categories'),
             ),
             _SettingsTile(
               icon: Icons.account_balance_wallet_outlined,
               title: 'Budgets',
               subtitle: 'Manage budget plans',
-              onTap: () => context.push('/accounts/budgets'),
+              onTap: () => context.push('/more/accounts/budgets'),
             ),
           ],
 

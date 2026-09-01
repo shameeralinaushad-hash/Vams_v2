@@ -19,6 +19,7 @@ class _EditTeamTaskScreenState extends ConsumerState<EditTeamTaskScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleCtrl = TextEditingController();
   final _descriptionCtrl = TextEditingController();
+  final _dueDateCtrl = TextEditingController();
   String _status = 'to_do';
   String _priority = 'medium';
   String? _dueDate;
@@ -42,6 +43,7 @@ class _EditTeamTaskScreenState extends ConsumerState<EditTeamTaskScreen> {
         _status = task['status'] ?? 'to_do';
         _priority = task['priority'] ?? 'medium';
         _dueDate = task['due_date'];
+        _dueDateCtrl.text = _dueDate ?? '';
       }
     } on DioException catch (e) {
       if (mounted) {
@@ -58,18 +60,24 @@ class _EditTeamTaskScreenState extends ConsumerState<EditTeamTaskScreen> {
   void dispose() {
     _titleCtrl.dispose();
     _descriptionCtrl.dispose();
+    _dueDateCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _pickDate() async {
+    final initial = (_dueDate != null && _dueDate!.isNotEmpty) ? DateTime.tryParse(_dueDate!) ?? DateTime.now() : DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: _dueDate != null ? DateTime.parse(_dueDate!) : DateTime.now(),
+      initialDate: initial,
       firstDate: DateTime(2020),
       lastDate: DateTime(2030),
     );
     if (picked != null) {
-      setState(() => _dueDate = picked.toIso8601String().split('T').first);
+      final dateStr = picked.toIso8601String().split('T').first;
+      setState(() {
+        _dueDate = dateStr;
+        _dueDateCtrl.text = dateStr;
+      });
     }
   }
 
@@ -165,7 +173,7 @@ class _EditTeamTaskScreenState extends ConsumerState<EditTeamTaskScreen> {
             ),
             const SizedBox(height: 16),
             TextFormField(
-              initialValue: _dueDate ?? '',
+              controller: _dueDateCtrl,
               decoration: InputDecoration(
                 labelText: 'Due Date',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),

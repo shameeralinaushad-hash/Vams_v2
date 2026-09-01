@@ -20,7 +20,7 @@ class _CreateTeamTaskScreenState extends ConsumerState<CreateTeamTaskScreen> {
   final _descCtrl = TextEditingController();
   bool _saving = false;
   int? _selectedAssigneeId;
-  String _selectedPriority = 'Medium';
+  String _selectedPriority = 'medium';
   DateTime? _dueDate;
   List<Map<String, dynamic>> _employees = [];
   bool _loadingEmployees = true;
@@ -141,7 +141,7 @@ class _CreateTeamTaskScreenState extends ConsumerState<CreateTeamTaskScreen> {
             const SizedBox(height: 6),
             DropdownButtonFormField<String>(
               initialValue: _selectedPriority,
-              items: ['Low', 'Medium', 'High'].map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
+              items: ['low', 'medium', 'high'].map((p) => DropdownMenuItem(value: p, child: Text(p[0].toUpperCase() + p.substring(1)))).toList(),
               onChanged: (v) => setState(() => _selectedPriority = v!),
               decoration: const InputDecoration(),
             ),

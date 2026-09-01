@@ -31,8 +31,11 @@ class ProjectDetailScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_outlined),
-            onPressed: () async {
-              // TODO: navigate to edit screen
+            onPressed: () {
+              // TODO: implement edit project screen
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Edit project coming soon')),
+              );
             },
           ),
         ],

@@ -85,6 +85,7 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen> {
         }
       }
     }
+    nameCtrl.dispose();
   }
 
   Future<void> _toggleCategory(Map<String, dynamic> cat) async {

@@ -385,8 +385,10 @@ def api_delete_user(user_id):
 
 @api_auth_bp.route("/api/v1/audit-logs", methods=["GET"])
 @jwt_required()
-@admin_required
 def get_audit_logs():
+    claims = get_jwt()
+    if claims.get("role") != "admin":
+        return jsonify({"success": False, "error": "forbidden", "message": "Admin access required."}), 403
     from models import AuditLog
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 50, type=int)

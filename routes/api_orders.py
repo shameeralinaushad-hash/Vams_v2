@@ -79,6 +79,7 @@ def _serialize_order_detail(order):
             "balance_due": inv.balance_due(),
             "total_paid": inv.total_paid(),
             "is_fully_paid": inv.is_fully_paid(),
+            "pdf_path": inv.pdf_path,
             "payments": payments,
         })
 
