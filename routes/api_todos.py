@@ -117,3 +117,22 @@ def delete_todo(todo_id):
     db.session.delete(todo)
     db.session.commit()
     return jsonify({"success": True, "message": "Todo deleted."})
+
+
+@api_todos_bp.route("/api/v1/todos/<int:todo_id>/toggle", methods=["POST"])
+@jwt_required()
+def toggle_todo(todo_id):
+    user_id = _get_user_id()
+    todo = db.session.get(Todo, todo_id)
+    if not todo or todo.user_id != user_id:
+        return jsonify({"success": False, "error": "not_found", "message": "Todo not found."}), 404
+
+    if todo.status == "done":
+        todo.status = "pending"
+        todo.completed_at = None
+    else:
+        todo.status = "done"
+        todo.completed_at = datetime.utcnow()
+
+    db.session.commit()
+    return jsonify({"success": True, "todo": _serialize_todo(todo)})

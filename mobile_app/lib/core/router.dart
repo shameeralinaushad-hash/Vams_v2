@@ -8,6 +8,8 @@ import '../features/home/screens/home_screen.dart';
 import '../features/orders/screens/orders_list_screen.dart';
 import '../features/orders/screens/order_detail_screen.dart';
 import '../features/orders/screens/create_order_screen.dart';
+import '../features/clients/screens/client_detail_screen.dart';
+import '../features/invoices/screens/invoice_detail_screen.dart';
 import '../features/orders/screens/edit_order_screen.dart';
 import '../features/orders/screens/create_quotation_screen.dart';
 import '../features/orders/screens/create_invoice_screen.dart';
@@ -298,6 +300,20 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) {
               final companyId = int.parse(state.pathParameters['companyId']!);
               return CompanyEditScreen(companyId: companyId);
+            },
+          ),
+          GoRoute(
+            path: '/clients/:clientId',
+            builder: (context, state) {
+              final clientId = int.parse(state.pathParameters['clientId']!);
+              return ClientDetailScreen(clientId: clientId);
+            },
+          ),
+          GoRoute(
+            path: '/invoices/:invoiceId',
+            builder: (context, state) {
+              final invoiceId = int.parse(state.pathParameters['invoiceId']!);
+              return InvoiceDetailScreen(invoiceId: invoiceId);
             },
           ),
           GoRoute(
