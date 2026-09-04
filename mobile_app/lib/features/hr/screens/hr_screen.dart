@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../providers/hr_provider.dart';
 import 'attendance_screen.dart';
+import 'attendance_list_screen.dart';
 import 'payroll_screen.dart';
 
 class HrScreen extends ConsumerWidget {
@@ -12,6 +14,8 @@ class HrScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final employeesAsync = ref.watch(hrEmployeesProvider);
+    final auth = ref.watch(authProvider);
+    final isAdmin = auth is AuthAuthenticated && auth.user.role == 'admin';
 
     return Scaffold(
       appBar: AppBar(title: const Text('HR Management')),
@@ -31,6 +35,26 @@ class HrScreen extends ConsumerWidget {
               MaterialPageRoute(builder: (_) => const _EmployeesListScreen()),
             ),
           ),
+          if (isAdmin) ...[
+            _MenuTile(
+              icon: Icons.table_chart_outlined,
+              title: 'All Attendance',
+              subtitle: 'View monthly attendance grid',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AttendanceListScreen()),
+              ),
+            ),
+            _MenuTile(
+              icon: Icons.qr_code_2,
+              title: 'Attendance QR',
+              subtitle: 'Display QR for scanning',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const _AttendanceQrScreen()),
+              ),
+            ),
+          ],
           _MenuTile(
             icon: Icons.fingerprint,
             title: 'Mark Attendance',
@@ -317,6 +341,88 @@ class _HolidaysScreen extends ConsumerWidget {
                   ),
                 );
               },
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AttendanceQrScreen extends ConsumerWidget {
+  const _AttendanceQrScreen();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final qrAsync = ref.watch(attendanceQrProvider);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Attendance QR')),
+      body: qrAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: VamsTheme.danger),
+              const SizedBox(height: 12),
+              Text('Failed to load QR code', style: TextStyle(color: VamsTheme.textSecondary)),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () => ref.invalidate(attendanceQrProvider),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+        data: (data) {
+          final qrImage = data['qr_image'] as String?;
+          final scanUrl = data['scan_url'] as String?;
+
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.qr_code_2, size: 24, color: VamsTheme.primary),
+                  const SizedBox(height: 8),
+                  const Text('Scan to Mark Attendance', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 24),
+                  if (qrImage != null)
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, 4)),
+                        ],
+                      ),
+                      child: Image.memory(
+                        Uri.parse(qrImage).data!.contentAsBytes(),
+                        width: 220,
+                        height: 220,
+                      ),
+                    )
+                  else
+                    const Icon(Icons.qr_code_2, size: 220, color: VamsTheme.textMuted),
+                  const SizedBox(height: 20),
+                  if (scanUrl != null)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: VamsTheme.background,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        scanUrl,
+                        style: const TextStyle(fontSize: 11, color: VamsTheme.textMuted),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                ],
+              ),
             ),
           );
         },

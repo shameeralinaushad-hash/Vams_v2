@@ -5,7 +5,7 @@ class OrderListItem {
   final String? status;
   final String? inquiryDate;
   final OrderClient? client;
-  final OrderPo? po;
+  final List<OrderPo> purchaseOrders;
   final String? quotationNumber;
 
   OrderListItem({
@@ -15,7 +15,7 @@ class OrderListItem {
     this.status,
     this.inquiryDate,
     this.client,
-    this.po,
+    this.purchaseOrders = const [],
     this.quotationNumber,
   });
 
@@ -27,7 +27,7 @@ class OrderListItem {
       status: json['status'],
       inquiryDate: json['inquiry_date'],
       client: json['client'] != null ? OrderClient.fromJson(json['client']) : null,
-      po: json['po'] != null ? OrderPo.fromJson(json['po']) : null,
+      purchaseOrders: (json['purchase_orders'] as List? ?? []).map((p) => OrderPo.fromJson(p)).toList(),
       quotationNumber: json['quotation_number'],
     );
   }
@@ -44,13 +44,15 @@ class OrderClient {
 }
 
 class OrderPo {
+  final int? id;
   final String? poNumber;
   final String? status;
   final double? totalAmount;
 
-  OrderPo({this.poNumber, this.status, this.totalAmount});
+  OrderPo({this.id, this.poNumber, this.status, this.totalAmount});
   factory OrderPo.fromJson(Map<String, dynamic> json) {
     return OrderPo(
+      id: json['id'],
       poNumber: json['po_number'],
       status: json['status'],
       totalAmount: (json['total_amount'] as num?)?.toDouble(),
@@ -67,7 +69,7 @@ class OrderDetail {
   final String? notes;
   final OrderClient? client;
   final OrderCompany? company;
-  final PurchaseOrderInfo? purchaseOrder;
+  final List<PurchaseOrderInfo> purchaseOrders;
   final List<QuotationInfo> quotations;
   final List<InvoiceInfo> invoices;
   final List<ChallanInfo> deliveryChallans;
@@ -81,7 +83,7 @@ class OrderDetail {
     this.notes,
     this.client,
     this.company,
-    this.purchaseOrder,
+    this.purchaseOrders = const [],
     this.quotations = const [],
     this.invoices = const [],
     this.deliveryChallans = const [],
@@ -97,7 +99,7 @@ class OrderDetail {
       notes: json['notes'],
       client: json['client'] != null ? OrderClient.fromJson(json['client']) : null,
       company: json['company'] != null ? OrderCompany.fromJson(json['company']) : null,
-      purchaseOrder: json['purchase_order'] != null ? PurchaseOrderInfo.fromJson(json['purchase_order']) : null,
+      purchaseOrders: (json['purchase_orders'] as List? ?? []).map((p) => PurchaseOrderInfo.fromJson(p)).toList(),
       quotations: (json['quotations'] as List? ?? []).map((q) => QuotationInfo.fromJson(q)).toList(),
       invoices: (json['invoices'] as List? ?? []).map((i) => InvoiceInfo.fromJson(i)).toList(),
       deliveryChallans: (json['delivery_challans'] as List? ?? []).map((c) => ChallanInfo.fromJson(c)).toList(),
@@ -206,6 +208,8 @@ class InvoiceInfo {
   final double? totalPaid;
   final bool? isFullyPaid;
   final String? pdfPath;
+  final int? purchaseOrderId;
+  final String? purchaseOrderNumber;
   final List<PaymentInfo> payments;
 
   InvoiceInfo({
@@ -218,6 +222,8 @@ class InvoiceInfo {
     this.totalPaid,
     this.isFullyPaid,
     this.pdfPath,
+    this.purchaseOrderId,
+    this.purchaseOrderNumber,
     this.payments = const [],
   });
 
@@ -232,6 +238,8 @@ class InvoiceInfo {
       totalPaid: (json['total_paid'] as num?)?.toDouble(),
       isFullyPaid: json['is_fully_paid'],
       pdfPath: json['pdf_path'],
+      purchaseOrderId: json['purchase_order_id'],
+      purchaseOrderNumber: json['purchase_order_number'],
       payments: (json['payments'] as List? ?? []).map((p) => PaymentInfo.fromJson(p)).toList(),
     );
   }
@@ -260,8 +268,19 @@ class ChallanInfo {
   final String? dispatchDate;
   final String? transportMode;
   final String? pdfPath;
+  final int? purchaseOrderId;
+  final String? purchaseOrderNumber;
 
-  ChallanInfo({required this.id, this.challanNumber, this.dispatchDate, this.transportMode, this.pdfPath});
+  ChallanInfo({
+    required this.id,
+    this.challanNumber,
+    this.dispatchDate,
+    this.transportMode,
+    this.pdfPath,
+    this.purchaseOrderId,
+    this.purchaseOrderNumber,
+  });
+
   factory ChallanInfo.fromJson(Map<String, dynamic> json) {
     return ChallanInfo(
       id: json['id'] ?? 0,
@@ -269,6 +288,8 @@ class ChallanInfo {
       dispatchDate: json['dispatch_date'],
       transportMode: json['transport_mode'],
       pdfPath: json['pdf_path'],
+      purchaseOrderId: json['purchase_order_id'],
+      purchaseOrderNumber: json['purchase_order_number'],
     );
   }
 }

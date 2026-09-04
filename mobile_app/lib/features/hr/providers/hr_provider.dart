@@ -45,3 +45,26 @@ final holidaysProvider = FutureProvider<List<Holiday>>((ref) async {
   }
   return [];
 });
+
+final attendanceMonthProvider = StateProvider<int>((ref) => DateTime.now().month);
+final attendanceYearProvider = StateProvider<int>((ref) => DateTime.now().year);
+
+final attendanceListProvider = FutureProvider<AttendanceListData>((ref) async {
+  final month = ref.watch(attendanceMonthProvider);
+  final year = ref.watch(attendanceYearProvider);
+  final dio = ref.watch(apiClientProvider);
+  final response = await dio.get('/api/v1/hr/attendance/list', queryParameters: {'month': month, 'year': year});
+  if (response.data['success'] == true) {
+    return AttendanceListData.fromJson(response.data);
+  }
+  throw Exception('Failed to load attendance');
+});
+
+final attendanceQrProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final dio = ref.watch(apiClientProvider);
+  final response = await dio.get('/api/v1/hr/attendance/qr');
+  if (response.data['success'] == true) {
+    return response.data;
+  }
+  throw Exception('Failed to load QR code');
+});

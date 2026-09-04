@@ -31,14 +31,15 @@ def get_image_dimensions(image_path, max_width_mm, max_height_mm):
 
 
 class VisionHeading(Flowable):
-    def __init__(self, title_text, width, theme):
+    def __init__(self, title_text, width, theme, text_color=None, show_lines=True):
         super().__init__()
         self.title_text = title_text.strip()
         self.width = width
         self.font_name = theme.get("font_bold", "Helvetica-Bold")
         self.font_size = 20
         self.height = 28
-        self.fill_color = colors.HexColor("#FFD700")
+        self.fill_color = text_color if text_color else colors.HexColor("#FFD700")
+        self.show_lines = show_lines
 
     def wrap(self, availWidth, availHeight):
         return self.width, self.height
@@ -53,14 +54,15 @@ class VisionHeading(Flowable):
         text_y = 6
         line_y = text_y + (self.font_size * 0.35)
         gap = 14
-        left_line_end = text_x - gap
-        right_line_start = text_x + text_w + gap
-        canv.setStrokeColor(colors.black)
-        canv.setLineWidth(1.5)
-        if left_line_end > 0:
-            canv.line(0, line_y, left_line_end, line_y)
-        if right_line_start < self.width:
-            canv.line(right_line_start, line_y, self.width, line_y)
+        if self.show_lines:
+            left_line_end = text_x - gap
+            right_line_start = text_x + text_w + gap
+            canv.setStrokeColor(colors.black)
+            canv.setLineWidth(1.5)
+            if left_line_end > 0:
+                canv.line(0, line_y, left_line_end, line_y)
+            if right_line_start < self.width:
+                canv.line(right_line_start, line_y, self.width, line_y)
         canv.setFillColor(self.fill_color)
         canv.drawString(text_x, text_y, self.title_text)
         canv.restoreState()

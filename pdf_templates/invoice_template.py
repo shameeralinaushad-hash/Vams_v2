@@ -615,18 +615,22 @@ def generate_invoice_pdf(company, client, invoice, line_items, output_path, skip
 
     # --- Standard layout ---
     style_normal = ParagraphStyle("normal", fontName=theme["font_body"], fontSize=8.5, leading=10)
+    style_normal_c = ParagraphStyle("normal_c", parent=style_normal, alignment=TA_CENTER)
     style_bold = ParagraphStyle("bold", fontName=theme["font_bold"], fontSize=10)
     style_bold_right = ParagraphStyle("bold_right", fontName=theme["font_bold"], fontSize=10, alignment=TA_RIGHT)
     style_client = ParagraphStyle("client", fontName=theme["font_body"], fontSize=9.5, leading=13)
     style_ref = ParagraphStyle("ref", fontName=theme["font_bold"], fontSize=10, alignment=TA_RIGHT)
 
     po_number = ""
-    if invoice.order and invoice.order.purchase_order:
-        po_number = invoice.order.purchase_order.po_number or ""
+    linked_po = invoice.purchase_order if invoice.purchase_order_id else (invoice.order.purchase_order if invoice.order else None)
+    if linked_po:
+        po_number = linked_po.po_number or ""
 
     if is_vision:
-        story.append(VisionHeading("INVOICE", content_width, theme))
-        story.append(Spacer(1, 6 * mm))
+        inv_title_style = ParagraphStyle("inv_title", fontName=theme["font_bold"], fontSize=14,
+                                         alignment=TA_CENTER, textColor=theme["accent_color"])
+        story.append(Paragraph(sanitize_text(get_doc_title(theme, "invoice")).upper(), inv_title_style))
+        story.append(Spacer(1, 2 * mm))
 
     header_row = Table(
         [[Paragraph(f"Invoice # {sanitize_text(invoice.invoice_number)}", style_bold),
@@ -688,7 +692,7 @@ def generate_invoice_pdf(company, client, invoice, line_items, output_path, skip
         ("Sr.", 0.05, "CENTER", lambda idx, item, lt, g: str(idx)),
     ]
     if has_part_no:
-        columns.append(("Part No/Code", 0.11, "CENTER", lambda idx, item, lt, g: sanitize_text(item.part_no or "")))
+        columns.append(("Part No/Code", 0.11, "CENTER", lambda idx, item, lt, g: Paragraph(sanitize_text(item.part_no or ""), style_normal_c)))
     columns += [
         ("Items", 0.30, "LEFT", lambda idx, item, lt, g: Paragraph(sanitize_text(item.description), style_normal)),
         ("Unit", 0.06, "CENTER", lambda idx, item, lt, g: sanitize_text(getattr(item, "unit", None) or "Nos")),

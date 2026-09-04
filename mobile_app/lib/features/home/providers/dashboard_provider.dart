@@ -36,7 +36,7 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
 
       if (response.data['success'] == true) {
         final data = DashboardData.fromJson(response.data);
-        debugPrint('[DASHBOARD] loaded: ${data.recentOrders.length} orders, stats OK');
+        debugPrint('[DASHBOARD] loaded: ${data.recentOrders.length} orders, ${data.importantActions.length} actions, ${data.todos.length} todos');
         state = state.copyWith(data: data, isLoading: false);
       } else {
         debugPrint('[DASHBOARD] failed: ${response.data['message']}');
@@ -63,6 +63,20 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
         isLoading: false,
         error: msg,
       );
+    }
+  }
+
+  Future<void> dismissAction(String source, {int? sourceId, double snoozeHours = 24}) async {
+    try {
+      await _dio.post('/api/v1/dashboard/actions/dismiss', data: {
+        'source': source,
+        'source_id': sourceId,
+        'snooze_hours': snoozeHours,
+      });
+      // Reload dashboard to reflect dismissed action
+      await loadDashboard();
+    } catch (e) {
+      debugPrint('[DASHBOARD] dismissAction error: $e');
     }
   }
 }

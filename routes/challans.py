@@ -2,7 +2,7 @@ import os
 from datetime import date, datetime
 from flask import Blueprint, render_template, request, redirect, url_for, current_app, flash, session
 from werkzeug.utils import secure_filename
-from models import db, DeliveryChallan, DeliveryChallanLineItem, CatalogItem, Order, ClientDocSequence
+from models import db, DeliveryChallan, DeliveryChallanLineItem, CatalogItem, Order, PurchaseOrder, ClientDocSequence
 from utils import get_order_folder
 from pdf_templates.challan_template import generate_challan_pdf
 from audit import log_action
@@ -24,6 +24,7 @@ def get_or_create_catalog_item(description):
 
 def _parse_challan_form(order):
     descriptions = request.form.getlist("item_description")
+    part_nos = request.form.getlist("item_part_no")
     qtys = request.form.getlist("item_qty")
     units = request.form.getlist("item_unit")
 
@@ -38,7 +39,7 @@ def _parse_challan_form(order):
     skip_letterhead = request.form.get("skip_letterhead") == "on"
 
     return {
-        "descriptions": descriptions, "qtys": qtys, "units": units,
+        "descriptions": descriptions, "part_nos": part_nos, "qtys": qtys, "units": units,
         "challan_number": challan_number, "recipient": recipient,
         "dispatch_date": dispatch_date_val, "transport_mode": transport_mode,
         "vehicle_number": vehicle_number, "place": place,
@@ -48,7 +49,7 @@ def _parse_challan_form(order):
 
 def _build_challan_line_items(challan, data):
     line_items = []
-    for desc, qty, unit in zip(data["descriptions"], data["qtys"], data["units"]):
+    for desc, part_no, qty, unit in zip(data["descriptions"], data["part_nos"], data["qtys"], data["units"]):
         if not desc.strip():
             continue
         catalog_item = get_or_create_catalog_item(desc)
@@ -56,6 +57,7 @@ def _build_challan_line_items(challan, data):
             challan_id=challan.id,
             catalog_item_id=catalog_item.id,
             description=desc.strip(),
+            part_no=part_no.strip() if part_no else "",
             unit=unit.strip(),
             qty=float(qty or 0),
         )
@@ -126,6 +128,7 @@ def create_challan(order_id):
             vehicle_number=data["vehicle_number"],
             place=data["place"],
             skip_letterhead=data["skip_letterhead"],
+            purchase_order_id=int(request.form.get("purchase_order_id")) if request.form.get("purchase_order_id") else None,
             is_current=True,
             pdf_version=1,
         )
@@ -145,8 +148,18 @@ def create_challan(order_id):
 
         return redirect(url_for("orders.view_order", order_id=order.id))
 
-    if order.invoice:
-        prefill_items = order.invoice.line_items
+    po = order.purchase_order
+    selected_po_id = request.args.get("po_id", type=int)
+    if selected_po_id:
+        for p in order.purchase_orders:
+            if p.id == selected_po_id:
+                po = p
+                break
+
+    if po and po.line_items:
+        prefill_items = po.line_items
+    elif order.commercial_quotation:
+        prefill_items = order.commercial_quotation.line_items
     elif order.commercial_quotation:
         prefill_items = order.commercial_quotation.line_items
     else:
@@ -154,8 +167,8 @@ def create_challan(order_id):
     raw = seq.peek_next_raw_number() if seq else order.id
     suggested_number = build_challan_number(order.company, order.client, raw)
     return render_template(
-        "challans/create.html", order=order, prefill_items=prefill_items,
-        suggested_number=suggested_number, today=date.today().isoformat()
+        "challans/create.html", order=order, selected_po_id=selected_po_id,
+        prefill_items=prefill_items, suggested_number=suggested_number, today=date.today().isoformat()
     )
 
 
@@ -174,6 +187,7 @@ def edit_challan(challan_id):
         challan.vehicle_number = data["vehicle_number"]
         challan.place = data["place"]
         challan.skip_letterhead = data["skip_letterhead"]
+        challan.purchase_order_id = int(request.form.get("purchase_order_id")) if request.form.get("purchase_order_id") else None
         challan.pdf_version = (challan.pdf_version or 1) + 1
 
         for li in list(challan.line_items):

@@ -1,5 +1,5 @@
 import os
-from datetime import timedelta
+from datetime import timedelta, date, datetime
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import (
     JWTManager, create_access_token, create_refresh_token,
@@ -406,6 +406,150 @@ def get_audit_logs():
             "created_at": log.created_at.isoformat() if log.created_at else None,
         })
     return jsonify({"success": True, "logs": logs, "total": pagination.total})
+
+
+@api_auth_bp.route("/api/v1/auth/profile/dashboard", methods=["GET"])
+@jwt_required()
+def api_profile_dashboard():
+    identity = get_jwt_identity()
+    user = db.session.get(User, int(identity))
+    if not user:
+        return jsonify({"success": False, "error": "not_found", "message": "User not found."}), 404
+
+    claims = get_jwt()
+    company_id = claims.get("company_id")
+
+    from models import Employee, AttendanceRecord, TeamTask, Todo, Notification, Holiday, PayrollRecord
+    from sqlalchemy import func
+    import calendar
+
+    employee = None
+    if company_id:
+        employee = Employee.query.filter_by(user_id=user.id, company_id=company_id).first()
+
+    today = date.today()
+    year = today.year
+    month = today.month
+
+    heatmap = {}
+    monthly_pct = [0.0] * 12
+    attn_pct = 0.0
+    leave_stats = None
+    payroll_history = []
+    task_pct = 0.0
+    task_done_this_month = 0
+    task_rolling_avg = 0.0
+    efficiency = 0.0
+
+    if employee:
+        records = AttendanceRecord.query.filter(
+            AttendanceRecord.employee_id == employee.id,
+            AttendanceRecord.date >= date(year, 1, 1),
+            AttendanceRecord.date <= date(year, 12, 31),
+        ).all()
+        for r in records:
+            heatmap[r.date.isoformat()] = r.status
+
+        for m in range(1, 13):
+            num_days = calendar.monthrange(year, m)[1]
+            start = date(year, m, 1)
+            end = date(year, m, num_days)
+            month_records = [r for r in records if start <= r.date <= end]
+            present_count = sum(1 for r in month_records if r.status == "present")
+            total = len(month_records)
+            monthly_pct[m - 1] = round(present_count / total * 100, 1) if total > 0 else 0
+
+        current_month_records = [r for r in records if r.date.month == month]
+        present_this_month = sum(1 for r in current_month_records if r.status == "present")
+        total_this_month = len(current_month_records)
+        attn_pct = round(present_this_month / total_this_month * 100, 1) if total_this_month > 0 else 0
+
+        leave_stats = employee.get_paid_leave_stats() if hasattr(employee, 'get_paid_leave_stats') else None
+
+        payroll_history = PayrollRecord.query.filter_by(employee_id=employee.id).order_by(
+            PayrollRecord.year.desc(), PayrollRecord.month.desc()
+        ).limit(5).all()
+
+    done_this_month = 0
+    if hasattr(TeamTask, 'completed_at'):
+        done_this_month = TeamTask.query.filter(
+            TeamTask.assigned_by == user.id,
+            TeamTask.status == "done",
+            func.extract("month", TeamTask.completed_at) == month,
+            func.extract("year", TeamTask.completed_at) == year,
+        ).count()
+
+    task_done_this_month = done_this_month
+
+    rolling_total = 0
+    for m_offset in range(1, 4):
+        m = month - m_offset
+        y = year
+        if m <= 0:
+            m += 12
+            y -= 1
+        count = 0
+        if hasattr(TeamTask, 'completed_at'):
+            count = TeamTask.query.filter(
+                TeamTask.assigned_by == user.id,
+                TeamTask.status == "done",
+                func.extract("month", TeamTask.completed_at) == m,
+                func.extract("year", TeamTask.completed_at) == y,
+            ).count()
+        rolling_total += count
+    task_rolling_avg = round(rolling_total / 3, 1)
+    task_pct = round(done_this_month / task_rolling_avg * 100, 1) if task_rolling_avg > 0 else (100 if done_this_month > 0 else 0)
+    task_pct = min(task_pct, 100.0)
+
+    efficiency = round(attn_pct * 0.6 + task_pct * 0.4, 1)
+
+    tasks = Todo.query.filter_by(assignee_id=user.id).order_by(Todo.due_date.asc().nullslast()).limit(20).all()
+
+    upcoming_holidays = Holiday.query.filter(
+        (Holiday.company_id == company_id) | (Holiday.company_id.is_(None)),
+        Holiday.date >= today,
+    ).order_by(Holiday.date.asc()).limit(5).all()
+
+    notifications = Notification.query.filter_by(user_id=user.id, is_read=False).order_by(
+        Notification.created_at.desc()
+    ).limit(10).all()
+
+    return jsonify({
+        "success": True,
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+        },
+        "employee": {
+            "id": employee.id,
+            "name": employee.name,
+            "department": employee.department,
+            "designation": employee.designation,
+            "employee_code": employee.employee_code,
+            "date_joined": employee.date_joined.isoformat() if employee.date_joined else None,
+        } if employee else None,
+        "efficiency": efficiency,
+        "attn_pct": attn_pct,
+        "task_pct": task_pct,
+        "task_done_this_month": task_done_this_month,
+        "task_rolling_avg": task_rolling_avg,
+        "heatmap": heatmap,
+        "monthly_pct": monthly_pct,
+        "leave_stats": leave_stats,
+        "tasks": [{"id": t.id, "text": t.text, "is_done": t.is_done, "due_date": t.due_date.isoformat() if t.due_date else None} for t in tasks],
+        "payroll_history": [{
+            "id": p.id,
+            "month": p.month,
+            "year": p.year,
+            "base_salary": p.base_salary,
+            "final_salary": p.final_salary,
+            "status": p.status,
+        } for p in payroll_history],
+        "upcoming_holidays": [{"id": h.id, "name": h.name, "date": h.date.isoformat()} for h in upcoming_holidays],
+        "notifications": [{"id": n.id, "message": n.message, "link": n.link if hasattr(n, 'link') else None, "created_at": n.created_at.isoformat() if n.created_at else None} for n in notifications],
+    })
 
 
 @api_auth_bp.errorhandler(422)

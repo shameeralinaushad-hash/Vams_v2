@@ -11,6 +11,8 @@ class AppStorage {
   static const _keyUserName = 'user_name';
   static const _keyUserEmail = 'user_email';
   static const _keyUserRole = 'user_role';
+  static const _keyBiometricEnabled = 'biometric_enabled';
+  static const _keyBiometricRefreshToken = 'biometric_refresh_token';
 
   static Future<String?> getServerUrl() => _storage.read(key: _keyServerUrl);
   static Future<void> setServerUrl(String url) => _storage.write(key: _keyServerUrl, value: url);
@@ -39,6 +41,17 @@ class AppStorage {
 
   static Future<String?> getUserRole() => _storage.read(key: _keyUserRole);
   static Future<void> setUserRole(String role) => _storage.write(key: _keyUserRole, value: role);
+
+  static Future<bool> getBiometricEnabled() async {
+    final val = await _storage.read(key: _keyBiometricEnabled);
+    return val == 'true';
+  }
+
+  static Future<void> setBiometricEnabled(bool enabled) =>
+      _storage.write(key: _keyBiometricEnabled, value: enabled.toString());
+
+  static Future<String?> getBiometricRefreshToken() => _storage.read(key: _keyBiometricRefreshToken);
+  static Future<void> setBiometricRefreshToken(String token) => _storage.write(key: _keyBiometricRefreshToken, value: token);
 
   static Future<bool> hasServerUrl() async {
     final url = await _storage.read(key: _keyServerUrl);

@@ -8,6 +8,11 @@ import threading
 import tempfile
 import pdfplumber
 import openpyxl
+try:
+    import xlrd
+    XLRD_AVAILABLE = True
+except ImportError:
+    XLRD_AVAILABLE = False
 from PIL import Image
 import pytesseract
 import docx
@@ -26,7 +31,8 @@ try:
 except ImportError:
     GROQ_AVAILABLE = False
 
-import time  # NEW — used for pacing sequential Groq chunk calls
+import hashlib
+import time
 
 # Try importing Gemini SDK.
 # NOTE: `google-generativeai` (the old `import google.generativeai as genai`
@@ -39,8 +45,21 @@ try:
     from google import genai
     from google.genai import types as genai_types
     GEMINI_AVAILABLE = True
+    _gemini_client = None
+    _gemini_client_lock = threading.Lock()
+    def _get_gemini_client():
+        global _gemini_client
+        if _gemini_client is None:
+            api_key = os.environ.get("GEMINI_API_KEY")
+            if api_key:
+                with _gemini_client_lock:
+                    if _gemini_client is None:
+                        _gemini_client = genai.Client(api_key=api_key)
+        return _gemini_client
 except ImportError:
     GEMINI_AVAILABLE = False
+    _gemini_client = None
+    _get_gemini_client = None
 
 # Try importing gmft (table extraction toolkit built on Microsoft's
 # Table Transformer) — heavier dependency, optional. Falls back to the
@@ -75,7 +94,7 @@ if sys.platform.startswith("win"):
 # call) avoids re-compiling the same pattern for every row/line, which
 # matters a lot on large multi-page tenders (50-100+ pages of text).
 # =========================================================================
-MAX_ITEMS = 100
+MAX_ITEMS = 500
 # Serializes extraction end-to-end (one document at a time). This box has
 # 4GB RAM and 4 old cores - Tesseract/pdfplumber/PyMuPDF all spike memory
 # and CPU per page, and running two documents through them concurrently
@@ -101,8 +120,8 @@ _TESS_CONFIG_SPARSE = "--oem 1 --psm 11"
 _TESS_CONFIG_GENERAL = "--oem 1 --psm 3"
 _NUMBER_RE = re.compile(r"(\d+(?:,\d{3})*(?:\.\d+)?)")
 _LINE_NUMBERS_RE = re.compile(r"\b\d+(?:,\d{3})*(?:\.\d+)?\b")
-_UNIT_RE = re.compile(r"\b(nos|pcs|set|sets|kg|m|mtr|box|pack|pkt|ea|each|ream|roll)\b", re.IGNORECASE)
-_UNIT_STRIP_RE = re.compile(r"\b(nos|pcs|set|sets|kg|m|mtr|box|pack|pkt|ea|each|ream|roll)\b.*$", re.IGNORECASE)
+_UNIT_RE = re.compile(r"\b(nos|pcs|set|sets|kg|kgs|m|mtr|mt|box|pack|pkt|ea|each|ream|roll|ft|btl|can|ltr|l|gm|g|ton|mt|cu|sq|pair|doz|bag|drum|bdle|roll|roll|unit|a/u|au)\b", re.IGNORECASE)
+_UNIT_STRIP_RE = re.compile(r"\b(nos|pcs|set|sets|kg|kgs|m|mtr|mt|box|pack|pkt|ea|each|ream|roll|ft|btl|can|ltr|l|gm|g|ton|mt|cu|sq|pair|doz|bag|drum|bdle|roll|roll|unit|a/u|au)\b.*$", re.IGNORECASE)
 _NUMBER_STRIP_RE = re.compile(r"[\d,]+(?:\.\d+)?.*$")
 _PURE_NUMBER_RE = re.compile(r"^\d+(\.\d+)?$")
 _PURE_SNO_RE = re.compile(r"^(s|sl|sr)?\.?\s*no\.?\s*\d+$", re.IGNORECASE)
@@ -191,7 +210,7 @@ def extract_items_from_file(
         items = _extract_from_docx(file_stream)
     # Excel File Processing
     elif ext in excel_extensions:
-        items = _extract_from_excel(file_stream)
+        items = _extract_from_excel(file_stream, include_photos=include_photos, diagnostics=diagnostics)
     # Image OCR Processing
     elif ext in image_extensions:
         items = _extract_from_image(file_stream, diagnostics=diagnostics)
@@ -207,12 +226,6 @@ def extract_items_from_file(
                 all_tables = []
                 for page in pdf.pages:
                     all_tables.extend(_collapse_blank_columns(t) for t in page.extract_tables() if t)
-                    # Once we already have plenty of raw table rows there is
-                    # no benefit in continuing to lay out and scan the rest
-                    # of a huge document (tender packets can run 50-100+
-                    # pages of legal boilerplate after the item schedule).
-                    if sum(len(t) for t in all_tables) >= MAX_ITEMS * 4:
-                        break
                 doc_type = _classify_tables(all_tables)
                 if doc_type == "tender_dual_table":
                     items = _extract_dual_table_tender(all_tables)
@@ -238,7 +251,7 @@ def extract_items_from_file(
                         last_col_count = None
                         for table in all_tables:
                             cols = len(table[0]) if table else 0
-                            if combined_grid and cols != last_col_count:
+                            if combined_grid and abs(cols - last_col_count) > 1:
                                 items.extend(_parse_table(combined_grid))
                                 combined_grid = []
                                 if len(items) >= MAX_ITEMS:
@@ -263,7 +276,7 @@ def extract_items_from_file(
                     # OCR instead, then run it through the SAME parsers
                     # used for real tables so nothing downstream needs to
                     # know the source was a scan.
-                    if not items and len(combined_text.strip()) < 20 and FITZ_AVAILABLE:
+                    if not items and len(combined_text.strip()) < 100 and FITZ_AVAILABLE:
                         diagnostics["warnings"].append(
                             "No extractable text layer found - treating this PDF as a scan "
                             "and reconstructing tables from OCR instead."
@@ -464,7 +477,12 @@ def _extract_with_gemini(file_stream, filename=""):
     last_exc = None
     for attempt in range(_MAX_RETRIES + 1):
         try:
-            client = genai.Client(api_key=api_key)
+            client = _get_gemini_client()
+            if client is None:
+                msg = "Failed to create Gemini client — check GEMINI_API_KEY."
+                _last_extraction_error = msg
+                print(f"[Gemini Error]: {msg}")
+                return []
             # gemini-2.5-flash is deprecated for new users as of 2026 (returns
             # a 404). gemini-3.6-flash is the current GA workhorse model.
             model_name = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
@@ -479,6 +497,61 @@ def _extract_with_gemini(file_stream, filename=""):
                     "jpg": "image/jpeg", "jpeg": "image/jpeg",
                     "webp": "image/webp", "bmp": "image/bmp",
                 }.get(ext, "application/pdf")
+
+                # For large PDFs (>20 pages), chunk into 15-page segments
+                # to avoid hitting API context limits
+                all_items = []
+                if ext == "pdf" and FITZ_AVAILABLE:
+                    import io
+                    fitz_doc = fitz.open(stream=file_bytes, filetype="pdf")
+                    total_pages = len(fitz_doc)
+                    fitz_doc.close()
+                    if total_pages > 20:
+                        chunk_size = 15
+                        for start in range(0, total_pages, chunk_size):
+                            end = min(start + chunk_size, total_pages)
+                            import PyPDF2
+                            reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+                            writer = PyPDF2.PdfWriter()
+                            for pg in range(start, end):
+                                writer.add_page(reader.pages[pg])
+                            chunk_buf = io.BytesIO()
+                            writer.write(chunk_buf)
+                            chunk_bytes = chunk_buf.getvalue()
+                            contents = [
+                                genai_types.Part.from_bytes(data=chunk_bytes, mime_type=mime),
+                                _AI_SYSTEM_PROMPT,
+                            ]
+                            try:
+                                response = client.models.generate_content(
+                                    model=model_name,
+                                    contents=contents,
+                                    config=genai_types.GenerateContentConfig(
+                                        temperature=0.1,
+                                        response_mime_type="application/json",
+                                    ),
+                                )
+                                raw_json = response.text.strip()
+                                if raw_json.startswith("```"):
+                                    parts_split = raw_json.split("```")
+                                    raw_json = parts_split[1].strip() if len(parts_split) >= 2 else raw_json
+                                    if raw_json.startswith("json"):
+                                        raw_json = raw_json[4:].strip()
+                                try:
+                                    data = json.loads(raw_json)
+                                except json.JSONDecodeError:
+                                    match = re.search(r"\{.*\}", raw_json, re.DOTALL)
+                                    if not match:
+                                        continue
+                                    data = json.loads(match.group(0))
+                                all_items.extend(data.get("items", []))
+                            except Exception as e:
+                                print(f"[Gemini]: chunk {start+1}-{end} failed: {e}")
+                                continue
+                            if end < total_pages:
+                                time.sleep(1)
+                        return _format_and_dedupe_items(all_items)
+
                 contents = [
                     genai_types.Part.from_bytes(data=file_bytes, mime_type=mime),
                     _AI_SYSTEM_PROMPT,
@@ -535,25 +608,34 @@ def _extract_with_gemini(file_stream, filename=""):
 # =========================================================================
 
 def _call_groq_json(client, model_name, content_payload):
-    try:
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[{"role": "user", "content": content_payload}],
-            response_format={"type": "json_object"},
-            temperature=0.1,
-            max_tokens=4096,
-        )
-    except Exception as e:
-        err_str = str(e)
-        if "rate_limit_exceeded" in err_str or "413" in err_str or "tokens_per_minute" in err_str.lower():
-            raise  # caller already chunked — retrying identically would fail identically
-        print(f"[Groq Extraction Warning]: JSON mode request failed ({e}); retrying without response_format...")
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[{"role": "user", "content": content_payload}],
-            temperature=0.1,
-            max_tokens=4096,
-        )
+    _MAX_API_RETRIES = 2
+    for attempt in range(_MAX_API_RETRIES + 1):
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": content_payload}],
+                response_format={"type": "json_object"},
+                temperature=0.1,
+                max_tokens=4096,
+            )
+            break
+        except Exception as e:
+            err_str = str(e)
+            if any(code in err_str for code in ["429", "500", "503", "rate_limit_exceeded", "tokens_per_minute"]):
+                if attempt < _MAX_API_RETRIES:
+                    wait = 2 ** (attempt + 1)
+                    print(f"[Groq]: Rate/server error (attempt {attempt+1}/{_MAX_API_RETRIES+1}): {e}. Retrying in {wait}s...")
+                    time.sleep(wait)
+                    continue
+                raise
+            print(f"[Groq Extraction Warning]: JSON mode request failed ({e}); retrying without response_format...")
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": content_payload}],
+                temperature=0.1,
+                max_tokens=4096,
+            )
+            break
 
     raw_json = response.choices[0].message.content.strip()
     if raw_json.startswith("```"):
@@ -624,7 +706,7 @@ def _extract_with_groq(file_stream, filename=""):
 
         # No text layer at all — genuine scan, fall back to a SMALL vision request
         if ext in {"pdf", "png", "jpg", "jpeg", "webp", "bmp"}:
-            images_b64 = _file_stream_to_base64_images(file_stream, ext, max_pages=1, dpi=100)
+            images_b64 = _file_stream_to_base64_images(file_stream, ext, max_pages=3, dpi=250)
             all_raw_items = []
             for i, img_url in enumerate(images_b64):
                 content_payload = [
@@ -690,7 +772,7 @@ def _file_stream_to_base64_images(file_stream, ext):
 
 
 def _extract_text_content_for_llm(file_stream, ext):
-    """Converts Word (.docx) or Excel (.xlsx) files to plain text."""
+    """Converts Word (.docx) or Excel (.xlsx/.xls) files to plain text."""
     file_stream.seek(0)
     text_content = []
     if ext in {"docx", "doc"}:
@@ -707,12 +789,35 @@ def _extract_text_content_for_llm(file_stream, ext):
             print(f"[Text Read Error docx]: {e}")
     elif ext in {"xlsx", "xls"}:
         try:
-            wb = openpyxl.load_workbook(file_stream, data_only=True)
-            sheet = wb.active
-            for row in sheet.iter_rows(values_only=True):
-                row_vals = [str(c).strip() for c in row if c is not None]
-                if row_vals:
-                    text_content.append(" | ".join(row_vals))
+            file_stream.seek(0)
+            file_bytes = file_stream.read()
+            # Check if it's an older .xls format (OLE2)
+            if ext == 'xls' and file_bytes[:8] == b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1':
+                if not XLRD_AVAILABLE:
+                    raise ImportError("xlrd is required to extract .xls files. Please install it: pip install xlrd")
+                file_stream = io.BytesIO(file_bytes)
+                workbook = xlrd.open_workbook(fileobj=file_stream)
+                for sheet_name in workbook.sheet_names():
+                    sheet = workbook.sheet_by_name(sheet_name)
+                    text_content.append(f"=== {sheet_name} ===")
+                    for row_idx in range(sheet.nrows):
+                        row_vals = []
+                        for col_idx in range(sheet.ncols):
+                            cell = sheet.cell_value(row_idx, col_idx)
+                            if cell is not None:
+                                row_vals.append(str(cell).strip())
+                        if row_vals:
+                            text_content.append(" | ".join(row_vals))
+            else:
+                file_stream = io.BytesIO(file_bytes)
+                wb = openpyxl.load_workbook(file_stream, data_only=True)
+                for sheet_name in wb.sheetnames:
+                    sheet = wb[sheet_name]
+                    text_content.append(f"=== {sheet_name} ===")
+                    for row in sheet.iter_rows(values_only=True):
+                        row_vals = [str(c).strip() for c in row if c is not None]
+                        if row_vals:
+                            text_content.append(" | ".join(row_vals))
         except Exception as e:
             print(f"[Text Read Error excel]: {e}")
     return "\n".join(text_content)
@@ -755,18 +860,178 @@ def _extract_from_docx(file_stream):
     return items
 
 
-def _extract_from_excel(file_stream):
+def _fill_merged_cells(sheet):
+    """Return a 2D list where merged cell regions are filled with the
+    top-left cell's value (openpyxl returns None for non-anchor cells)."""
+    rows = []
+    for row in sheet.iter_rows(values_only=True):
+        rows.append(list(row))
+    for rng in sheet.merged_cells.ranges:
+        val = sheet.cell(rng.min_row, rng.min_col).value
+        for r in range(rng.min_row, rng.max_row + 1):
+            for c in range(rng.min_col, rng.max_col + 1):
+                if r - 1 < len(rows) and c - 1 < len(rows[r - 1]):
+                    if rows[r - 1][c - 1] is None:
+                        rows[r - 1][c - 1] = val
+    return rows
+
+
+def _extract_from_excel(file_stream, include_photos=False, diagnostics=None):
+    """
+    Extracts line items from an Excel workbook (.xlsx/.xls).
+
+    Processes ALL sheets (not just the active one) so multi-sheet tenders
+    with separate annexures are handled correctly. Detects annexure sheets
+    by their tab name and propagates the annexure label to each item.
+
+    Excel embedded images are also extracted and paired with items by
+    their row position when include_photos=True (used for technical offers).
+    """
+    global _last_extraction_error
+    _last_extraction_error = None
+
     try:
         file_stream.seek(0)
-        wb = openpyxl.load_workbook(file_stream, data_only=True)
-        sheet = wb.active
-        table = []
-        for row in sheet.iter_rows(values_only=True):
-            row_vals = [str(cell).strip() if cell is not None else "" for cell in row]
-            if any(row_vals):
-                table.append(row_vals)
-        return _parse_table(table)
+        file_bytes = file_stream.read()
+
+        # Detect file format from header bytes (more reliable than extension)
+        # OLE2 header: \xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1
+        is_old_xls = file_bytes[:8] == b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'
+
+        if is_old_xls:
+            if not XLRD_AVAILABLE:
+                raise ImportError("xlrd is required to extract .xls files. Please install it: pip install xlrd")
+            file_stream = io.BytesIO(file_bytes)
+            workbook = xlrd.open_workbook(file_contents=file_bytes)
+        else:
+            # .xlsx or new-style .xls (ZIP-based) - use openpyxl
+            file_stream = io.BytesIO(file_bytes)
+            workbook = openpyxl.load_workbook(file_stream, data_only=True)
+
+        all_items = []
+        photos_by_sheet = {}  # sheet_name -> list of photo dicts
+
+        # --- Extract embedded images (per-sheet dict) ---
+        if include_photos:
+            try:
+                file_stream.seek(0)
+                photos_by_sheet = _extract_images_from_excel(file_stream, _MIN_IMG_DIM)
+                if photos_by_sheet:
+                    total_photos = sum(len(v) for v in photos_by_sheet.values())
+                    if diagnostics is not None:
+                        diagnostics["warnings"].append(
+                            f"Found {total_photos} embedded image(s) across {len(photos_by_sheet)} sheet(s) in Excel file."
+                        )
+            except Exception as photo_e:
+                if diagnostics is not None:
+                    diagnostics["warnings"].append(f"Excel photo extraction skipped: {photo_e}")
+
+        # --- Process every sheet ---
+        if XLRD_AVAILABLE and hasattr(workbook, 'sheet_names'):
+            # xlrd interface
+            sheet_names = workbook.sheet_names()
+        elif hasattr(workbook, 'sheetnames'):
+            # openpyxl interface
+            sheet_names = workbook.sheetnames
+        else:
+            # Fallback for other workbook types
+            sheet_names = []
+
+        for sheet_name in sheet_names:
+            # Detect annexure sheet by name: "Annexure A", "Anx-B", "A", "1", "Sheet2" etc.
+            sheet_name_clean = sheet_name.strip()
+            sheet_name_lower = sheet_name_clean.lower()
+
+            is_annexure_sheet = False
+            annexure_label = ""
+
+            # Heuristic: single-letter, "annexure/anx/anx-" prefix, or numeric suffix
+            if re.match(r"^(annexure|anx|anx-)\s*['\"]?([A-Za-z0-9])$", sheet_name_lower):
+                m = re.match(r"^(annexure|anx|anx-)\s*['\"]?([A-Za-z0-9])$", sheet_name_lower)
+                annexure_label = m.group(2).upper() if m else sheet_name_clean
+                is_annexure_sheet = True
+            elif re.match(r"^[A-Za-z]$", sheet_name_clean) and sheet_name_clean.upper() not in ("A", "I", "V"):
+                annexure_label = sheet_name_clean.upper()
+                is_annexure_sheet = True
+            elif re.match(r"^[A-Za-z]\s*\d+$", sheet_name_clean):
+                annexure_label = re.match(r"^([A-Za-z])", sheet_name_clean).group(1).upper()
+                is_annexure_sheet = True
+            elif "annexure" in sheet_name_lower or "anx" in sheet_name_lower:
+                annexure_label = sheet_name_clean
+                is_annexure_sheet = True
+
+            if XLRD_AVAILABLE and hasattr(workbook, 'sheet_names'):
+                sheet = workbook.sheet_by_name(sheet_name)
+                # Convert xlrd sheet to list of rows (xlrd provides cell values directly)
+                table = []
+                excel_row_map = []
+                for excel_row_num in range(1, sheet.nrows + 1):
+                    row_vals = []
+                    for col in range(sheet.ncols):
+                        cell = sheet.cell_value(excel_row_num - 1, col)
+                        if cell is not None:
+                            row_vals.append(str(cell).strip())
+                        else:
+                            row_vals.append("")
+                    if any(v for v in row_vals if v):
+                        table.append(row_vals)
+                        excel_row_map.append(excel_row_num)
+            else:
+                # openpyxl interface — fill merged cells first
+                sheet = workbook[sheet_name]
+                raw_rows = _fill_merged_cells(sheet)
+                table = []
+                excel_row_map = []
+                for excel_row_num, row_vals_raw in enumerate(raw_rows, start=1):
+                    row_vals = [str(cell).strip() if cell is not None else "" for cell in row_vals_raw]
+                    if any(v for v in row_vals if v):
+                        table.append(row_vals)
+                        excel_row_map.append(excel_row_num)
+
+            if not table:
+                continue  # skip empty sheets
+
+            sheet_items = _parse_table(table)
+
+            # Tag each item with the annexure label
+            for item in sheet_items:
+                if is_annexure_sheet and annexure_label:
+                    existing_annexure = item.get("annexure", "").strip()
+                    if existing_annexure:
+                        item["annexure"] = f"{annexure_label} - {existing_annexure}"
+                    else:
+                        item["annexure"] = annexure_label
+
+            # Pair photos with items by row index (sheet-keyed dict)
+            # Images are anchored to Excel rows (1-based). Data items start
+            # after the header row, so find the header offset to compute
+            # the correct mapping from Excel row to sheet_items index.
+            sheet_photos = photos_by_sheet.get(sheet_name, [])
+            if sheet_photos and sheet_items:
+                h_idx, _ = _find_header_row(table)
+                data_start_row = (h_idx + 1) if h_idx is not None else 0
+                for photo in sheet_photos:
+                    excel_row = photo.get("row_index", 1)  # 1-based Excel row
+                    # Map Excel row to table index (table skips empty rows)
+                    try:
+                        table_idx = excel_row_map.index(excel_row)
+                    except ValueError:
+                        continue  # This Excel row was empty, no item here
+                    item_idx = table_idx - data_start_row  # 0-based into sheet_items
+                    if 0 <= item_idx < len(sheet_items):
+                        target_item = sheet_items[item_idx]
+                        if not target_item.get("photo_bytes"):
+                            target_item["photo_bytes"] = photo.get("bytes")
+                            target_item["photo_ext"] = photo.get("ext", "jpg")
+
+            all_items.extend(sheet_items)
+            if len(all_items) >= MAX_ITEMS:
+                break
+
+        return all_items
+
     except Exception as e:
+        _last_extraction_error = str(e)
         print(f"[Excel Extract Error]: {e}")
         return []
 
@@ -776,6 +1041,7 @@ def _extract_from_image(file_stream, diagnostics=None):
         file_stream.seek(0)
         img = Image.open(file_stream)
         img = _deskew_image(img)
+        img = _preprocess_for_ocr(img)
         img = img.convert("L")
         try:
             from pytesseract import Output
@@ -1082,7 +1348,7 @@ def _preprocess_for_ocr(pil_image):
         return pil_image.convert("L")
 
 
-def _deskew_image(pil_image, max_angle=15):
+def _deskew_image(pil_image, max_angle=30):
     """Detects and corrects small rotation (skew) in a scanned/photographed
     page before OCR. A tilted scan - common with phone-photographed
     tenders, or a paper document fed slightly crooked into a scanner -
@@ -1626,10 +1892,10 @@ def _crop_photos_from_table_geometry(item_dicts, page_no, image_bbox, file_strea
 def extract_images_from_file(file_stream, filename="", min_dim=_MIN_IMG_DIM,
                               output_dir=None, pair_with_headings=True):
     """
-    Extracts embedded photos/images from a PDF or Word (.docx) file.
+    Extracts embedded photos/images from a PDF, Word, or Excel file.
 
     :param file_stream: BytesIO/file-like object of the uploaded file.
-    :param filename: original filename, used to pick the reader (pdf/docx).
+    :param filename: original filename, used to pick the reader.
     :param min_dim: minimum width/height in px; smaller images (logos,
         bullet icons, letterhead crests, watermarks) are skipped.
     :param output_dir: if given, each image is also written to disk there
@@ -1644,6 +1910,8 @@ def extract_images_from_file(file_stream, filename="", min_dim=_MIN_IMG_DIM,
     file_stream.seek(0)
     if ext in {"docx", "doc"} or (ext == "" and filename == ""):
         return _extract_images_from_docx(file_stream, min_dim, output_dir)
+    if ext in {"xlsx", "xls"}:
+        return _extract_images_from_excel(file_stream, min_dim, output_dir)
     # default to PDF
     return _extract_images_from_pdf(file_stream, min_dim, output_dir, pair_with_headings)
 
@@ -1684,7 +1952,7 @@ def _extract_images_from_pdf(file_stream, min_dim, output_dir, pair_with_heading
                 width, height = base_img.get("width", 0), base_img.get("height", 0)
                 if width < min_dim or height < min_dim:
                     continue  # skip icons/bullets/logos
-                digest = hash(img_bytes)
+                digest = int(hashlib.md5(img_bytes).hexdigest()[:8], 16)
                 if digest in seen_hashes:
                     continue  # skip repeated letterhead/crest across pages
                 seen_hashes.add(digest)
@@ -1721,6 +1989,20 @@ def _extract_images_from_docx(file_stream, min_dim, output_dir):
     results = []
     try:
         doc = docx.Document(file_stream)
+
+        # Build heading lookup: scan paragraphs for item headings
+        # (e.g. "1. Description of Item") so we can pair images with items.
+        headings = []
+        for para in doc.paragraphs:
+            text = para.text.strip()
+            if not text:
+                continue
+            m = _ITEM_HEADING_RE.match(text)
+            if m:
+                headings.append((int(m.group(1)), m.group(2).strip()))
+
+        # Track which heading index we're currently under
+        heading_idx = 0
         counter = 0
         for rel_id, rel in doc.part.rels.items():
             if "image" not in rel.reltype:
@@ -1734,18 +2016,30 @@ def _extract_images_from_docx(file_stream, min_dim, output_dir):
                 continue
             if width < min_dim or height < min_dim:
                 continue
+
+            # Find nearest heading (images typically follow their heading)
+            item_index, item_heading = None, None
+            if headings:
+                # Use the last heading seen before or at current position
+                # Since we can't precisely locate images in paragraph order,
+                # use the heading that appeared most recently
+                if heading_idx < len(headings):
+                    item_index, item_heading = headings[heading_idx]
+                    heading_idx = min(heading_idx + 1, len(headings) - 1)
+
             counter += 1
             record = {
                 "page": None,
-                "item_index": None,
-                "item_heading": None,
+                "item_index": item_index,
+                "item_heading": item_heading,
                 "ext": image_ext,
                 "width": width,
                 "height": height,
                 "bytes": img_bytes,
             }
             if output_dir:
-                out_path = os.path.join(output_dir, f"{counter:02d}_image.{image_ext}")
+                safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", item_heading or f"img{counter}")
+                out_path = os.path.join(output_dir, f"{counter:02d}_{safe_name}.{image_ext}")
                 with open(out_path, "wb") as f:
                     f.write(img_bytes)
                 record["path"] = out_path
@@ -1753,6 +2047,123 @@ def _extract_images_from_docx(file_stream, min_dim, output_dir):
     except Exception as e:
         print(f"[Image Extract Error docx]: {e}")
     return results
+
+
+def _extract_images_from_excel(file_stream, min_dim=_MIN_IMG_DIM):
+    """
+    Extracts embedded images from an Excel workbook (.xlsx/.xls).
+
+    Parses the XLSX as a ZIP to locate xl/media/ images, then maps each
+    image to its sheet name and row index via xl/drawings/drawingN.xml
+    and the sheet-to-drawing relationship files.
+
+    Returns dict: {sheet_name: [{bytes, ext, row_index, width, height}, ...]}
+    keyed by sheet tab name so callers can pair photos per-sheet.
+    """
+
+    results_by_sheet = {}
+    import zipfile
+    import io
+    from PIL import Image
+
+    file_stream.seek(0)
+    file_bytes = file_stream.read()
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+            media_files = sorted([n for n in zf.namelist() if n.startswith("xl/media/")])
+            if not media_files:
+                return {}
+
+            # Build media_path -> raw bytes + ext map
+            media_map = {}
+            for media_path in media_files:
+                img_bytes = zf.read(media_path)
+                ext = media_path.rsplit(".", 1)[-1].lower()
+                if ext not in {"png", "jpg", "jpeg", "gif", "bmp", "tiff", "svg"}:
+                    ext = "png"
+                try:
+                    with Image.open(io.BytesIO(img_bytes)) as im:
+                        width, height = im.size
+                except Exception:
+                    width, height = 0, 0
+                if width < min_dim or height < min_dim:
+                    continue
+                media_map[media_path] = {"bytes": img_bytes, "ext": ext, "width": width, "height": height}
+
+            # --- Map sheet names to drawing XMLs via worksheet rels ---
+            # xl/worksheets/_rels/sheetN.xml.rels -> references drawingM.xml
+            # xl/workbook.xml.rels maps workbook.xml sheet entries to sheetN.xml
+            sheet_rels_files = sorted([n for n in zf.namelist()
+                                       if re.match(r"xl/worksheets/_rels/sheet\d+\.xml\.rels$", n)])
+            # Also get sheet names from workbook.xml
+            wb_xml = zf.read("xl/workbook.xml").decode("utf-8", errors="ignore")
+            sheet_name_order = re.findall(r'<sheet\s[^>]*name="([^"]+)"', wb_xml)
+
+            drawing_to_sheet = {}  # drawing_file -> sheet_name
+            for idx, rels_path in enumerate(sheet_rels_files):
+                rels_xml = zf.read(rels_path).decode("utf-8", errors="ignore")
+                draw_match = re.search(r'Target="([^"]*drawing\d+\.xml)"', rels_xml)
+                if draw_match:
+                    draw_file = draw_match.group(1).lstrip("/")
+                    # Resolve relative paths like ../drawings/drawing1.xml -> xl/drawings/drawing1.xml
+                    if draw_file.startswith("../"):
+                        draw_file = "xl/" + draw_file[3:]
+                    sheet_name = sheet_name_order[idx] if idx < len(sheet_name_order) else f"Sheet{idx+1}"
+                    drawing_to_sheet[draw_file] = sheet_name
+
+            # --- Parse each drawing XML to get (rId -> row_index) and (rId -> media_path) ---
+            drawing_files = sorted([n for n in zf.namelist()
+                                    if re.match(r"xl/drawings/drawing\d+\.xml", n)])
+
+            for dr_path in drawing_files:
+                sheet_name = drawing_to_sheet.get(dr_path, "Unknown")
+                dr_xml = zf.read(dr_path).decode("utf-8", errors="ignore")
+
+                # Parse the rels file for this drawing to map rId -> media_path
+                dr_rels_path = f"xl/drawings/_rels/{dr_path.split('/')[-1]}.rels"
+                rid_to_media = {}
+                if dr_rels_path in zf.namelist():
+                    rels_xml = zf.read(dr_rels_path).decode("utf-8", errors="ignore")
+                    for rm in re.finditer(r'<Relationship[^>]+>', rels_xml):
+                        tag = rm.group(0)
+                        id_m = re.search(r'Id="(rId\d+)"', tag)
+                        tgt_m = re.search(r'Target="([^"]+)"', tag)
+                        if id_m and tgt_m:
+                            target = tgt_m.group(1).lstrip("/")
+                            # Resolve relative paths like ../media/image1.jpeg -> xl/media/image1.jpeg
+                            if target.startswith("../"):
+                                # Drawing XML is at xl/drawings/drawingN.xml
+                                target = "xl/" + target[3:]
+                            rid_to_media[id_m.group(1)] = target
+
+                # Parse anchors: <oneCellAnchor> and <twoCellAnchor> blocks with <from><row>N</row>
+                anchors = re.findall(
+                    r'<(?:xdr:)?(?:one|two)CellAnchor[^>]*>.*?</(?:xdr:)?(?:one|two)CellAnchor>|<absoluteAnchor[^>]*>.*?</absoluteAnchor>',
+                    dr_xml, re.DOTALL
+                )
+                for anchor_xml in anchors:
+                    # Extract rId from r:embed="rIdN"
+                    rid_match = re.search(r'r:embed="(rId\d+)"', anchor_xml)
+                    # Extract row from <xdr:from><xdr:row>N</xdr:row> (namespace prefix optional)
+                    row_match = re.search(r'<(?:xdr:)?from>.*?<(?:xdr:)?row>(\d+)</(?:xdr:)?row>', anchor_xml, re.DOTALL)
+                    if not rid_match or not row_match:
+                        continue
+                    rid = rid_match.group(1)
+                    row_0based = int(row_match.group(1))
+                    media_path = rid_to_media.get(rid)
+                    if not media_path or media_path not in media_map:
+                        continue
+                    record = dict(media_map[media_path])
+                    record["row_index"] = row_0based + 1  # 0-based -> 1-based
+                    record["sheet"] = sheet_name
+                    results_by_sheet.setdefault(sheet_name, []).append(record)
+
+    except Exception as e:
+        print(f"[Excel Image Extract Error]: {e}")
+        return {}
+
+    return results_by_sheet
 
 
 # =========================================================================
@@ -1809,7 +2220,7 @@ def _looks_like_schedule_header(row):
     if not row:
         return False
     cells = [str(c or "").strip().lower() for c in row]
-    has_ser = any(c in ("ser", "ser.", "s.") for c in cells)
+    has_ser = any(c in ("ser", "ser.", "s.", "sno", "sl.no", "sl.no.", "s.no", "sr.no", "sr.") for c in cells)
     has_secondary = any(
         (c == "a/u" or (len(c) < 15 and "a/u" in c))
         or c in ("qty", "quantity")
@@ -1854,22 +2265,20 @@ def _table_has_real_schedule_data(table, header_row_idx):
 
 def _count_spec_markers_in_first_column(table):
     """Counts distinct spec-table category markers (General/Performance/
-    Critical/Parameters) found specifically in the FIRST column of a table -
-    the position these category labels actually sit in for genuine per-item
-    "Appx-II" style spec sheets (each row: category | attribute | value).
-    Matching anywhere in the table's text (a loose blob match) causes false
-    positives on unrelated tables whose headings merely happen to contain
-    these words - e.g. an "Evaluation Criteria" table with a "Performance
-    Evaluation" row and a "...Technical Evaluation Parameters" row, which is
-    not a per-item spec sheet at all."""
+    Critical/Parameters) found in the first 3 columns of a table -
+    these category labels can appear in column 0, 1, or 2 depending on
+    table layout. Matching anywhere in the table's text (a loose blob match)
+    causes false positives on unrelated tables whose headings merely happen
+    to contain these words."""
     found = set()
     for row in table[:8]:
         if not row:
             continue
-        first_cell = str(row[0] or "").strip().lower()
-        for w in _SPEC_TABLE_MARKERS:
-            if first_cell == w or first_cell.startswith(w + " ") or first_cell.startswith(w + ":"):
-                found.add(w)
+        for col_idx in range(min(3, len(row))):
+            cell = str(row[col_idx] or "").strip().lower()
+            for w in _SPEC_TABLE_MARKERS:
+                if cell == w or cell.startswith(w + " ") or cell.startswith(w + ":"):
+                    found.add(w)
     return len(found)
 
 
@@ -1973,8 +2382,6 @@ def detect_document_type(file_stream, filename=""):
             tables = []
             for page in pdf.pages:
                 tables.extend(t for t in page.extract_tables() if t)
-                if sum(len(t) for t in tables) >= MAX_ITEMS * 4:
-                    break
             result = _classify_tables(tables)
             return result if result != "unknown" else ("plain_text" if not tables else "unknown")
     except Exception as e:
@@ -2081,7 +2488,7 @@ def _merge_headerless_continuations(raw_tables):
         prev_cols = len(prev[0]) if prev and prev[0] else 0
 
         header_idx, _ = _find_header_row(table)
-        if header_idx is None and cols > 0 and cols == prev_cols:
+        if header_idx is None and cols > 0 and abs(cols - prev_cols) <= 1:
             prev.extend(table)
         else:
             merged.append(list(table))
@@ -2124,7 +2531,7 @@ def _parse_single_table_block(table):
     header_idx, header = _find_header_row(table)
     if header_idx is not None:
         desc_col = _find_desc_column(header)
-        unit_col = _find_column(header, ["unit", "uom", "measure", "pkg", "pack", "per", "a/u"])
+        unit_col = _find_column(header, ["a/u", "au", "unit", "uom", "measure", "pkg", "pack"])
         qty_col = _find_column(header, ["qty", "quantity", "qnty", "req. qty", "required qty"])
         price_col = _find_column(header, ["unit price", "unit rate", "rate", "rates", "price", "cost", "amount"])
         # Part No / stock number, common in defence-procurement schedules
@@ -2197,6 +2604,25 @@ def _parse_single_table_block(table):
             continue
         if not has_numbers:
             if description and not _is_pure_number_or_sno(description):
+                desc_l = description.lower()
+                _SECTION_HEADER_TERMS = (
+                    "note:", "notes:", "instruction", "general:", "scope of",
+                    "terms and", "condition", "please note", "as per", "refer",
+                    "chapter", "section", "clause", "annexure", "annex", "schedule",
+                    "heading", "subject:", "title:",
+                )
+                _is_section_header = (
+                    len(description) < 30
+                    and any(term in desc_l for term in _SECTION_HEADER_TERMS)
+                )
+                _is_label_only = (
+                    len(description) < 15
+                    and not any(c.isdigit() for c in description)
+                    and description.isupper()
+                )
+                if _is_section_header or _is_label_only:
+                    pending_desc = ""
+                    continue
                 if has_sno:
                     pending_desc = description
                 elif results:
@@ -2229,10 +2655,16 @@ def _parse_single_table_block(table):
 
 
 def _find_header_row(table):
-    keywords = ["desc", "item", "name", "particular", "specification", "qty", "quantity", "price", "rate", "rates", "unit", "amount", "cost", "nomenclature", "stores", "part no", "part number"]
+    keywords = [
+        "desc", "item", "name", "particular", "specification", "qty", "quantity",
+        "price", "rate", "rates", "unit", "amount", "cost", "nomenclature",
+        "stores", "part no", "part number", "srl.no", "sr no", "sl no", "sl.no",
+        "sr.no", "sr.", "s.no", "sn", "item no", "item no.", "particulars",
+        "details", "uom", "measure",
+    ]
     best_idx = None
     max_matches = 0
-    for idx in range(min(15, len(table))):
+    for idx in range(min(30, len(table))):
         row = [str(c or "").strip().lower() for c in table[idx]]
         non_empty = [c for c in row if c]
         # A merged/repeated summary label ("Total for Stationery Items" in
@@ -2263,7 +2695,7 @@ def _infer_columns_from_data(table):
     col_text_len = [0] * num_cols
     col_unit_matches = [0] * num_cols
     col_numbers_count = [0] * num_cols
-    unit_keywords = {"nos", "pcs", "set", "sets", "kg", "m", "mtr", "box", "pack", "pkt", "ea", "each", "roll", "rolls", "ream"}
+    unit_keywords = {"nos", "pcs", "set", "sets", "kg", "kgs", "m", "mtr", "mt", "box", "pack", "pkt", "ea", "each", "roll", "rolls", "ream", "ft", "btl", "can", "ltr", "l", "gm", "g", "ton", "cu", "sq", "pair", "doz", "bag", "drum", "bdle", "unit", "a/u", "au"}
     for row in table:
         for c_idx, cell in enumerate(row):
             if c_idx >= num_cols:
@@ -2281,8 +2713,19 @@ def _infer_columns_from_data(table):
     desc_col = max(range(num_cols), key=lambda c: col_text_len[c]) if any(col_text_len) else 1
     unit_col = max(range(num_cols), key=lambda c: col_unit_matches[c]) if max(col_unit_matches) > 0 else None
     numeric_cols = [c for c in range(num_cols) if col_numbers_count[c] > 0 and c != desc_col]
+    # Heuristic: qty is typically leftmost numeric column, price is rightmost
     qty_col = numeric_cols[0] if len(numeric_cols) > 0 else None
-    price_col = numeric_cols[1] if len(numeric_cols) > 1 else None
+    price_col = numeric_cols[-1] if len(numeric_cols) > 1 else None
+    # Refine: if a numeric col header contains price/rate keywords, prefer it as price
+    for c in numeric_cols:
+        for row in table[:10]:
+            if c < len(row):
+                val = str(row[c] or "").lower()
+                if any(kw in val for kw in ["price", "rate", "cost", "amount"]):
+                    price_col = c
+                    if qty_col == c and len(numeric_cols) > 1:
+                        qty_col = numeric_cols[0] if numeric_cols[0] != c else numeric_cols[1]
+                    break
     return desc_col, unit_col, qty_col, price_col
 
 

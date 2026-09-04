@@ -50,7 +50,7 @@ THEMES = {
         "show_company_name_under_signature": True,
         "heading_style": "plain",
         "heading_align": "center",
-        "doc_titles": {},
+        "doc_titles": {"commercial": "COMMERCIAL OFFER"},
     },
 
     "The Expert International": {

@@ -181,6 +181,7 @@
                 <thead>
                     <tr>
                         <th style="width:50px;" class="text-center">Sr#</th>
+                        <th style="width: 120px;">Part No</th>
                         <th>Description</th>
                         <th style="width: 130px;">Unit</th>
                         <th style="width: 120px;">Qty</th>
@@ -192,6 +193,9 @@
                         {% for item in prefill_items %}
                         <tr>
                             <td class="row-serial fw-semibold text-center text-muted">{{ loop.index }}</td>
+                            <td>
+                                <input type="text" name="item_part_no" class="form-control form-control-sm" value="{{ item.part_no or '' }}">
+                            </td>
                             <td style="position:relative;">
                                 <input type="text" name="item_description" class="form-control form-control-sm item-desc-input" value="{{ item.description }}" autocomplete="off" placeholder="Item description" required>
                                 <div class="list-group suggestion-box" style="display:none;"></div>
@@ -212,6 +216,9 @@
                     {% else %}
                         <tr>
                             <td class="row-serial fw-semibold text-center text-muted">1</td>
+                            <td>
+                                <input type="text" name="item_part_no" class="form-control form-control-sm">
+                            </td>
                             <td style="position:relative;">
                                 <input type="text" name="item_description" class="form-control form-control-sm item-desc-input" autocomplete="off" placeholder="Item description" required>
                                 <div class="list-group suggestion-box" style="display:none;"></div>
@@ -235,16 +242,32 @@
     </div>
 
     <!-- ===== SECTION 4: CONFIGURATION OPTIONS ===== -->
-    <div class="form-section-card">
-        <h6 class="form-section-title">
-            <i class="bi bi-gear"></i> Configuration
-        </h6>
+<div class="form-section-card">
+            <h6 class="form-section-title">
+                <i class="bi bi-gear"></i> Configuration
+            </h6>
 
-        <div class="form-check form-switch my-1">
-            <input type="checkbox" name="skip_letterhead" id="skip_letterhead" class="form-check-input" {% if challan and challan.skip_letterhead %}checked{% endif %}>
-            <label class="form-check-label small fw-semibold text-secondary" for="skip_letterhead">
-                Generate without letterhead (use plain header layout)
-            </label>
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label small fw-semibold text-secondary">Purchase Order</label>
+                    <select id="poSelect" name="purchase_order_id" class="form-select form-select-sm">
+                        <option value="">None (Manual)</option>
+                        {% for po in order.purchase_orders %}
+                        <option value="{{ po.id }}" {% if selected_po_id == po.id %}selected{% endif %}>{{ po.po_number }} — {{ po.status }} — PKR {{ "{:,.0f}".format(po.total_amount or 0) }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 d-flex align-items-end">
+                    <small class="text-muted">Select a PO to prefill line items. <strong>Changing selection will reload the page.</strong></small>
+                </div>
+            </div>
+
+            <div class="form-check form-switch my-1">
+                <input type="checkbox" name="skip_letterhead" id="skip_letterhead" class="form-check-input">
+                <label class="form-check-label small fw-semibold text-secondary" for="skip_letterhead">
+                    Generate without letterhead (use plain header layout)
+                </label>
+            </div>
         </div>
     </div>
 
@@ -394,6 +417,16 @@
 
     // Attach autocomplete listeners to prefilled / initial rows
     document.querySelectorAll("#items-table tbody tr").forEach(attachRowEvents);
+
+    // Auto-reload page when PO dropdown changes (to prefill that PO's line items)
+    var poSelect = document.getElementById('poSelect');
+    if (poSelect) {
+        poSelect.addEventListener('change', function() {
+            var selected = this.value;
+            var url = window.location.pathname + (selected ? '?po_id=' + selected : '');
+            window.location.href = url;
+        });
+    }
 
     // Busy-state on submit: PDF generation is synchronous on the server
     document.getElementById('challanCreateForm').addEventListener('submit', function (e) {

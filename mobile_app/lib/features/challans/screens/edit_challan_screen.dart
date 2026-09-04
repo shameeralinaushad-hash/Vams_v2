@@ -45,6 +45,7 @@ class _EditChallanScreenState extends ConsumerState<EditChallanScreen> {
         _placeCtrl.text = c['place'] ?? '';
         _items = (c['line_items'] as List).map((li) => _LineItemForm(
           descCtrl: TextEditingController(text: li['description'] ?? ''),
+          partNoCtrl: TextEditingController(text: li['part_no'] ?? ''),
           unitCtrl: TextEditingController(text: li['unit'] ?? ''),
           qtyCtrl: TextEditingController(text: (li['qty'] ?? 0).toString()),
         )).toList();
@@ -95,6 +96,7 @@ class _EditChallanScreenState extends ConsumerState<EditChallanScreen> {
           .where((item) => item.descCtrl.text.trim().isNotEmpty)
           .map((item) => {
                 'description': item.descCtrl.text.trim(),
+                'part_no': item.partNoCtrl.text.trim().isEmpty ? null : item.partNoCtrl.text.trim(),
                 'unit': item.unitCtrl.text.trim().isEmpty ? null : item.unitCtrl.text.trim(),
                 'qty': double.tryParse(item.qtyCtrl.text) ?? 0,
               })
@@ -236,31 +238,54 @@ class _EditChallanScreenState extends ConsumerState<EditChallanScreen> {
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Row(
+        child: Column(
           children: [
-            Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextFormField(
-                controller: item.descCtrl,
-                decoration: const InputDecoration(isDense: true, hintText: 'Description *'),
-                validator: (v) => index == 0 ? (v == null || v.trim().isEmpty ? 'Required' : null) : null,
-              ),
+            Row(
+              children: [
+                Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextFormField(
+                    controller: item.descCtrl,
+                    decoration: const InputDecoration(isDense: true, hintText: 'Description *'),
+                    validator: (v) => index == 0 ? (v == null || v.trim().isEmpty ? 'Required' : null) : null,
+                  ),
+                ),
+                if (_items.length > 1)
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 18, color: VamsTheme.danger),
+                    onPressed: () => setState(() => _items.removeAt(index)),
+                  ),
+              ],
             ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 60,
-              child: TextFormField(
-                controller: item.qtyCtrl,
-                decoration: const InputDecoration(isDense: true, hintText: 'Qty'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: item.partNoCtrl,
+                    decoration: const InputDecoration(isDense: true, hintText: 'Part No'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 70,
+                  child: TextFormField(
+                    controller: item.unitCtrl,
+                    decoration: const InputDecoration(isDense: true, hintText: 'Unit'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 60,
+                  child: TextFormField(
+                    controller: item.qtyCtrl,
+                    decoration: const InputDecoration(isDense: true, hintText: 'Qty'),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  ),
+                ),
+              ],
             ),
-            if (_items.length > 1)
-              IconButton(
-                icon: const Icon(Icons.delete_outline, size: 18, color: VamsTheme.danger),
-                onPressed: () => setState(() => _items.removeAt(index)),
-              ),
           ],
         ),
       ),
@@ -270,19 +295,23 @@ class _EditChallanScreenState extends ConsumerState<EditChallanScreen> {
 
 class _LineItemForm {
   late final TextEditingController descCtrl;
+  late final TextEditingController partNoCtrl;
   late final TextEditingController unitCtrl;
   late final TextEditingController qtyCtrl;
 
   _LineItemForm({
     TextEditingController? descCtrl,
+    TextEditingController? partNoCtrl,
     TextEditingController? unitCtrl,
     TextEditingController? qtyCtrl,
   })  : descCtrl = descCtrl ?? TextEditingController(),
+        partNoCtrl = partNoCtrl ?? TextEditingController(),
         unitCtrl = unitCtrl ?? TextEditingController(),
         qtyCtrl = qtyCtrl ?? TextEditingController(text: '0');
 
   void dispose() {
     descCtrl.dispose();
+    partNoCtrl.dispose();
     unitCtrl.dispose();
     qtyCtrl.dispose();
   }

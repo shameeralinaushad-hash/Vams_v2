@@ -1,11 +1,19 @@
 class DashboardData {
+  final String greeting;
   final DashboardStats stats;
+  final FinancialSummary financialSummary;
+  final List<ImportantAction> importantActions;
+  final List<DashboardTodo> todos;
   final List<RecentOrder> recentOrders;
   final List<DashboardTask> assignedTasks;
   final List<DashboardPersonalTask> personalTasks;
 
   DashboardData({
+    required this.greeting,
     required this.stats,
+    required this.financialSummary,
+    required this.importantActions,
+    required this.todos,
     required this.recentOrders,
     required this.assignedTasks,
     required this.personalTasks,
@@ -13,7 +21,15 @@ class DashboardData {
 
   factory DashboardData.fromJson(Map<String, dynamic> json) {
     return DashboardData(
+      greeting: json['greeting'] ?? 'Hello',
       stats: DashboardStats.fromJson(json['stats'] ?? {}),
+      financialSummary: FinancialSummary.fromJson(json['financial_summary'] ?? {}),
+      importantActions: (json['important_actions'] as List? ?? [])
+          .map((a) => ImportantAction.fromJson(a))
+          .toList(),
+      todos: (json['todos'] as List? ?? [])
+          .map((t) => DashboardTodo.fromJson(t))
+          .toList(),
       recentOrders: (json['recent_orders'] as List? ?? [])
           .map((o) => RecentOrder.fromJson(o))
           .toList(),
@@ -76,6 +92,89 @@ class DashboardStats {
       poDelivered: json['po_delivered'] ?? 0,
       poCancelled: json['po_cancelled'] ?? 0,
       clientCount: json['client_count'] ?? 0,
+    );
+  }
+}
+
+class FinancialSummary {
+  final double totalRevenue;
+  final double totalOutstanding;
+  final double totalProfit;
+
+  FinancialSummary({
+    this.totalRevenue = 0,
+    this.totalOutstanding = 0,
+    this.totalProfit = 0,
+  });
+
+  factory FinancialSummary.fromJson(Map<String, dynamic> json) {
+    return FinancialSummary(
+      totalRevenue: (json['total_revenue'] ?? 0).toDouble(),
+      totalOutstanding: (json['total_outstanding'] ?? 0).toDouble(),
+      totalProfit: (json['total_profit'] ?? 0).toDouble(),
+    );
+  }
+
+  double get maxValue {
+    final vals = [totalRevenue.abs(), totalOutstanding.abs(), totalProfit.abs()];
+    return vals.isEmpty ? 1 : vals.reduce((a, b) => a > b ? a : b);
+  }
+}
+
+class ImportantAction {
+  final String type;
+  final String severity;
+  final String source;
+  final int? sourceId;
+  final bool overdue;
+  final String title;
+  final String timeLabel;
+
+  ImportantAction({
+    required this.type,
+    required this.severity,
+    required this.source,
+    this.sourceId,
+    required this.overdue,
+    required this.title,
+    required this.timeLabel,
+  });
+
+  factory ImportantAction.fromJson(Map<String, dynamic> json) {
+    return ImportantAction(
+      type: json['type'] ?? 'issue',
+      severity: json['severity'] ?? 'normal',
+      source: json['source'] ?? '',
+      sourceId: json['source_id'],
+      overdue: json['overdue'] ?? false,
+      title: json['title'] ?? '',
+      timeLabel: json['time_label'] ?? '',
+    );
+  }
+}
+
+class DashboardTodo {
+  final int id;
+  final String text;
+  final bool isDone;
+  final String priority;
+  final String? dueDate;
+
+  DashboardTodo({
+    required this.id,
+    required this.text,
+    required this.isDone,
+    required this.priority,
+    this.dueDate,
+  });
+
+  factory DashboardTodo.fromJson(Map<String, dynamic> json) {
+    return DashboardTodo(
+      id: json['id'] ?? 0,
+      text: json['text'] ?? '',
+      isDone: json['is_done'] ?? false,
+      priority: json['priority'] ?? 'medium',
+      dueDate: json['due_date'],
     );
   }
 }

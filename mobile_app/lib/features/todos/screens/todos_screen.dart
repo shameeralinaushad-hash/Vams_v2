@@ -113,7 +113,7 @@ class _TodosScreenState extends ConsumerState<TodosScreen> {
                   itemCount: todos.length,
                   itemBuilder: (context, index) {
                     final t = todos[index];
-                    final isDone = t['status'] == 'done';
+                    final isDone = t['is_done'] == true;
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
                       child: ListTile(

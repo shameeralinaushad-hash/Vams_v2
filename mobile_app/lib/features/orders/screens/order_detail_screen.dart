@@ -50,7 +50,7 @@ class OrderDetailScreen extends ConsumerWidget {
           if (order == null) {
             return const Center(child: Text('Order not found'));
           }
-          debugPrint('[ORDER_DETAIL] Order ${order.id}: quotations=${order.quotations.length}, invoices=${order.invoices.length}, challans=${order.deliveryChallans.length}, po=${order.purchaseOrder != null}');
+          debugPrint('[ORDER_DETAIL] Order ${order.id}: quotations=${order.quotations.length}, invoices=${order.invoices.length}, challans=${order.deliveryChallans.length}, poCount=${order.purchaseOrders.length}');
           return _OrderDetailBody(order: order, ref: ref);
         },
       ),
@@ -105,19 +105,19 @@ class _OrderDetailBody extends StatelessWidget {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(
+                    Flexible(
                       child: OutlinedButton.icon(
                         onPressed: () => context.push('/orders/${order.id}/edit', extra: order),
                         icon: const Icon(Icons.edit, size: 16),
-                        label: const Text('Edit Order'),
+                        label: const Text('Edit', overflow: TextOverflow.ellipsis, maxLines: 1),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Expanded(
+                    Flexible(
                       child: OutlinedButton.icon(
                         onPressed: () => _showStatusDialog(context),
                         icon: const Icon(Icons.swap_horiz, size: 16),
-                        label: const Text('Status'),
+                        label: const Text('Status', overflow: TextOverflow.ellipsis, maxLines: 1),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -133,19 +133,30 @@ class _OrderDetailBody extends StatelessWidget {
           ),
         ),
 
-        if (order.purchaseOrder != null) ...[
+        if (order.purchaseOrders.isNotEmpty) ...[
           const SizedBox(height: 8),
           ExpansionTile(
             tilePadding: const EdgeInsets.symmetric(horizontal: 16),
             childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Text('Purchase Order', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-            children: [
-              _InfoRow(label: 'PO Number', value: order.purchaseOrder!.poNumber ?? '-'),
-              _InfoRow(label: 'Status', value: order.purchaseOrder!.status ?? '-'),
-              if (order.purchaseOrder!.totalAmount != null)
-                _InfoRow(label: 'Amount', value: order.purchaseOrder!.totalAmount!.toStringAsFixed(2)),
-            ],
+            title: Text(
+              'Purchase Orders (${order.purchaseOrders.length})',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+            ),
+            children: order.purchaseOrders.map((po) => Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  children: [
+                    _InfoRow(label: 'PO Number', value: po.poNumber ?? '-'),
+                    _InfoRow(label: 'Status', value: po.status ?? '-'),
+                    if (po.totalAmount != null)
+                      _InfoRow(label: 'Amount', value: po.totalAmount!.toStringAsFixed(2)),
+                  ],
+                ),
+              ),
+            )).toList(),
           ),
         ],
 
@@ -368,8 +379,18 @@ Future<void> _launchPdf(String? pdfPath, BuildContext context) async {
   if (serverUrl == null) return;
   final fullUrl = '$serverUrl/static/$pdfPath';
   final uri = Uri.parse(fullUrl);
-  if (await canLaunchUrl(uri)) {
+  try {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (_) {
+    try {
+      await launchUrl(uri, mode: LaunchMode.inAppWebView);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Cannot open PDF: $e')),
+        );
+      }
+    }
   }
 }
 
@@ -422,9 +443,19 @@ class _InvoiceTile extends StatelessWidget {
         color: isPaid ? VamsTheme.success : VamsTheme.danger,
       ),
       title: Text(invoice.invoiceNumber ?? '-', style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: Text(
-        '${invoice.invoiceDate ?? '-'}${invoice.totalAmount != null ? ' • ${invoice.totalAmount!.toStringAsFixed(2)}' : ''}',
-        style: const TextStyle(fontSize: 12, color: VamsTheme.textMuted),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${invoice.invoiceDate ?? '-'}${invoice.totalAmount != null ? ' • ${invoice.totalAmount!.toStringAsFixed(2)}' : ''}',
+            style: const TextStyle(fontSize: 12, color: VamsTheme.textMuted),
+          ),
+          if (invoice.purchaseOrderNumber != null)
+            Text(
+              'PO: ${invoice.purchaseOrderNumber}',
+              style: const TextStyle(fontSize: 11, color: VamsTheme.primary),
+            ),
+        ],
       ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -464,9 +495,19 @@ class _ChallanTile extends StatelessWidget {
         child: const Icon(Icons.local_shipping, size: 16, color: VamsTheme.primary),
       ),
       title: Text(challan.challanNumber ?? '-', style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: Text(
-        '${challan.dispatchDate ?? '-'}${challan.transportMode != null ? ' • ${challan.transportMode}' : ''}',
-        style: const TextStyle(fontSize: 12, color: VamsTheme.textMuted),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${challan.dispatchDate ?? '-'}${challan.transportMode != null ? ' • ${challan.transportMode}' : ''}',
+            style: const TextStyle(fontSize: 12, color: VamsTheme.textMuted),
+          ),
+          if (challan.purchaseOrderNumber != null)
+            Text(
+              'PO: ${challan.purchaseOrderNumber}',
+              style: const TextStyle(fontSize: 11, color: VamsTheme.primary),
+            ),
+        ],
       ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,

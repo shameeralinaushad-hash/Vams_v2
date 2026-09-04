@@ -12,6 +12,13 @@ from permissions import permission_required
 from ml.tender_extractor import extract_items_from_file
 from socket_events import emit_company, emit_dashboard_update
 
+# File signature magic bytes for format detection
+_ZIP_SIGNATURE = b"PK\x03\x04"  # ZIP/PKZIP signature (xlsx, xls, docx, pdf all use ZIP internally)
+_OFFICE_SIGNATURES = {
+    b"D0CF11E0": "Microsoft Office Document",  # older .doc/.xls Office 2003
+    b"\xd0\xcf\x11\xe0": "Microsoft Office Document",  # alternative signature
+}
+
 quotations_bp = Blueprint("quotations", __name__, url_prefix="/quotations")
 
 DEFAULT_TERMS = "1. Delivery within 5 days after order confirmation.\n2. This quotation is valid for 30 days from the date of issuance."
@@ -632,10 +639,55 @@ def extract_from_pdf():
             "error": "Supported file types: PDF, Images (PNG/JPG), Excel (.xlsx/.xls), Word (.docx/.doc)"
         })
 
+    # Validate file content matches its extension. A common failure mode is a
+    # user naming a file with the wrong extension (e.g. saving a CSV as
+    # .xlsx, or uploading a corrupted document) — `openpyxl` then opens
+    # it, can't find a valid ZIP header inside, and prints
+    # "File is not a zip file" with no user-friendly explanation. Detect
+    # this mismatch up front and surface a clear error to the UI.
+    file.stream.seek(0)
+    file_head = file.stream.read(8)
+    file.stream.seek(0)
+
+    format_mismatch_error = None
+    if ext in {"xlsx", "xls", "docx", "pdf"} and not file_head.startswith(_ZIP_SIGNATURE):
+        # xlsx/docx/pdf are all ZIP-based. .xls (legacy) starts with
+        # D0CF11E0. If the header doesn't match, the file's actual format
+        # doesn't match its extension.
+        if ext in {"xlsx", "docx"}:
+            format_mismatch_error = (
+                f"The uploaded .xlsx file doesn't appear to be a valid "
+                f"Office document. It may be corrupted or saved with a "
+                f"wrong extension. Try re-exporting from Excel/Word."
+            )
+        elif ext == "pdf":
+            format_mismatch_error = (
+                f"The uploaded file doesn't appear to be a valid PDF. "
+                f"It may be corrupted or saved with a wrong extension."
+            )
+        elif ext == "xls":
+            # .xls (legacy binary) starts with D0CF11E0. If we see
+            # neither that nor a ZIP header, something's wrong.
+            if not file_head.startswith(b"\xd0\xcf\x11\xe0"):
+                format_mismatch_error = (
+                    f"The uploaded .xls file doesn't appear to be a "
+                    f"valid Excel 97-2003 document. Try opening it in "
+                    f"Excel and re-saving as .xlsx."
+                )
+    elif ext in {"doc"} and not file_head.startswith(b"\xd0\xcf\x11\xe0"):
+        # .doc (legacy Word) is the same D0CF11E0 binary format as .xls
+        format_mismatch_error = (
+            f"The uploaded .doc file doesn't appear to be a valid "
+            f"Word document. Try opening it in Word and re-saving."
+        )
+
+    if format_mismatch_error:
+        return jsonify({"items": [], "error": format_mismatch_error})
+
     # Photos are only worth pairing for technical offers (that's the only
-    # doc type with a Photo column), and only make sense for PDFs, which is
-    # what _attach_photos_to_items's heading-number matching assumes.
-    want_photos = doc_type == "technical" and ext == "pdf"
+    # doc type with a Photo column). PDF and Excel both support embedded
+    # images; Word/other formats don't.
+    want_photos = doc_type == "technical" and ext in {"pdf", "xlsx", "xls"}
     items = extract_items_from_file(file, file.filename, use_groq_fallback=True, force_groq=False,
                                      include_photos=want_photos)
     if doc_type == "technical" and items:
@@ -645,10 +697,32 @@ def extract_from_pdf():
         _save_extracted_photos(items)
 
     if not items:
-        return jsonify({
-            "items": [],
-            "error": "Couldn't extract items from this file. You may need to enter items manually."
-        })
+        # If local parsing failed AND the file was an Office document, the
+        # parse-time error message ("File is not a zip file" etc.) was
+        # already printed to the log — surface a user-friendly fallback
+        # that tells the user what to do.
+        last_error = None
+        try:
+            from ml.tender_extractor import _last_extraction_error
+            last_error = _last_extraction_error
+        except ImportError:
+            pass
+        if not last_error:
+            if ext in {"xlsx", "xls"}:
+                last_error = (
+                    f"Couldn't read the Excel file. It may be password-"
+                    f"protected, corrupted, or saved in an older format. "
+                    f"Try re-saving as .xlsx from Excel."
+                )
+            elif ext in {"docx", "doc"}:
+                last_error = (
+                    f"Couldn't read the Word document. It may be "
+                    f"password-protected or corrupted. Try re-saving "
+                    f"from Word."
+                )
+            else:
+                last_error = "Couldn't extract items from this file. You may need to enter items manually."
+        return jsonify({"items": [], "error": last_error})
 
     # Collect unique annexure names from extracted items
     annexure_names = list(dict.fromkeys(
@@ -680,10 +754,9 @@ def extract_with_groq():
         for item in items:
             item["unit_price"] = 0.0
 
-    # Same reasoning as the Gemini route: Groq's vision model reads the
-    # PDF/image directly and doesn't touch embedded photo objects, so
-    # pair photos separately.
-    want_photos = doc_type == "technical" and ext == "pdf"
+    # Same reasoning as the PDF route: only technical offers need photos,
+    # and both PDF and Excel files support embedded images.
+    want_photos = doc_type == "technical" and ext in {"pdf", "xlsx", "xls"}
     if want_photos and items:
         try:
             from ml.tender_extractor import (

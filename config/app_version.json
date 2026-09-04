@@ -1,7 +1,7 @@
 {
-    "latest_version":  "2.0.1",
-    "version_code":  6,
-    "apk_url":  "https://vamsbeta.dpdns.org/downloads/VAMS-v2.0.1.apk",
-    "release_notes":  "LOW batch 1: Project detail & create, project tasks, challan edit, CSV export, task detail with comments, settings screen, audit log (admin). Bug fixes.",
+    "latest_version":  "2.2.5",
+    "version_code":  13,
+    "apk_url":  "https://vamsbeta.dpdns.org/static/downloads/VAMS-v2.2.5.apk?v=1",
+    "release_notes":  "Manual delivery challan creation from mobile, tender extraction improvements, flexible PDF columns, bug fixes.",
     "force_update":  false
 }

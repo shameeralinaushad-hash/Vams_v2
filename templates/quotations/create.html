@@ -1262,7 +1262,7 @@
             id: {{ ann.id | tojson }},
             name: {{ ann.name | tojson }},
             page_break_before: {{ ann.page_break_before | tojson }},
-            show_totals: {{ ann.show_totals | tojson if ann.show_totals is not none else 'true' }}
+            show_totals: {{ ann.show_totals | tojson if ann.show_totals is not none else 'false' }}
         }{% if not loop.last %},{% endif %}
         {% endfor %}
         {% endif %}
@@ -1271,12 +1271,12 @@
     const BUILTIN_META = {
         sr:          { label: "Sr",          locked: false, width: 45 },
         part_no:     { label: "Part No",     locked: false, width: 110 },
-        nomenclature:{ label: "Item Description", locked: true, width: 240 },
+        nomenclature:{ label: "Item Description", locked: false, width: 240 },
         unit:        { label: "Unit",        locked: false, width: 75 },
         qty:         { label: "Qty",         locked: false, width: 80 },
-        price:       { label: "Unit Price",  locked: true,  width: 110 },
+        price:       { label: "Unit Price",  locked: false,  width: 110 },
         gst:         { label: "Tax %",       locked: false, width: 85 },
-        total:       { label: "Line Total",  locked: true,  width: 110 },
+        total:       { label: "Line Total",  locked: false,  width: 110 },
         specs:       { label: "Details Specs", locked: false, width: 180, tech: true },
         photo:       { label: "Photo",       locked: false, width: 150, tech: true },
         coo:         { label: "COO",         locked: false, width: 80,  tech: true },
@@ -1368,7 +1368,6 @@
     function columnEnabled(key) {
         if (DOC_TYPE === "technical" && (key === "price" || key === "gst" || key === "total")) return false;
         if (BUILTIN_META[key] && BUILTIN_META[key].tech) return DOC_TYPE === "technical";
-        if (BUILTIN_META[key] && BUILTIN_META[key].locked) return true;
         return BUILTIN_ON[key] ?? true;
     }
 
@@ -1676,10 +1675,9 @@
                         <span class="text-muted" style="cursor:grab;" title="Drag to reorder"><i class="bi bi-grip-vertical"></i></span>
                         <div class="form-check form-switch m-0">
                             <input type="checkbox" class="form-check-input" role="switch"
-                                   name="show_col" value="${key}" ${isOn ? "checked" : ""} ${meta.locked ? "disabled" : ""}>
+                                   name="show_col" value="${key}" ${isOn ? "checked" : ""}>
                         </div>
                         <span class="fw-semibold text-secondary small">${meta.label}</span>
-                        ${meta.locked ? '<span class="badge bg-light text-muted border" style="font-size:0.68rem;">always</span>' : ''}
                     </div>
                     <div class="d-flex align-items-center gap-2 ps-4" draggable="false">
                         <label class="text-muted small m-0" style="font-size:0.7rem; white-space:nowrap;" for="bi_width_${key}">Width</label>
@@ -1688,12 +1686,10 @@
                                style="width:84px;">
                         <span class="text-muted small" style="font-size:0.7rem;">px</span>
                     </div>`;
-                if (!meta.locked) {
-                    row.querySelector(".form-check-input").addEventListener("change", (e) => {
-                        BUILTIN_ON[key] = e.target.checked;
-                        renderAllSections();
-                    });
-                }
+                row.querySelector(".form-check-input").addEventListener("change", (e) => {
+                    BUILTIN_ON[key] = e.target.checked;
+                    renderAllSections();
+                });
                 row.querySelector(".bi-width").addEventListener("change", (e) => {
                     let v = parseInt(e.target.value, 10);
                     if (!Number.isFinite(v) || v < 40) v = 40;
@@ -2344,7 +2340,7 @@
                     id: a.id || ++sectionIdCounter,
                     name: a.name || '',
                     page_break_before: a.page_break_before || false,
-                    show_totals: a.show_totals !== false,
+                    show_totals: a.show_totals === true,
                     rowsData: []
                 };
                 sections.push(sec);
@@ -2377,16 +2373,16 @@
                 } else {
                     let mainSec = sections.find(s => s.id === 'main');
                     if (!mainSec) {
-                        mainSec = { id: 'main', name: 'Main Document', page_break_before: false, show_totals: true, rowsData: [] };
+                        mainSec = { id: 'main', name: 'Main Document', page_break_before: false, show_totals: false, rowsData: [] };
                         sections.unshift(mainSec);
                     }
                     mainSec.rowsData.push(d);
                 }
             });
         } else if (!sections.length) {
-            const mainSec = { id: 'main', name: 'Main Document', page_break_before: false, show_totals: true, rowsData: [] };
+            const mainSec = { id: 'main', name: 'Main Document', page_break_before: false, show_totals: false, rowsData: [] };
             {% if quotation %}
-            mainSec.show_totals = {{ quotation.show_totals | tojson if quotation.show_totals is not none else 'true' }};
+            mainSec.show_totals = {{ quotation.show_totals | tojson if quotation.show_totals is not none else 'false' }};
             {% endif %}
             sections.push(mainSec);
         }
@@ -2399,7 +2395,7 @@
             id: ++sectionIdCounter,
             name: name || '',
             page_break_before: pageBreak || false,
-            show_totals: showTotals !== undefined ? showTotals : true,
+            show_totals: showTotals !== undefined ? showTotals : false,
             rowsData: []
         };
         sections.push(sec);

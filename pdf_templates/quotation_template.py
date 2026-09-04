@@ -14,81 +14,36 @@ from pdf_templates.shared import sanitize_text, get_image_dimensions, VisionHead
 
 def fit_column_widths(contents, content_width, bold_font, body_font, font_size=8.5,
                       padding=8.0, max_frac=0.28):
-    """Return column widths (pt) sized to the widest header/cell text.
+    """Return column widths (pt) sized to the header text only.
 
-    contents: list of (header_text, [cell_texts...]). Each column is measured
-    with exact font metrics via stringWidth so short columns take only the room
-    they need. A column whose content would run wider than max_frac *
-    content_width is treated as a wrapping column: it is capped at max_frac so
-    long descriptions still wrap. The table is allowed to end up narrower than
-    content_width when the data is short -- that extra space is left empty
-    instead of padding any column.
+    contents: list of (header_text, [cell_texts...]). Each column width is
+    determined by the header text width using exact font metrics. Extra space
+    is distributed proportionally so the table fills content_width.
     """
-    naturals = []
-    floors = []
-    for header, cells in contents:
-        needed = _sw(header, bold_font, font_size)
-        longest_word = _sw(header, bold_font, font_size)
-        for cell in cells:
-            if cell:
-                needed = max(needed, _sw(cell, body_font, font_size))
-                longest_word = max(longest_word, max(
-                    (_sw(w, body_font, font_size) for w in _re.split(r"\s+", cell) if w),
-                    default=0.0,
-                ))
-        naturals.append(needed + padding)
-        floors.append(min(longest_word + padding, max_frac * content_width))
+    header_widths = []
+    for header, _cells in contents:
+        needed = _sw(header, bold_font, font_size) + padding
+        header_widths.append(needed)
 
-    cap = max_frac * content_width
-    wrapping = [i for i, n in enumerate(naturals) if n > cap]
-    widths = naturals[:]
+    total = sum(header_widths)
+    if total <= 0:
+        ncols = len(header_widths)
+        return [content_width / ncols] * ncols if ncols else []
 
-    total = sum(widths)
-    if not wrapping:
-        # All content is short: every column takes exactly what it needs; the
-        # table may end up narrower than the content width, which is fine --
-        # no column holds padding it does not need.
-        return widths
-
-    if total <= content_width:
-        # Give the unused space back to the wrapping columns (they wrap less),
-        # up to their caps, so the table still fills the content width.
-        slack = content_width - total
-        order = sorted(wrapping, key=lambda i: naturals[i], reverse=True)
-        for i in order:
-            if slack <= 0:
-                break
-            room = cap - widths[i]
-            if room <= 0:
-                continue
-            add = min(room, slack)
-            widths[i] += add
-            slack -= add
-        return widths
-
-    # Overflow: short columns keep their natural width; reduce only the
-    # wrapping columns (largest first) down to their floor so long text wraps
-    # instead of overflowing.
-    overflow = total - content_width
-    order = sorted(range(len(widths)), key=lambda i: widths[i] - floors[i], reverse=True)
-    for i in order:
-        if overflow <= 0:
-            break
-        room = widths[i] - floors[i]
-        if room <= 0:
-            continue
-        cut = min(room, overflow)
-        widths[i] -= cut
-        overflow -= cut
-    if overflow > 0:
-        scale = content_width / sum(widths)
-        widths = [w * scale for w in widths]
+    # Distribute content_width proportionally based on header text widths
+    scale = content_width / total
+    widths = [w * scale for w in header_widths]
     return widths
 
 
 def build_heading(theme, title_text, content_width, company=None):
     if company and getattr(company, "pdf_theme", None) == "Rostam":
-        return VisionHeading(sanitize_text(title_text), content_width, theme)
+        is_technical = "technical" in title_text.lower()
+        return VisionHeading(
+            sanitize_text(title_text), content_width, theme,
+            text_color=colors.black if is_technical else None,
+            show_lines=not is_technical,
+        )
 
     align = theme.get("heading_align", "left")
     style_align = TA_CENTER if align == "center" else TA_LEFT
@@ -373,7 +328,8 @@ def _build_technical_offer_story(theme, company, quotation, line_items, content_
 
     story = []
     if is_vision:
-        story.append(VisionHeading("TECHNICAL OFFER", content_width, theme))
+        story.append(VisionHeading("TECHNICAL OFFER", content_width, theme,
+                                   text_color=colors.black, show_lines=False))
     else:
         story.append(Paragraph("TECHNICAL OFFER", style_title))
     story.append(Spacer(1, 4 * mm))
@@ -384,7 +340,7 @@ def _build_technical_offer_story(theme, company, quotation, line_items, content_
         Paragraph(f"Offer Date<br/>{quotation.quote_date.strftime('%d-%B-%Y') if quotation.quote_date else ''}", top_style),
     ]
     if quotation.client_ref_number:
-        top_cells.append(Paragraph(f"Client Ref.<br/>{sanitize_text(quotation.client_ref_number)}", top_style))
+        top_cells.append(Paragraph(f"Tender No. / Ref No.<br/>{sanitize_text(quotation.client_ref_number)}", top_style))
     top_tbl = Table([top_cells], colWidths=[content_width / len(top_cells)])
     top_tbl.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
@@ -489,14 +445,20 @@ def _build_technical_offer_story(theme, company, quotation, line_items, content_
     # Group items by annexure
     annexure_groups = _group_items_by_annexure(line_items, quotation)
 
-    for group_name, group_items, page_break, group_show_totals in annexure_groups:
-        if page_break:
+    first_group = True
+    for group_name, group_items, group_show_totals in annexure_groups:
+        if not first_group:
             from reportlab.platypus import PageBreak as _PB
             story.append(_PB())
-
-        if group_name:
-            story.append(_make_annexure_header(group_name, theme, content_width))
-            story.append(Spacer(1, 3 * mm))
+            story.extend(_build_technical_metadata_block(quotation, company, theme, content_width))
+            if group_name:
+                story.append(_make_annexure_header(group_name, theme, content_width))
+                story.append(Spacer(1, 3 * mm))
+        else:
+            if group_name:
+                story.append(_make_annexure_header(group_name, theme, content_width))
+                story.append(Spacer(1, 3 * mm))
+        first_group = False
 
         idata = [header_row]
         for idx, item in enumerate(group_items, start=1):
@@ -571,7 +533,7 @@ def _build_technical_offer_story(theme, company, quotation, line_items, content_
 # label overrides below.
 # ---------------------------------------------------------------------------
 
-def _build_tender_header(theme, quotation, doc_title, content_width):
+def _build_tender_header(theme, quotation, doc_title, content_width, annexure_name=None):
     """Builds the recipient / annexure / tender-no block above the item
     table, matching either the Space Enterprises or The Expert International
     tender-annex arrangement (theme["tender_style"])."""
@@ -603,7 +565,7 @@ def _build_tender_header(theme, quotation, doc_title, content_width):
         row_style_r = ParagraphStyle("tender_row_r", fontName=font_bold, fontSize=10, alignment=TA_RIGHT)
         row = Table(
             [[Paragraph(tender_line, row_style_l),
-              Paragraph(sanitize_text(theme.get("tender_annexure_label", "Anx A")), row_style_r)]],
+              Paragraph(sanitize_text(annexure_name or theme.get("tender_annexure_label", "Anx A")), row_style_r)]],
             colWidths=[content_width * 0.62, content_width * 0.38],
         )
         row.setStyle(TableStyle([
@@ -632,7 +594,7 @@ def _build_tender_header(theme, quotation, doc_title, content_width):
         story.append(Spacer(1, 3 * mm))
 
         annex_style = ParagraphStyle("tender_annex", fontName=font_bold, fontSize=10, alignment=TA_RIGHT)
-        story.append(Paragraph(sanitize_text(theme.get("tender_annexure_label", "Annexure 'A'")), annex_style))
+        story.append(Paragraph(sanitize_text(annexure_name or theme.get("tender_annexure_label", "Annexure 'A'")), annex_style))
         story.append(Spacer(1, 2 * mm))
 
         title_style = ParagraphStyle("tender_title", fontName=font_bold, fontSize=14,
@@ -780,18 +742,22 @@ def _build_tender_technical_table(theme, line_items, content_width):
 def _build_tender_annex_story(theme, company, quotation, line_items, content_width, doc_type_key,
                               style_terms_head, style_terms_body, style_name):
     doc_title = get_doc_title(theme, doc_type_key)
-    story = _build_tender_header(theme, quotation, doc_title, content_width)
 
     annexure_groups = _group_items_by_annexure(line_items, quotation)
     subtotal = 0.0
 
-    for group_name, group_items, page_break, group_show_totals in annexure_groups:
-        if page_break:
-            story.append(PageBreak())
+    story = []
+    first_group = True
 
-        if group_name:
-            story.append(_make_annexure_header(group_name, theme, content_width))
-            story.append(Spacer(1, 3 * mm))
+    for group_name, group_items, group_show_totals in annexure_groups:
+        if not first_group:
+            story.append(PageBreak())
+            story.extend(_build_tender_header(theme, quotation, doc_title, content_width,
+                                               annexure_name=group_name))
+        else:
+            story.extend(_build_tender_header(theme, quotation, doc_title, content_width,
+                                               annexure_name=group_name or None))
+        first_group = False
 
         if doc_type_key == "technical":
             story.append(_build_tender_technical_table(theme, group_items, content_width))
@@ -850,12 +816,13 @@ def _build_tender_annex_story(theme, company, quotation, line_items, content_wid
 
 def _group_items_by_annexure(line_items, quotation):
     """Group line items by annexure. Returns list of
-    (annexure_name, items, page_break, show_totals) tuples.
-    Items with no annexure come first (name=None, show_totals from quotation)."""
+    (annexure_name, items, show_totals) tuples.
+    Items with no annexure come first (name=None, show_totals from quotation).
+    All annexures always start on a new page (page_break is not returned)."""
     annexures = quotation.annexures if hasattr(quotation, 'annexures') else []
     main_show_totals = getattr(quotation, 'show_totals', True)
     if not annexures:
-        return [(None, line_items, False, main_show_totals)]
+        return [(None, line_items, main_show_totals)]
 
     ann_map = {ann.id: ann for ann in annexures}
     main_items = []
@@ -869,27 +836,232 @@ def _group_items_by_annexure(line_items, quotation):
 
     result = []
     if main_items:
-        result.append((None, main_items, False, main_show_totals))
+        result.append((None, main_items, main_show_totals))
 
     for ann in annexures:
         items = groups.get(ann.id, [])
         if items:
-            result.append((ann.name, items, ann.page_break_before, getattr(ann, 'show_totals', True)))
+            result.append((ann.name, items, getattr(ann, 'show_totals', True)))
 
-    return result if result else [(None, line_items, False, main_show_totals)]
+    return result if result else [(None, line_items, main_show_totals)]
 
 
 def _make_annexure_header(name, theme, content_width):
-    """Create a bold paragraph for annexure section header."""
+    """Create a bold, underlined paragraph for annexure section header (right-aligned, 11pt)."""
     style = ParagraphStyle(
         "annexure_header",
         fontName=theme["font_bold"],
-        fontSize=12,
-        leading=15,
-        alignment=TA_LEFT,
+        fontSize=11,
+        leading=14,
+        alignment=TA_RIGHT,
         spaceAfter=4,
     )
-    return Paragraph(sanitize_text(name), style)
+    return Paragraph(f"<u>{sanitize_text(name)}</u>", style)
+
+
+def _build_standard_metadata_block(quotation, client, theme, content_width):
+    """Build the standard-layout metadata flowables (Quotation #/Date, To, Subject/Ref)
+    that get repeated on each annexure page."""
+    from reportlab.lib.styles import ParagraphStyle as _PS
+    flowables = []
+
+    style_bold = _PS("meta_bold", fontName=theme["font_bold"], fontSize=10)
+    style_bold_right = _PS("meta_bold_r", fontName=theme["font_bold"], fontSize=10, alignment=TA_RIGHT)
+    style_recipient = _PS("meta_recip", fontName=theme["font_body"], fontSize=10, leading=12)
+    style_subject = _PS("meta_subj", fontName=theme["font_body"], fontSize=10, leading=12)
+    style_ref = _PS("meta_ref", fontName=theme["font_bold"], fontSize=10, alignment=TA_RIGHT)
+    style_normal = _PS("meta_norm", fontName=theme["font_body"], fontSize=8.5, leading=10)
+
+    header_row = Table(
+        [[Paragraph(f"Quotation # {sanitize_text(quotation.quote_number)}", style_bold),
+          Paragraph(f"Date: {quotation.quote_date.strftime('%d-%m-%Y') if quotation.quote_date else ''}", style_bold_right)]],
+        colWidths=[content_width / 2, content_width / 2],
+    )
+    header_row.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    flowables.append(header_row)
+    flowables.append(Spacer(1, 4 * mm))
+
+    if getattr(quotation, "recipient", None):
+        recipient_lines = [f'<font name="{theme["font_bold"]}">To: </font>']
+        for line in quotation.recipient.split("\n"):
+            recipient_lines.append(sanitize_text(line))
+        rec_p = Paragraph("<br/>".join(recipient_lines), style_recipient)
+        rec_table = Table([[rec_p]], colWidths=[content_width])
+        rec_table.setStyle(TableStyle([
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        flowables.append(rec_table)
+        flowables.append(Spacer(1, 3 * mm))
+
+    if quotation.subject or quotation.client_ref_number:
+        subject_cell = Paragraph(
+            f'<font name="{theme["font_bold"]}">Subject: </font>{sanitize_text(quotation.subject)}', style_subject
+        ) if quotation.subject else Paragraph("", style_normal)
+        ref_cell = Paragraph(
+            f"Tender No. / Ref No. {sanitize_text(quotation.client_ref_number)}", style_ref
+        ) if quotation.client_ref_number else Paragraph("", style_normal)
+        sub_row = Table([[subject_cell, ref_cell]], colWidths=[content_width / 2, content_width / 2])
+        sub_row.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        flowables.append(sub_row)
+        flowables.append(Spacer(1, 6 * mm))
+
+    return flowables
+
+
+def _build_vision_metadata_block(quotation, company, client, theme, content_width):
+    """Build the Rostam/Vision metadata flowables (title, #/Date/Ref grid,
+    TO/FROM table, Subject bar) for repeated annexure pages."""
+    from reportlab.lib.styles import ParagraphStyle as _PS
+    flowables = []
+
+    doc_type_key = getattr(quotation, "doc_type", None) or "commercial"
+    title_text = get_doc_title(theme, doc_type_key)
+
+    title_style = _PS("v_title", fontName=theme["font_bold"], fontSize=18, leading=22, alignment=TA_CENTER)
+    flowables.append(Paragraph(sanitize_text(title_text).upper(), title_style))
+    flowables.append(Spacer(1, 5 * mm))
+
+    hdr_style = _PS("v_hdr", fontName=theme["font_bold"], fontSize=10, leading=13, alignment=TA_CENTER)
+    hdr_cells = [
+        Paragraph(f"Quotation No.<br/>{sanitize_text(quotation.quote_number)}", hdr_style),
+        Paragraph(f"Quotation Date<br/>{quotation.quote_date.strftime('%d-%B-%Y') if quotation.quote_date else ''}", hdr_style),
+    ]
+    if quotation.client_ref_number:
+        hdr_cells.append(Paragraph(f"Tender No. / Ref No.<br/>{sanitize_text(quotation.client_ref_number)}", hdr_style))
+    ncols = len(hdr_cells)
+    hdr_tbl = Table([hdr_cells], colWidths=[content_width / ncols] * ncols)
+    hdr_tbl.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    flowables.append(hdr_tbl)
+    flowables.append(Spacer(1, 4 * mm))
+
+    body_sm = _PS("v_body", fontName=theme["font_body"], fontSize=9, leading=12)
+    to_lines = [sanitize_text(line) for line in (quotation.recipient or "").split("\n")] if quotation.recipient else [sanitize_text(client.name)]
+    to_text = "<b>TO:</b><br/><br/>" + "<br/>".join(to_lines)
+
+    from_parts = [f"<b>FROM: {sanitize_text(company.name)}</b>"]
+    if company.authorized_name:
+        from_parts.append(f"Contact Person: {sanitize_text(company.authorized_name)}")
+    if company.address:
+        from_parts.append(f"Office Add: {sanitize_text(company.address)}")
+    if company.phone:
+        from_parts.append(f"Office Tel: {sanitize_text(company.phone)}")
+    if company.email:
+        from_parts.append(f"E-mail Add: {sanitize_text(company.email)}")
+    from_text = "<br/>".join(from_parts)
+
+    tf_tbl = Table(
+        [[Paragraph(to_text, body_sm), Paragraph(from_text, body_sm)]],
+        colWidths=[content_width / 2, content_width / 2],
+    )
+    tf_tbl.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    flowables.append(tf_tbl)
+    flowables.append(Spacer(1, 4 * mm))
+
+    if quotation.subject:
+        sub_style = _PS("v_subj", fontName=theme["font_bold"], fontSize=9, alignment=TA_LEFT)
+        sub_tbl = Table(
+            [[Paragraph(f"Subject: {sanitize_text(quotation.subject)}", sub_style)]],
+            colWidths=[content_width],
+        )
+        sub_tbl.setStyle(TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        flowables.append(sub_tbl)
+        flowables.append(Spacer(1, 4 * mm))
+
+    return flowables
+
+
+def _build_technical_metadata_block(quotation, company, theme, content_width):
+    """Build the technical-offer metadata flowables (TECHNICAL OFFER title,
+    Offer #/Date/Ref grid, TO/FROM table, Subject bar) for repeated annexure pages."""
+    from reportlab.lib.styles import ParagraphStyle as _PS
+    flowables = []
+
+    is_vision = company and getattr(company, "pdf_theme", None) == "Rostam"
+    style_title = _PS("t_title", fontName=theme["font_bold"], fontSize=14, leading=18,
+                       alignment=TA_CENTER, textColor=theme["accent_color"])
+    if is_vision:
+        flowables.append(VisionHeading("TECHNICAL OFFER", content_width, theme,
+                                       text_color=colors.black, show_lines=False))
+    else:
+        flowables.append(Paragraph("TECHNICAL OFFER", style_title))
+    flowables.append(Spacer(1, 4 * mm))
+
+    top_style = _PS("t_top", fontName=theme["font_bold"], fontSize=9, leading=11.5)
+    top_cells = [
+        Paragraph(f"Offer No.<br/>{sanitize_text(quotation.quote_number)}", top_style),
+        Paragraph(f"Offer Date<br/>{quotation.quote_date.strftime('%d-%B-%Y') if quotation.quote_date else ''}", top_style),
+    ]
+    if quotation.client_ref_number:
+        top_cells.append(Paragraph(f"Tender No. / Ref No.<br/>{sanitize_text(quotation.client_ref_number)}", top_style))
+    top_tbl = Table([top_cells], colWidths=[content_width / len(top_cells)])
+    top_tbl.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    flowables.append(top_tbl)
+    flowables.append(Spacer(1, 4 * mm))
+
+    style_recipient = _PS("t_recip", fontName=theme["font_body"], fontSize=9.5, leading=12.5)
+    to_lines = [sanitize_text(line) for line in (quotation.recipient or "").split("\n")] if quotation.recipient else []
+    left_part = Paragraph("<b>TO:</b><br/><br/>" + ("<br/>".join(to_lines) if to_lines else "&nbsp;"), style_recipient)
+    from_part = Paragraph(
+        f"<b>FROM:</b> {sanitize_text(company.name)}<br/>{sanitize_text(company.address or '')}",
+        style_recipient,
+    ) if company.address else Paragraph(f"<b>FROM:</b> {sanitize_text(company.name)}", style_recipient)
+    to_tbl = Table([[left_part, from_part]], colWidths=[content_width / 2, content_width / 2])
+    to_tbl.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    flowables.append(to_tbl)
+    flowables.append(Spacer(1, 3 * mm))
+
+    if quotation.subject:
+        style_subject = _PS("t_subj", fontName=theme["font_bold"], fontSize=9.5, leading=12.5)
+        subject_tbl = Table(
+            [[Paragraph(f"Subject: {sanitize_text(quotation.subject)}", style_subject)]],
+            colWidths=[content_width],
+        )
+        subject_tbl.setStyle(TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        flowables.append(subject_tbl)
+        flowables.append(Spacer(1, 4 * mm))
+
+    return flowables
 
 
 def generate_quotation_pdf(company, client, quotation, line_items, output_path, skip_letterhead=False):
@@ -1041,71 +1213,7 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
         return None
 
     if is_vision:
-        title_style = ParagraphStyle("q_title", fontName=theme["font_bold"], fontSize=18, leading=22, alignment=TA_CENTER)
-        story.append(Paragraph("QUOTATION", title_style))
-        story.append(Spacer(1, 5 * mm))
-
-        hdr_style = ParagraphStyle("qhdr", fontName=theme["font_bold"], fontSize=10, leading=13, alignment=TA_CENTER)
-        hdr_cells = [
-            Paragraph(f"Quotation No.<br/>{sanitize_text(quotation.quote_number)}", hdr_style),
-            Paragraph(f"Quotation Date<br/>{quotation.quote_date.strftime('%d-%B-%Y') if quotation.quote_date else ''}", hdr_style),
-        ]
-        if quotation.client_ref_number:
-            hdr_cells.append(Paragraph(f"Client Ref. Order<br/>{sanitize_text(quotation.client_ref_number)}", hdr_style))
-        ncols = len(hdr_cells)
-        hdr_tbl = Table([hdr_cells], colWidths=[content_width / ncols] * ncols)
-        hdr_tbl.setStyle(TableStyle([
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
-        story.append(hdr_tbl)
-        story.append(Spacer(1, 4 * mm))
-
-        body_sm = ParagraphStyle("qbody", fontName=theme["font_body"], fontSize=9, leading=12)
-        to_lines = [sanitize_text(line) for line in (quotation.recipient or "").split("\n")] if quotation.recipient else [sanitize_text(client.name)]
-        to_text = "<b>TO:</b><br/><br/>" + "<br/>".join(to_lines)
-
-        from_parts = [f"<b>FROM: {sanitize_text(company.name)}</b>"]
-        if company.authorized_name:
-            from_parts.append(f"Contact Person: {sanitize_text(company.authorized_name)}")
-        if company.address:
-            from_parts.append(f"Office Add: {sanitize_text(company.address)}")
-        if company.phone:
-            from_parts.append(f"Office Tel: {sanitize_text(company.phone)}")
-        if company.email:
-            from_parts.append(f"E-mail Add: {sanitize_text(company.email)}")
-        from_text = "<br/>".join(from_parts)
-
-        tf_tbl = Table(
-            [[Paragraph(to_text, body_sm), Paragraph(from_text, body_sm)]],
-            colWidths=[content_width / 2, content_width / 2],
-        )
-        tf_tbl.setStyle(TableStyle([
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ]))
-        story.append(tf_tbl)
-        story.append(Spacer(1, 4 * mm))
-
-        if quotation.subject:
-            sub_style = ParagraphStyle("qsubj", fontName=theme["font_bold"], fontSize=9, alignment=TA_LEFT)
-            sub_tbl = Table(
-                [[Paragraph(f"Subject: {sanitize_text(quotation.subject)}", sub_style)]],
-                colWidths=[content_width],
-            )
-            sub_tbl.setStyle(TableStyle([
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-            ]))
-            story.append(sub_tbl)
-            story.append(Spacer(1, 4 * mm))
+        story.extend(_build_vision_metadata_block(quotation, company, client, theme, content_width))
 
         has_part_no = any(item.part_no for item in line_items)
         has_tax = any((item.tax_percent or 0) > 0 for item in line_items)
@@ -1237,13 +1345,16 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
         subtotal = 0.0
         total_gst = 0.0
 
-        for group_name, group_items, page_break, group_show_totals in annexure_groups:
-            if page_break:
+        first_group = True
+        for group_name, group_items, group_show_totals in annexure_groups:
+            if not first_group:
                 story.append(PageBreak())
+                story.extend(_build_vision_metadata_block(quotation, company, client, theme, content_width))
 
             if group_name:
                 story.append(_make_annexure_header(group_name, theme, content_width))
                 story.append(Spacer(1, 3 * mm))
+            first_group = False
 
             # Build table for this group
             idata = [item_headers]
@@ -1314,7 +1425,9 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
             story.append(Spacer(1, 4 * mm))
 
         # Summary rows (after all annexure groups)
-        if getattr(quotation, 'show_totals', True):
+        grand_total_ros = subtotal
+        has_main_items = any(name is None for name, _, _ in annexure_groups)
+        if has_main_items and getattr(quotation, 'show_totals', True):
             tax_pct = float(getattr(quotation, "tax_amount", 0) or 0)
             discount = float(getattr(quotation, "discount_amount", 0) or 0)
             installation = float(getattr(quotation, "installation_charges", 0) or 0)
@@ -1441,47 +1554,7 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
         story.append(Spacer(1, 6 * mm))
 
     else:
-        header_row = Table(
-            [[Paragraph(f"Quotation # {sanitize_text(quotation.quote_number)}", style_bold),
-              Paragraph(f"Date: {quotation.quote_date.strftime('%d-%m-%Y') if quotation.quote_date else ''}", style_bold_right)]],
-            colWidths=[content_width / 2, content_width / 2],
-        )
-        header_row.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ]))
-        story.append(header_row)
-        story.append(Spacer(1, 4 * mm))
-
-        if getattr(quotation, "recipient", None):
-            recipient_lines = [f'<font name="{theme["font_bold"]}">To: </font>']
-            for line in quotation.recipient.split("\n"):
-                recipient_lines.append(sanitize_text(line))
-            rec_p = Paragraph("<br/>".join(recipient_lines), style_recipient)
-            rec_table = Table([[rec_p]], colWidths=[content_width])
-            rec_table.setStyle(TableStyle([
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ]))
-            story.append(rec_table)
-            story.append(Spacer(1, 3 * mm))
-
-        if quotation.subject or quotation.client_ref_number:
-            subject_cell = Paragraph(
-                f'<font name="{theme["font_bold"]}">Subject: </font>{sanitize_text(quotation.subject)}', style_subject
-            ) if quotation.subject else Paragraph("", style_normal)
-            ref_cell = Paragraph(
-                f"Ref # {sanitize_text(quotation.client_ref_number)}", style_ref
-            ) if quotation.client_ref_number else Paragraph("", style_normal)
-            sub_row = Table([[subject_cell, ref_cell]], colWidths=[content_width / 2, content_width / 2])
-            sub_row.setStyle(TableStyle([
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ]))
-            story.append(sub_row)
-            story.append(Spacer(1, 6 * mm))
+        story.extend(_build_standard_metadata_block(quotation, client, theme, content_width))
 
     # --- Item table ---
     header_labels, col_widths, mode = get_table_columns(theme, content_width)
@@ -1490,13 +1563,56 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
     annexure_groups = _group_items_by_annexure(line_items, quotation)
 
     subtotal = 0
-    for group_name, group_items, page_break, group_show_totals in annexure_groups:
-        if page_break:
+    first_group = True
+    for group_name, group_items, group_show_totals in annexure_groups:
+        if not first_group:
             story.append(PageBreak())
+            if layout == "shipper_receiver":
+                story.append(build_heading(theme, get_doc_title(theme, "quotation"), content_width, company=company))
+                story.append(Spacer(1, 6 * mm))
+                meta_style = ParagraphStyle("meta_rep", fontName=theme["font_bold"], fontSize=9, alignment=TA_RIGHT)
+                story.append(Paragraph(f"Date: {quotation.quote_date.strftime('%d %B, %Y') if quotation.quote_date else ''}", meta_style))
+                story.append(Paragraph(f"Quotation # {sanitize_text(quotation.quote_number)}", meta_style))
+                story.append(Spacer(1, 5 * mm))
+                story.append(build_shipper_receiver_block(theme, company, client, quotation, content_width))
+                story.append(Spacer(1, 2 * mm))
+                story.append(build_subject_ref_bar(
+                    theme, quotation.subject, "Quotation REF #", quotation.client_ref_number, content_width
+                ))
+                story.append(Spacer(1, 2 * mm))
+            elif layout == "billed_summary":
+                story.append(build_heading(theme, get_doc_title(theme, "quotation"), content_width, company=company))
+                story.append(Spacer(1, 6 * mm))
+                style_client_block = ParagraphStyle("cb_rep", fontName=theme["font_body"], fontSize=9.5, leading=13)
+                style_meta_bold = ParagraphStyle("mb_rep", fontName=theme["font_bold"], fontSize=10,
+                                                 alignment=TA_RIGHT, textColor=theme["accent_color"])
+                if getattr(quotation, "recipient", None):
+                    client_lines = [sanitize_text(line) for line in quotation.recipient.split("\n")]
+                else:
+                    client_lines = [sanitize_text(client.name)]
+                    if getattr(client, "address", None):
+                        for line in client.address.split("\n"):
+                            client_lines.append(sanitize_text(line))
+                left_cell = Paragraph("<br/>".join(client_lines), style_client_block)
+                right_cell = Paragraph(
+                    f"Quotation #{sanitize_text(quotation.quote_number)}<br/>"
+                    f"{quotation.quote_date.strftime('%d/%m/%Y') if quotation.quote_date else ''}", style_meta_bold
+                )
+                top_row = Table([[left_cell, right_cell]], colWidths=[content_width * 0.6, content_width * 0.4])
+                top_row.setStyle(TableStyle([
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ]))
+                story.append(top_row)
+                story.append(Spacer(1, 6 * mm))
+            else:
+                story.extend(_build_standard_metadata_block(quotation, client, theme, content_width))
 
         if group_name:
             story.append(_make_annexure_header(group_name, theme, content_width))
             story.append(Spacer(1, 3 * mm))
+        first_group = False
 
         table_data = [header_labels]
         group_subtotal = 0
@@ -1520,7 +1636,8 @@ def generate_quotation_pdf(company, client, quotation, line_items, output_path, 
 
         story.append(Spacer(1, 4 * mm))
 
-    if getattr(quotation, 'show_totals', True):
+    has_main_items_v = any(name is None for name, _, _ in annexure_groups)
+    if has_main_items_v and getattr(quotation, 'show_totals', True):
         tax_pct = float(getattr(quotation, "tax_amount", 0) or 0)
         discount = float(getattr(quotation, "discount_amount", 0) or 0)
         installation = float(getattr(quotation, "installation_charges", 0) or 0)

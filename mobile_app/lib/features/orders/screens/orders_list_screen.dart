@@ -186,6 +186,9 @@ class _OrderCard extends StatelessWidget {
             ? VamsTheme.primary
             : VamsTheme.warning;
 
+    final poCount = order.purchaseOrders.length;
+    final firstPo = poCount > 0 ? order.purchaseOrders.first : null;
+
     return Card(
       child: InkWell(
         onTap: onTap,
@@ -234,6 +237,15 @@ class _OrderCard extends StatelessWidget {
                       order.client?.name ?? 'No client',
                       style: const TextStyle(fontSize: 12, color: VamsTheme.textMuted),
                     ),
+                    if (poCount > 0) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        poCount == 1
+                            ? 'PO: ${firstPo?.poNumber ?? '-'}'
+                            : '$poCount POs: ${firstPo?.poNumber ?? '-'}',
+                        style: const TextStyle(fontSize: 11, color: VamsTheme.textMuted),
+                      ),
+                    ],
                   ],
                 ),
               ),

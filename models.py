@@ -209,7 +209,17 @@ class Order(db.Model):
     company = db.relationship("Company", lazy="selectin")
     client = db.relationship("Client", lazy="selectin")
     subsidiary = db.relationship("ClientSubsidiary", lazy="selectin")
-    purchase_order = db.relationship("PurchaseOrder", backref="order", uselist=False, cascade="all, delete-orphan", lazy="selectin")
+    purchase_orders = db.relationship("PurchaseOrder", backref="order", cascade="all, delete-orphan", lazy="selectin")
+
+    @property
+    def purchase_order(self):
+        """Backward-compat: returns the most recent active PO, or first PO, or None."""
+        if not self.purchase_orders:
+            return None
+        for po in self.purchase_orders:
+            if po.status in ("Received", "Partially Delivered"):
+                return po
+        return self.purchase_orders[0]
 
     quotations = db.relationship(
         "Quotation", backref="order", cascade="all, delete-orphan",
@@ -355,7 +365,7 @@ class Quotation(db.Model):
     installation_charges = db.Column(db.Float, default=0)
     transportation_charges = db.Column(db.Float, default=0)
     skip_letterhead = db.Column(db.Boolean, default=False)
-    show_totals = db.Column(db.Boolean, default=True)
+    show_totals = db.Column(db.Boolean, default=False)
     recipient = db.Column(db.Text, nullable=True)
     visible_columns = db.Column(db.JSON, nullable=True)
 
@@ -395,7 +405,7 @@ class QuotationAnnexure(db.Model):
     name = db.Column(db.String(200), nullable=False)
     sort_order = db.Column(db.Integer, default=0)
     page_break_before = db.Column(db.Boolean, default=False)
-    show_totals = db.Column(db.Boolean, default=True)
+    show_totals = db.Column(db.Boolean, default=False)
 
     line_items = db.relationship("QuotationLineItem", backref="annexure", cascade="all, delete-orphan")
 
@@ -419,6 +429,7 @@ class Invoice(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), nullable=False, index=True)
+    purchase_order_id = db.Column(db.Integer, db.ForeignKey("purchase_orders.id"), nullable=True, index=True)
     invoice_number = db.Column(db.String(50))
     invoice_date = db.Column(db.Date)
     total_amount = db.Column(db.Float, default=0)
@@ -432,6 +443,7 @@ class Invoice(db.Model):
     tax_amount = db.Column(db.Float, default=0)
     skip_letterhead = db.Column(db.Boolean, default=False)
     recipient = db.Column(db.Text, nullable=True)
+    purchase_order = db.relationship("PurchaseOrder", backref="invoices", lazy="selectin")
     line_items = db.relationship("InvoiceLineItem", backref="invoice", cascade="all, delete-orphan", lazy="selectin")
     payments = db.relationship("Payment", backref="invoice", cascade="all, delete-orphan", lazy="selectin")
     credit_notes = db.relationship("CreditNote", backref="invoice", cascade="all, delete-orphan", lazy="selectin")
@@ -484,6 +496,7 @@ class DeliveryChallan(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), nullable=False, index=True)
+    purchase_order_id = db.Column(db.Integer, db.ForeignKey("purchase_orders.id"), nullable=True, index=True)
     challan_number = db.Column(db.String(50))
     dispatch_date = db.Column(db.Date)
     transport_mode = db.Column(db.String(100))
@@ -494,6 +507,7 @@ class DeliveryChallan(db.Model):
     pdf_version = db.Column(db.Integer, default=1)
     is_current = db.Column(db.Boolean, default=True)
     recipient = db.Column(db.Text, nullable=True)
+    purchase_order = db.relationship("PurchaseOrder", backref="delivery_challans", lazy="selectin")
 
     line_items = db.relationship("DeliveryChallanLineItem", backref="challan", cascade="all, delete-orphan", lazy="selectin")
 
@@ -505,6 +519,7 @@ class DeliveryChallanLineItem(db.Model):
     challan_id = db.Column(db.Integer, db.ForeignKey("delivery_challans.id"), nullable=False, index=True)
     catalog_item_id = db.Column(db.Integer, db.ForeignKey("catalog_items.id"), nullable=False, index=True)
     description = db.Column(db.String(300))
+    part_no = db.Column(db.String(100))
     unit = db.Column(db.String(50))
     qty = db.Column(db.Float, default=1)
 

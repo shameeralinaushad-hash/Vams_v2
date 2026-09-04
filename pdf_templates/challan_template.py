@@ -53,7 +53,7 @@ def build_info_box_item_table(theme, line_items, content_width):
     for idx, item in enumerate(line_items, start=1):
         table_data.append([
             str(idx),
-            "",
+            sanitize_text(item.part_no or ""),
             sanitize_text(item.description),
             sanitize_text(item.unit or ""),
             f"{item.qty:g}",
@@ -180,8 +180,9 @@ def generate_challan_pdf(company, client, challan, line_items, output_path, skip
     content_width = page_width - left_margin - right_margin
 
     po_number = ""
-    if challan.order and challan.order.purchase_order:
-        po_number = challan.order.purchase_order.po_number or ""
+    linked_po = challan.purchase_order if challan.purchase_order_id else (challan.order.purchase_order if challan.order else None)
+    if linked_po:
+        po_number = linked_po.po_number or ""
 
     challan_layout = theme.get("challan_layout", "standard")
 
@@ -298,7 +299,7 @@ def generate_challan_pdf(company, client, challan, line_items, output_path, skip
     for idx, item in enumerate(line_items, start=1):
         table_data.append([
             str(idx),
-            "",
+            Paragraph(sanitize_text(item.part_no or ""), style_normal),
             Paragraph(sanitize_text(item.description), style_normal),
             sanitize_text(item.unit or ""),
             f"{item.qty:g}",

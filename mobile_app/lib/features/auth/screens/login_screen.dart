@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/storage.dart';
 import '../../../core/theme.dart';
 import '../models/auth_models.dart';
 import '../providers/auth_provider.dart';
@@ -17,6 +18,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
+  bool _biometricAvailable = false;
+  bool _biometricEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBiometrics();
+  }
+
+  Future<void> _checkBiometrics() async {
+    final authNotifier = ref.read(authProvider.notifier);
+    final canUse = await authNotifier.canUseBiometrics();
+    final enabled = await AppStorage.getBiometricEnabled();
+    if (mounted) {
+      setState(() {
+        _biometricAvailable = canUse;
+        _biometricEnabled = enabled;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -29,30 +50,56 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
-    debugPrint('[LOGIN] _handleLogin: calling authProvider.login');
 
-    final result = await ref.read(authProvider.notifier).login(
-          _emailController.text.trim(),
-          _passwordController.text,
+    try {
+      final result = await ref.read(authProvider.notifier).login(
+            _emailController.text.trim(),
+            _passwordController.text,
+          );
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (result is AuthError) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result.message), backgroundColor: VamsTheme.danger),
         );
+      } else if (result is AuthNeedsCompany) {
+        _showCompanyPicker(result.companies);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Login failed: $e'), backgroundColor: VamsTheme.danger),
+      );
+    }
+  }
 
-    debugPrint('[LOGIN] _handleLogin: result type=${result.runtimeType}');
-    if (!mounted) {
-      debugPrint('[LOGIN] _handleLogin: widget NOT mounted after login');
+  Future<void> _handleBiometricLogin() async {
+    final authNotifier = ref.read(authProvider.notifier);
+    final didAuthenticate = await authNotifier.authenticateWithBiometrics();
+    if (!didAuthenticate || !mounted) {
+      if (mounted && !didAuthenticate) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Biometric authentication failed'), backgroundColor: VamsTheme.danger),
+        );
+      }
       return;
     }
+
+    setState(() => _isLoading = true);
+    await authNotifier.loginWithStoredToken();
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
-    if (result is AuthError) {
-      debugPrint('[LOGIN] _handleLogin: AuthError - ${result.message}');
+    final authState = ref.read(authProvider);
+    if (authState is AuthError) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.message), backgroundColor: VamsTheme.danger),
+        SnackBar(content: Text(authState.message), backgroundColor: VamsTheme.danger),
       );
-    } else if (result is AuthNeedsCompany) {
-      debugPrint('[LOGIN] _handleLogin: AuthNeedsCompany - showing picker');
-      _showCompanyPicker(result.companies);
-    } else {
-      debugPrint('[LOGIN] _handleLogin: result is ${result.runtimeType} (router should redirect)');
+    } else if (authState is AuthNeedsCompany) {
+      _showCompanyPicker(authState.companies);
     }
   }
 
@@ -130,6 +177,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final showBiometric = _biometricAvailable && _biometricEnabled;
+
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -194,6 +243,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           : const Text('Sign In'),
                     ),
                   ),
+                  if (showBiometric) ...[
+                    const SizedBox(height: VamsTheme.spacing16),
+                    SizedBox(
+                      height: 50,
+                      child: OutlinedButton.icon(
+                        onPressed: _isLoading ? null : _handleBiometricLogin,
+                        icon: const Icon(Icons.fingerprint, size: 24),
+                        label: const Text('Login with Biometrics'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: VamsTheme.primary,
+                          side: const BorderSide(color: VamsTheme.primary),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

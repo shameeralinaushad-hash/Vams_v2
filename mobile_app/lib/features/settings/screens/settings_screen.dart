@@ -5,11 +5,38 @@ import '../../auth/providers/auth_provider.dart';
 import '../../../core/storage.dart';
 import '../../../core/theme.dart';
 
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
-  void _showServerUrlDialog(BuildContext context, WidgetRef ref) async {
+  @override
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  bool _biometricEnabled = false;
+  bool _biometricAvailable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBiometricState();
+  }
+
+  Future<void> _loadBiometricState() async {
+    final authNotifier = ref.read(authProvider.notifier);
+    final canUse = await authNotifier.canUseBiometrics();
+    final enabled = await AppStorage.getBiometricEnabled();
+    if (mounted) {
+      setState(() {
+        _biometricAvailable = canUse;
+        _biometricEnabled = enabled;
+      });
+    }
+  }
+
+  void _showServerUrlDialog(BuildContext context) async {
     final currentUrl = await AppStorage.getServerUrl() ?? '';
+    if (!mounted) return;
     final controller = TextEditingController(text: currentUrl);
 
     final result = await showDialog<String>(
@@ -38,14 +65,14 @@ class SettingsScreen extends ConsumerWidget {
       await AppStorage.setServerUrl(url);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Server URL updated. Restart the app to apply.')),
+          const SnackBar(content: Text('Server URL updated. Restart the app to apply.')),
         );
       }
     }
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
     final user = auth is AuthAuthenticated ? auth.user : null;
     final isAdmin = user?.role == 'admin';
@@ -78,12 +105,29 @@ class SettingsScreen extends ConsumerWidget {
             },
           ),
 
+          const _SectionHeader('Security'),
+          if (_biometricAvailable)
+            SwitchListTile(
+              secondary: const Icon(Icons.fingerprint, size: 22, color: VamsTheme.primary),
+              title: const Text('Biometric Login', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              subtitle: Text(
+                _biometricEnabled ? 'Enabled — use fingerprint or face to login' : 'Disabled',
+                style: const TextStyle(fontSize: 12, color: VamsTheme.textMuted),
+              ),
+              value: _biometricEnabled,
+              activeThumbColor: VamsTheme.primary,
+              onChanged: (value) async {
+                await AppStorage.setBiometricEnabled(value);
+                setState(() => _biometricEnabled = value);
+              },
+            ),
+
           const _SectionHeader('Connection'),
           _SettingsTile(
             icon: Icons.dns_outlined,
             title: 'Server URL',
             subtitle: 'Change the server address',
-            onTap: () => _showServerUrlDialog(context, ref),
+            onTap: () => _showServerUrlDialog(context),
           ),
 
           const _SectionHeader('Admin'),
@@ -114,7 +158,6 @@ class SettingsScreen extends ConsumerWidget {
             title: 'Export Expenses (CSV)',
             subtitle: 'Download expenses as CSV',
             onTap: () async {
-              // Triggers export from the expenses screen
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Go to Accounts > Expenses to export')),
               );
@@ -125,7 +168,7 @@ class SettingsScreen extends ConsumerWidget {
           _SettingsTile(
             icon: Icons.info_outline,
             title: 'App Version',
-            subtitle: 'VAMS Mobile v2.0.0',
+            subtitle: 'VAMS Mobile v2.2.0',
             onTap: null,
           ),
         ],

@@ -22,15 +22,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    debugPrint('[HOME] initState called');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = ref.read(authProvider);
-      debugPrint('[HOME] addPostFrameCallback: auth state = ${auth.runtimeType}');
       if (auth is AuthAuthenticated) {
-        debugPrint('[HOME] authenticated → loading dashboard');
         ref.read(dashboardProvider.notifier).loadDashboard();
-      } else {
-        debugPrint('[HOME] NOT authenticated → skipping dashboard load');
       }
     });
   }
@@ -138,6 +133,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
     final dashboard = ref.watch(dashboardProvider);
+    final userName = auth is AuthAuthenticated ? auth.user.name : '';
 
     return Scaffold(
       appBar: AppBar(
@@ -145,7 +141,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('VAMS', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            Text(
+              '${dashboard.data?.greeting ?? 'Hello'}, $userName',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
             if (auth is AuthAuthenticated && auth.user.companyName != null)
               Text(auth.user.companyName!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400)),
           ],
@@ -203,16 +202,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
-                      _QuickActions(),
-                      const SizedBox(height: 16),
                       if (dashboard.data != null) ...[
                         _StatsGrid(stats: dashboard.data!.stats),
-                        const SizedBox(height: 16),
-                        _MyTasksSection(tasks: dashboard.data!.assignedTasks),
-                        const SizedBox(height: 16),
-                        _PersonalTasksSection(tasks: dashboard.data!.personalTasks),
-                        const SizedBox(height: 16),
-                        _RecentOrders(orders: dashboard.data!.recentOrders),
+                        const SizedBox(height: 12),
+                        _ImportantActionsSection(
+                          actions: dashboard.data!.importantActions,
+                          onDismiss: (source, sourceId) {
+                            ref.read(dashboardProvider.notifier).dismissAction(source, sourceId: sourceId);
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        if (dashboard.data!.financialSummary.maxValue > 0) ...[
+                          _FinancialPulseCard(summary: dashboard.data!.financialSummary),
+                          const SizedBox(height: 12),
+                        ],
+                        if (dashboard.data!.assignedTasks.isNotEmpty) ...[
+                          _MyTasksSection(tasks: dashboard.data!.assignedTasks),
+                          const SizedBox(height: 12),
+                        ],
+                        if (dashboard.data!.todos.isNotEmpty) ...[
+                          _TodosSection(todos: dashboard.data!.todos),
+                          const SizedBox(height: 12),
+                        ],
+                        if (dashboard.data!.personalTasks.isNotEmpty) ...[
+                          _PersonalTasksSection(tasks: dashboard.data!.personalTasks),
+                          const SizedBox(height: 12),
+                        ],
+                        if (dashboard.data!.recentOrders.isNotEmpty)
+                          _RecentOrders(orders: dashboard.data!.recentOrders),
                       ],
                     ],
                   ),
@@ -221,63 +238,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-class _QuickActions extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(child: _ActionCard(
-          icon: Icons.shopping_bag_outlined,
-          label: 'Orders',
-          onTap: () => context.push('/orders'),
-        )),
-        const SizedBox(width: 8),
-        Expanded(child: _ActionCard(
-          icon: Icons.business_outlined,
-          label: 'Companies',
-          onTap: () => context.push('/companies'),
-        )),
-        const SizedBox(width: 8),
-        Expanded(child: _ActionCard(
-          icon: Icons.more_horiz_outlined,
-          label: 'More',
-          onTap: () => context.push('/more'),
-        )),
-      ],
-    );
-  }
-}
-
-class _ActionCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _ActionCard({required this.icon, required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Column(
-            children: [
-              Icon(icon, size: 28, color: VamsTheme.primary),
-              const SizedBox(height: 6),
-              Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _StatsGrid extends StatelessWidget {
-  final dynamic stats;
+  final DashboardStats stats;
   const _StatsGrid({required this.stats});
 
   @override
@@ -291,6 +253,7 @@ class _StatsGrid extends StatelessWidget {
               value: '${stats.totalOrders}',
               icon: Icons.shopping_bag_outlined,
               color: VamsTheme.primary,
+              onTap: () => context.push('/orders'),
             )),
             const SizedBox(width: 8),
             Expanded(child: _StatCard(
@@ -298,6 +261,7 @@ class _StatsGrid extends StatelessWidget {
               value: _formatCurrency(stats.totalRevenue),
               icon: Icons.account_balance_wallet_outlined,
               color: VamsTheme.success,
+              onTap: () => context.push('/invoices'),
             )),
           ],
         ),
@@ -309,6 +273,7 @@ class _StatsGrid extends StatelessWidget {
               value: _formatCurrency(stats.totalOutstanding),
               icon: Icons.pending_outlined,
               color: VamsTheme.danger,
+              onTap: () => context.push('/invoices'),
             )),
             const SizedBox(width: 8),
             Expanded(child: _StatCard(
@@ -327,6 +292,7 @@ class _StatsGrid extends StatelessWidget {
               value: '${stats.clientCount}',
               icon: Icons.people_outline,
               color: VamsTheme.primary,
+              onTap: () => context.push('/companies'),
             )),
             const SizedBox(width: 8),
             Expanded(child: _StatCard(
@@ -353,50 +319,279 @@ class _StatCard extends StatelessWidget {
   final String value;
   final IconData icon;
   final Color color;
+  final VoidCallback? onTap;
 
   const _StatCard({
     required this.label,
     required this.value,
     required this.icon,
     required this.color,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Card(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 18, color: color),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      value,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      label,
+                      style: const TextStyle(fontSize: 11, color: VamsTheme.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ImportantActionsSection extends StatelessWidget {
+  final List<ImportantAction> actions;
+  final Function(String, int?) onDismiss;
+
+  const _ImportantActionsSection({required this.actions, required this.onDismiss});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, size: 18, color: color),
+            Row(
+              children: [
+                Icon(
+                  actions.isEmpty ? Icons.check_circle_outline : Icons.warning_amber_rounded,
+                  size: 18,
+                  color: actions.isEmpty ? VamsTheme.success : VamsTheme.warning,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('Important Actions', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                ),
+                if (actions.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: VamsTheme.warning.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text('${actions.length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: VamsTheme.warning)),
+                  ),
+              ],
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    value,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                  ),
-                  Text(
-                    label,
-                    style: const TextStyle(fontSize: 11, color: VamsTheme.textMuted),
-                  ),
-                ],
-              ),
+            const SizedBox(height: 12),
+            if (actions.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.check_circle, size: 16, color: VamsTheme.success.withValues(alpha: 0.7)),
+                    const SizedBox(width: 8),
+                    Text(
+                      "You're all caught up!",
+                      style: TextStyle(fontSize: 13, color: VamsTheme.success.withValues(alpha: 0.8), fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              )
+            else
+              ...actions.map((action) => _ActionTile(action: action, onDismiss: onDismiss)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  final ImportantAction action;
+  final Function(String, int?) onDismiss;
+
+  const _ActionTile({required this.action, required this.onDismiss});
+
+  @override
+  Widget build(BuildContext context) {
+    final isCritical = action.severity == 'critical';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isCritical ? VamsTheme.danger.withValues(alpha: 0.04) : VamsTheme.background,
+        borderRadius: BorderRadius.circular(10),
+        border: Border(
+          left: BorderSide(
+            color: isCritical ? VamsTheme.danger : VamsTheme.warning,
+            width: 3,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isCritical ? Icons.error_outline : Icons.info_outline,
+            size: 18,
+            color: isCritical ? VamsTheme.danger : VamsTheme.warning,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  action.title,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  action.timeLabel,
+                  style: const TextStyle(fontSize: 11, color: VamsTheme.textMuted),
+                ),
+              ],
+            ),
+          ),
+          InkWell(
+            onTap: () => onDismiss(action.source, action.sourceId),
+            borderRadius: BorderRadius.circular(20),
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Icon(Icons.snooze, size: 18, color: VamsTheme.textMuted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FinancialPulseCard extends StatelessWidget {
+  final FinancialSummary summary;
+  const _FinancialPulseCard({required this.summary});
+
+  @override
+  Widget build(BuildContext context) {
+    final maxVal = summary.maxValue;
+    if (maxVal == 0) return const SizedBox.shrink();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Financial Pulse', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 16),
+            _PulseBar(
+              label: 'Revenue',
+              value: summary.totalRevenue,
+              maxValue: maxVal,
+              color: VamsTheme.primary,
+            ),
+            const SizedBox(height: 12),
+            _PulseBar(
+              label: 'Outstanding',
+              value: summary.totalOutstanding,
+              maxValue: maxVal,
+              color: VamsTheme.danger,
+            ),
+            const SizedBox(height: 12),
+            _PulseBar(
+              label: 'Profit',
+              value: summary.totalProfit,
+              maxValue: maxVal,
+              color: VamsTheme.success,
             ),
           ],
         ),
       ),
     );
+  }
+}
+
+class _PulseBar extends StatelessWidget {
+  final String label;
+  final double value;
+  final double maxValue;
+  final Color color;
+
+  const _PulseBar({
+    required this.label,
+    required this.value,
+    required this.maxValue,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fraction = maxValue > 0 ? (value.abs() / maxValue).clamp(0.0, 1.0) : 0.0;
+    final isNegative = value < 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: VamsTheme.textSecondary)),
+            Text(
+              _formatCurrency(value),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: isNegative ? VamsTheme.danger : color),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: fraction,
+            minHeight: 8,
+            backgroundColor: VamsTheme.border,
+            valueColor: AlwaysStoppedAnimation<Color>(isNegative ? VamsTheme.danger : color),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatCurrency(double value) {
+    final abs = value.abs();
+    String formatted;
+    if (abs >= 1000000) {
+      formatted = '${(abs / 1000000).toStringAsFixed(1)}M';
+    } else if (abs >= 1000) {
+      formatted = '${(abs / 1000).toStringAsFixed(1)}K';
+    } else {
+      formatted = abs.toStringAsFixed(0);
+    }
+    return value < 0 ? '-$formatted' : formatted;
   }
 }
 
@@ -494,7 +689,7 @@ class _TaskTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.1),
+                color: statusColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
@@ -610,7 +805,7 @@ class _PersonalTaskTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.1),
+                color: statusColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
@@ -622,7 +817,7 @@ class _PersonalTaskTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: VamsTheme.primary.withOpacity(0.08),
+                color: VamsTheme.primary.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
@@ -699,8 +894,134 @@ class _PersonalTaskTile extends StatelessWidget {
   }
 }
 
+class _TodosSection extends StatelessWidget {
+  final List<DashboardTodo> todos;
+  const _TodosSection({required this.todos});
+
+  @override
+  Widget build(BuildContext context) {
+    if (todos.isEmpty) return const SizedBox.shrink();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.checklist_outlined, size: 18, color: VamsTheme.primary),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text('To-Dos', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                ),
+                Text('${todos.where((t) => !t.isDone).length} open', style: const TextStyle(fontSize: 12, color: VamsTheme.textMuted)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ...todos.map((todo) => _TodoTile(todo: todo)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TodoTile extends StatelessWidget {
+  final DashboardTodo todo;
+  const _TodoTile({required this.todo});
+
+  @override
+  Widget build(BuildContext context) {
+    final priorityColor = _priorityColor(todo.priority);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Icon(
+            todo.isDone ? Icons.check_circle : Icons.radio_button_unchecked,
+            size: 18,
+            color: todo.isDone ? VamsTheme.success : VamsTheme.textMuted,
+          ),
+          const SizedBox(width: 10),
+          Container(
+            width: 3,
+            height: 24,
+            decoration: BoxDecoration(
+              color: todo.isDone ? VamsTheme.success.withValues(alpha: 0.3) : priorityColor,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              todo.text,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                decoration: todo.isDone ? TextDecoration.lineThrough : null,
+                color: todo.isDone ? VamsTheme.textMuted : VamsTheme.textPrimary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (todo.dueDate != null)
+            Text(
+              _formatDueDate(todo.dueDate!),
+              style: TextStyle(
+                fontSize: 10,
+                color: _isOverdue(todo.dueDate!) && !todo.isDone ? VamsTheme.danger : VamsTheme.textMuted,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Color _priorityColor(String priority) {
+    switch (priority) {
+      case 'high':
+        return VamsTheme.danger;
+      case 'medium':
+        return VamsTheme.warning;
+      case 'low':
+        return VamsTheme.success;
+      default:
+        return VamsTheme.textMuted;
+    }
+  }
+
+  String _formatDueDate(String dateStr) {
+    try {
+      final date = DateTime.parse(dateStr);
+      final now = DateTime.now();
+      final diff = date.difference(DateTime(now.year, now.month, now.day)).inDays;
+      if (diff == 0) return 'Today';
+      if (diff == 1) return 'Tomorrow';
+      if (diff == -1) return 'Yesterday';
+      if (diff < -1) return '${-diff}d overdue';
+      if (diff <= 7) return '${diff}d left';
+      return '${date.month}/${date.day}';
+    } catch (_) {
+      return dateStr;
+    }
+  }
+
+  bool _isOverdue(String dateStr) {
+    try {
+      final date = DateTime.parse(dateStr);
+      final now = DateTime.now();
+      return date.isBefore(DateTime(now.year, now.month, now.day));
+    } catch (_) {
+      return false;
+    }
+  }
+}
+
 class _RecentOrders extends StatelessWidget {
-  final List<dynamic> orders;
+  final List<RecentOrder> orders;
   const _RecentOrders({required this.orders});
 
   @override
@@ -750,7 +1071,7 @@ class _RecentOrders extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.1),
+                          color: statusColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(

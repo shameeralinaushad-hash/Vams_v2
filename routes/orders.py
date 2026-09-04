@@ -51,7 +51,7 @@ def list_orders():
         .join(Client)
         .options(
             db.contains_eager(Order.client),
-            db.joinedload(Order.purchase_order),
+            db.selectinload(Order.purchase_orders),
             db.selectinload(Order.quotations),
         )
     )
@@ -213,9 +213,9 @@ def edit_order(order_id):
         os.rename(old_folder_path, new_folder_path)
 
         # Update stored attachment and document paths in the database to reflect the new folder name
-        if order.purchase_order and order.purchase_order.attachment_path:
-            order.purchase_order.attachment_path = order.purchase_order.attachment_path.replace(old_folder_name,
-                                                                                                new_folder_name)
+        for po in order.purchase_orders:
+            if po.attachment_path:
+                po.attachment_path = po.attachment_path.replace(old_folder_name, new_folder_name)
 
         for doc in order.documents:
             if doc.filename:
@@ -258,6 +258,7 @@ def upload_po(order_id):
     order = Order.query.get_or_404(order_id)
     redirect_target = request.form.get("next") or request.referrer or url_for("orders.view_order", order_id=order.id)
 
+    po_id = request.form.get("po_id", type=int)
     po_number = request.form.get("po_number", "")
     po_date_str = request.form.get("po_date", "")
     po_date = datetime.strptime(po_date_str, "%Y-%m-%d").date() if po_date_str else None
@@ -278,24 +279,28 @@ def upload_po(order_id):
         file.save(os.path.join(folder, filename))
         attachment_path = f"documents/company_{order.company_id}/{folder_name}/{filename}"
 
-    existing_po = order.purchase_order
-    if existing_po:
-        existing_po.po_number = po_number
-        existing_po.po_date = po_date
-        existing_po.status = po_status
+    # Edit existing PO or create new one
+    if po_id:
+        po = db.session.get(PurchaseOrder, po_id)
+        if not po or po.order_id != order.id:
+            flash("PO not found.")
+            return redirect(redirect_target)
+        po.po_number = po_number
+        po.po_date = po_date
+        po.status = po_status
         if attachment_path:
-            existing_po.attachment_path = attachment_path
+            po.attachment_path = attachment_path
     else:
-        existing_po = PurchaseOrder(
+        po = PurchaseOrder(
             order_id=order.id, po_number=po_number, po_date=po_date,
             attachment_path=attachment_path, status=po_status
         )
-        db.session.add(existing_po)
+        db.session.add(po)
 
     db.session.flush()
 
     # Handle line items
-    existing_po.line_items.clear()
+    po.line_items.clear()
     total = 0
     idx = 0
     while True:
@@ -307,7 +312,7 @@ def upload_po(order_id):
         qty = float(request.form.get(f"items-{idx}-qty", 1) or 1)
         unit_price = float(request.form.get(f"items-{idx}-unit_price", 0) or 0)
         item = PurchaseOrderLineItem(
-            purchase_order_id=existing_po.id,
+            purchase_order_id=po.id,
             description=desc, part_no=part_no, unit=unit,
             qty=qty, unit_price=unit_price
         )
@@ -315,7 +320,7 @@ def upload_po(order_id):
         total += qty * unit_price
         idx += 1
 
-    existing_po.total_amount = total
+    po.total_amount = total
     db.session.commit()
     flash("Purchase order saved successfully.")
     return redirect(redirect_target)
@@ -348,16 +353,17 @@ def extract_po(order_id):
         return jsonify({"error": "Extraction failed. Please try again."}), 500
 
 
-@orders_bp.route("/<int:order_id>/re-stamp-po", methods=["POST"])
-def re_stamp_po(order_id):
+@orders_bp.route("/<int:order_id>/re-stamp-po/<int:po_id>", methods=["POST"])
+def re_stamp_po(order_id, po_id):
     order = Order.query.get_or_404(order_id)
     redirect_target = request.form.get("next") or request.referrer or url_for("orders.view_order", order_id=order_id)
 
-    if not order.purchase_order or not order.purchase_order.attachment_path:
+    po = db.session.get(PurchaseOrder, po_id)
+    if not po or po.order_id != order.id or not po.attachment_path:
         flash("No PO file found to stamp.")
         return redirect(redirect_target)
 
-    full_po_path = os.path.join(current_app.root_path, "static", order.purchase_order.attachment_path)
+    full_po_path = os.path.join(current_app.root_path, "static", po.attachment_path)
     company_obj = db.session.get(Company, order.company_id)
     success = stamp_last_page(full_po_path, full_po_path, company_obj)
     if success:
@@ -367,17 +373,18 @@ def re_stamp_po(order_id):
     return redirect(redirect_target)
 
 
-@orders_bp.route("/<int:order_id>/delete-po", methods=["POST"])
-def delete_po(order_id):
+@orders_bp.route("/<int:order_id>/delete-po/<int:po_id>", methods=["POST"])
+def delete_po(order_id, po_id):
     order = Order.query.get_or_404(order_id)
     redirect_target = request.form.get("next") or request.referrer or url_for("orders.view_order", order_id=order_id)
 
-    if order.purchase_order:
-        if order.purchase_order.attachment_path:
-            full_path = os.path.join(current_app.root_path, "static", order.purchase_order.attachment_path)
+    po = db.session.get(PurchaseOrder, po_id)
+    if po and po.order_id == order.id:
+        if po.attachment_path:
+            full_path = os.path.join(current_app.root_path, "static", po.attachment_path)
             if os.path.exists(full_path):
                 os.remove(full_path)
-        db.session.delete(order.purchase_order)
+        db.session.delete(po)
         db.session.commit()
         flash("PO attachment and record deleted.")
     return redirect(redirect_target)

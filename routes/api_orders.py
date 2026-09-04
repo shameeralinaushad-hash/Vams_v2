@@ -14,9 +14,20 @@ def _get_company_id():
 
 
 def _serialize_order_list(order):
-    po = order.purchase_order
+    pos = order.purchase_orders
     client = order.client
     first_quotation = order.quotations[0] if order.quotations else None
+
+    purchase_orders = [
+        {
+            "id": po.id,
+            "po_number": po.po_number,
+            "po_date": po.po_date.isoformat() if po.po_date else None,
+            "status": po.status,
+            "total_amount": float(po.total_amount) if po.total_amount else 0,
+        }
+        for po in pos
+    ]
 
     return {
         "id": order.id,
@@ -28,11 +39,7 @@ def _serialize_order_list(order):
             "id": client.id if client else None,
             "name": client.name if client else None,
         } if client else None,
-        "po": {
-            "po_number": po.po_number if po else None,
-            "status": po.status if po else None,
-            "total_amount": po.total_amount if po else None,
-        } if po else None,
+        "purchase_orders": purchase_orders,
         "quotation_number": first_quotation.quote_number if first_quotation else None,
     }
 
@@ -40,7 +47,7 @@ def _serialize_order_list(order):
 def _serialize_order_detail(order):
     client = order.client
     company = order.company
-    po = order.purchase_order
+    pos = order.purchase_orders
 
     quotations = []
     for q in order.quotations:
@@ -70,6 +77,7 @@ def _serialize_order_detail(order):
     invoices = []
     for inv in order.invoices:
         payments = [{"id": p.id, "amount": p.amount, "paid_date": p.paid_date.isoformat() if p.paid_date else None, "method": p.method} for p in inv.payments]
+        inv_po = inv.purchase_order
         invoices.append({
             "id": inv.id,
             "invoice_number": inv.invoice_number,
@@ -80,18 +88,45 @@ def _serialize_order_detail(order):
             "total_paid": inv.total_paid(),
             "is_fully_paid": inv.is_fully_paid(),
             "pdf_path": inv.pdf_path,
+            "purchase_order_id": inv.purchase_order_id,
+            "purchase_order_number": inv_po.po_number if inv_po else None,
             "payments": payments,
         })
 
     challans = []
     for c in order.delivery_challans:
+        c_po = c.purchase_order
         challans.append({
             "id": c.id,
             "challan_number": c.challan_number,
             "dispatch_date": c.dispatch_date.isoformat() if c.dispatch_date else None,
             "transport_mode": c.transport_mode,
             "pdf_path": c.pdf_path,
+            "purchase_order_id": c.purchase_order_id,
+            "purchase_order_number": c_po.po_number if c_po else None,
         })
+
+    purchase_orders = [
+        {
+            "id": po.id,
+            "po_number": po.po_number,
+            "po_date": po.po_date.isoformat() if po.po_date else None,
+            "status": po.status,
+            "total_amount": float(po.total_amount) if po.total_amount else 0,
+            "line_items": [
+                {
+                    "id": li.id,
+                    "description": li.description,
+                    "part_no": li.part_no,
+                    "unit": li.unit,
+                    "qty": li.qty,
+                    "unit_price": float(li.unit_price) if li.unit_price else 0,
+                }
+                for li in po.line_items
+            ],
+        }
+        for po in pos
+    ]
 
     return {
         "id": order.id,
@@ -110,13 +145,7 @@ def _serialize_order_detail(order):
             "id": company.id if company else None,
             "name": company.name if company else None,
         } if company else None,
-        "purchase_order": {
-            "id": po.id if po else None,
-            "po_number": po.po_number if po else None,
-            "po_date": po.po_date.isoformat() if po and po.po_date else None,
-            "status": po.status if po else None,
-            "total_amount": po.total_amount if po else None,
-        } if po else None,
+        "purchase_orders": purchase_orders,
         "quotations": quotations,
         "invoices": invoices,
         "delivery_challans": challans,
@@ -146,7 +175,7 @@ def list_orders():
         .join(Client)
         .options(
             db.contains_eager(Order.client),
-            db.joinedload(Order.purchase_order),
+            db.selectinload(Order.purchase_orders),
             db.selectinload(Order.quotations),
         )
     )
@@ -423,7 +452,17 @@ def add_po(order_id):
     if not order or order.company_id != company_id:
         return jsonify({"success": False, "error": "not_found", "message": "Order not found."}), 404
 
-    po = order.purchase_order
+    data = request.get_json(silent=True) or {}
+    po_id = data.get("po_id")
+    po = None
+
+    if attachment_path not in locals():
+        attachment_path = None
+
+    if po_id:
+        po = db.session.get(PurchaseOrder, po_id)
+        if not po or po.order_id != order.id:
+            return jsonify({"success": False, "error": "not_found", "message": "Purchase order not found."}), 404
 
     if "file" in request.files:
         file = request.files["file"]
@@ -442,8 +481,6 @@ def add_po(order_id):
             attachment_path = None
     else:
         attachment_path = None
-
-    data = request.get_json(silent=True) or {}
 
     if not po:
         po = PurchaseOrder(
@@ -479,7 +516,7 @@ def add_po(order_id):
             "po_number": po.po_number,
             "po_date": po.po_date.isoformat() if po.po_date else None,
             "status": po.status,
-            "total_amount": po.total_amount,
+            "total_amount": float(po.total_amount) if po.total_amount else 0,
             "attachment_path": po.attachment_path,
         },
     })

@@ -1,4 +1,7 @@
-from datetime import date
+import calendar
+import io
+import base64
+from datetime import date, datetime
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from models import db, Employee, AttendanceRecord, PayrollRecord, Holiday
@@ -296,4 +299,122 @@ def edit_employee(emp_id):
             "base_monthly_salary": employee.base_monthly_salary,
             "is_active": employee.is_active,
         },
+    })
+
+
+@api_hr_bp.route("/api/v1/hr/attendance/list", methods=["GET"])
+@jwt_required()
+def attendance_list():
+    company_id = _get_company_id()
+    if not company_id:
+        return jsonify({"success": False, "error": "no_company", "message": "No active company."}), 400
+
+    today = date.today()
+    month = request.args.get("month", today.month, type=int)
+    year = request.args.get("year", today.year, type=int)
+
+    employees = Employee.query.filter_by(company_id=company_id, is_active=True).order_by(Employee.name).all()
+    emp_ids = [e.id for e in employees]
+
+    num_days = calendar.monthrange(year, month)[1]
+    start_date = date(year, month, 1)
+    end_date = date(year, month, num_days)
+
+    records = AttendanceRecord.query.filter(
+        AttendanceRecord.employee_id.in_(emp_ids),
+        AttendanceRecord.date >= start_date,
+        AttendanceRecord.date <= end_date,
+    ).all()
+
+    record_map = {}
+    for r in records:
+        record_map[(r.employee_id, r.date)] = r.status
+
+    holidays = Holiday.query.filter(
+        (Holiday.company_id == company_id) | (Holiday.company_id.is_(None)),
+        Holiday.date >= start_date,
+        Holiday.date <= end_date,
+    ).all()
+    holiday_map = {h.date: h.name for h in holidays}
+
+    employee_data = []
+    for e in employees:
+        days = {}
+        present = absent = half_day = leave = 0
+        for d in range(1, num_days + 1):
+            dt = date(year, month, d)
+            status = record_map.get((e.id, dt))
+            if status == "present":
+                present += 1
+            elif status == "absent":
+                absent += 1
+            elif status == "half_day":
+                half_day += 1
+            elif status == "leave":
+                leave += 1
+            days[d] = status
+
+        working_days = present + absent + half_day + leave
+        pct = round(present / working_days * 100, 1) if working_days > 0 else 0
+
+        employee_data.append({
+            "id": e.id,
+            "name": e.name,
+            "department": e.department,
+            "designation": e.designation,
+            "days": days,
+            "present": present,
+            "absent": absent,
+            "half_day": half_day,
+            "leave": leave,
+            "percentage": pct,
+        })
+
+    day_info = []
+    for d in range(1, num_days + 1):
+        dt = date(year, month, d)
+        day_info.append({
+            "day": d,
+            "weekday": dt.strftime("%a"),
+            "is_weekend": dt.weekday() >= 5,
+            "holiday": holiday_map.get(dt),
+        })
+
+    return jsonify({
+        "success": True,
+        "month": month,
+        "year": year,
+        "num_days": num_days,
+        "employees": employee_data,
+        "days": day_info,
+    })
+
+
+@api_hr_bp.route("/api/v1/hr/attendance/qr", methods=["GET"])
+@jwt_required()
+def attendance_qr():
+    claims = get_jwt()
+    if claims.get("role") != "admin":
+        return jsonify({"success": False, "error": "forbidden", "message": "Admin access required."}), 403
+
+    company_id = _get_company_id()
+    if not company_id:
+        return jsonify({"success": False, "error": "no_company", "message": "No active company."}), 400
+
+    from flask import current_app
+    scan_url = request.host_url.rstrip("/") + "/api/v1/hr/attendance/scan"
+
+    try:
+        from qrcode.main import make as make_qr
+        img = make_qr(scan_url)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        qr_b64 = base64.b64encode(buf.getvalue()).decode()
+    except ImportError:
+        qr_b64 = None
+
+    return jsonify({
+        "success": True,
+        "scan_url": scan_url,
+        "qr_image": f"data:image/png;base64,{qr_b64}" if qr_b64 else None,
     })

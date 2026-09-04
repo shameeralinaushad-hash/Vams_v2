@@ -2,7 +2,7 @@ import os
 from datetime import date, datetime
 from flask import Blueprint, render_template, request, redirect, url_for, current_app, flash, session
 from werkzeug.utils import secure_filename
-from models import db, Invoice, InvoiceLineItem, CatalogItem, Order, ClientDocSequence, PriceHistory
+from models import db, Invoice, InvoiceLineItem, CatalogItem, Order, PurchaseOrder, ClientDocSequence, PriceHistory
 from utils import get_order_folder
 from pdf_templates.invoice_template import generate_invoice_pdf
 from audit import log_action
@@ -40,6 +40,7 @@ def _parse_invoice_form(order):
     installation_charges = float(request.form.get("installation_charges", "0") or 0)
     transportation_charges = float(request.form.get("transportation_charges", "0") or 0)
     tax_amount = float(request.form.get("tax_amount", "0") or 0)
+    purchase_order_id = request.form.get("purchase_order_id")
 
     return {
         "part_nos": part_nos, "descriptions": descriptions, "units": units,
@@ -48,6 +49,7 @@ def _parse_invoice_form(order):
         "skip_letterhead": skip_letterhead, "recipient": recipient,
         "discount_amount": discount_amount, "installation_charges": installation_charges,
         "transportation_charges": transportation_charges, "tax_amount": tax_amount,
+        "purchase_order_id": purchase_order_id,
     }
 
 
@@ -146,6 +148,7 @@ def create_invoice(order_id):
             transportation_charges=data["transportation_charges"], tax_amount=data["tax_amount"],
             skip_letterhead=data["skip_letterhead"],
             recipient=data["recipient"],
+            purchase_order_id=int(data["purchase_order_id"]) if data.get("purchase_order_id") else None,
             is_current=True, pdf_version=1,
         )
         db.session.add(invoice)
@@ -162,7 +165,62 @@ def create_invoice(order_id):
         emit_dashboard_update(order.company_id)
         return redirect(url_for("orders.view_order", order_id=order.id))
 
-    prefill_items = order.commercial_quotation.line_items if order.commercial_quotation else []
+    order = Order.query.get_or_404(order_id)
+    seq = ClientDocSequence.get_or_create(order.company_id, order.client_id, "invoice")
+
+    if request.method == "POST":
+        data = _parse_invoice_form(order)
+        invoice_number = data["invoice_number"]
+
+        if invoice_number:
+            if seq:
+                seq.get_next_raw_number()
+        else:
+            raw = seq.get_next_raw_number() if seq else order.id
+            invoice_number = build_invoice_number(order.company, order.client, raw)
+
+        existing = Invoice.query.filter_by(order_id=order.id).all()
+        for old_inv in existing:
+            old_inv.is_current = False
+        db.session.commit()
+
+        invoice = Invoice(
+            order_id=order.id, invoice_number=invoice_number, invoice_date=data["invoice_date"],
+            discount_amount=data["discount_amount"], installation_charges=data["installation_charges"],
+            transportation_charges=data["transportation_charges"], tax_amount=data["tax_amount"],
+            skip_letterhead=data["skip_letterhead"],
+            recipient=data["recipient"],
+            purchase_order_id=int(data["purchase_order_id"]) if data.get("purchase_order_id") else None,
+            is_current=True, pdf_version=1,
+        )
+        db.session.add(invoice)
+        db.session.commit()
+
+        line_items = _build_invoice_line_items(invoice, data, order)
+        db.session.commit()
+
+        _write_invoice_pdf(order, invoice, line_items)
+
+        log_action("create_invoice", "Invoice", invoice.id, f"Created invoice {invoice_number} for {order.client.name}")
+
+        emit_company("list_refresh", {"section": "invoices"}, order.company_id)
+        emit_dashboard_update(order.company_id)
+        return redirect(url_for("orders.view_order", order_id=order.id))
+
+    po = order.purchase_order
+    selected_po_id = request.args.get("po_id", type=int)
+    if selected_po_id:
+        for p in order.purchase_orders:
+            if p.id == selected_po_id:
+                po = p
+                break
+
+    if po and po.line_items:
+        prefill_items = po.line_items
+    elif order.commercial_quotation:
+        prefill_items = order.commercial_quotation.line_items
+    else:
+        prefill_items = []
     prefill_discount = order.commercial_quotation.discount_amount if order.commercial_quotation else 0
     prefill_installation = order.commercial_quotation.installation_charges if order.commercial_quotation else 0
     prefill_transportation = order.commercial_quotation.transportation_charges if order.commercial_quotation else 0
@@ -172,7 +230,9 @@ def create_invoice(order_id):
     raw = seq.peek_next_raw_number() if seq else order.id
     suggested_number = build_invoice_number(order.company, order.client, raw)
     return render_template(
-        "invoices/create.html", order=order, prefill_items=prefill_items,
+        "invoices/create.html", order=order, invoice=None,
+        selected_po_id=selected_po_id,
+        prefill_items=prefill_items,
         prefill_discount=prefill_discount, prefill_installation=prefill_installation,
         prefill_transportation=prefill_transportation, prefill_tax=prefill_tax,
         prefill_recipient=prefill_recipient,
@@ -188,13 +248,12 @@ def edit_invoice(invoice_id):
     if request.method == "POST":
         data = _parse_invoice_form(order)
 
-        invoice.invoice_number = data["invoice_number"] or invoice.invoice_number
-        invoice.invoice_date = data["invoice_date"]
         invoice.recipient = data["recipient"]
         invoice.discount_amount = data["discount_amount"]
         invoice.installation_charges = data["installation_charges"]
         invoice.transportation_charges = data["transportation_charges"]
         invoice.tax_amount = data["tax_amount"]
+        invoice.purchase_order_id = int(data["purchase_order_id"]) if data.get("purchase_order_id") else None
         invoice.skip_letterhead = data["skip_letterhead"]
         invoice.pdf_version = (invoice.pdf_version or 1) + 1
 

@@ -60,6 +60,7 @@ def _serialize_challan_detail(challan):
         line_items.append({
             "id": li.id,
             "description": li.description,
+            "part_no": li.part_no or "",
             "unit": li.unit,
             "qty": li.qty,
         })
@@ -259,6 +260,7 @@ def create_challan(order_id):
             challan_id=challan.id,
             catalog_item_id=catalog_item.id,
             description=desc,
+            part_no=item.get("part_no", "").strip() if item.get("part_no") else "",
             unit=item.get("unit", "Nos").strip() if item.get("unit") else "Nos",
             qty=float(item.get("qty", 0) or 0),
         )
@@ -330,6 +332,7 @@ def edit_challan(challan_id):
             challan_id=challan.id,
             catalog_item_id=catalog_item.id,
             description=desc,
+            part_no=item.get("part_no", "").strip() if item.get("part_no") else "",
             unit=item.get("unit", "Nos").strip() if item.get("unit") else "Nos",
             qty=float(item.get("qty", 0) or 0),
         )

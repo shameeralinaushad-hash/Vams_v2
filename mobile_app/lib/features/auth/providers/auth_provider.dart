@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:local_auth/local_auth.dart';
 import '../../../core/api_client.dart';
 import '../../../core/storage.dart';
 import '../models/auth_models.dart';
@@ -41,6 +42,8 @@ class AuthError extends AuthState {
 }
 
 class AuthNotifier extends StateNotifier<AuthState> {
+  final LocalAuthentication _localAuth = LocalAuthentication();
+
   AuthNotifier() : super(AuthInitial()) {
     _init();
   }
@@ -85,13 +88,51 @@ class AuthNotifier extends StateNotifier<AuthState> {
           state = AuthAuthenticated(user);
         }
       } else {
+        // Token invalid — try refresh before giving up
+        final refreshed = await _tryRefreshToken();
+        if (refreshed) {
+          await _init(); // retry with new token
+          return;
+        }
         await AppStorage.clearAuth();
         state = AuthUnauthenticated();
       }
     } catch (e) {
       debugPrint('[AUTH] _init: /me failed: $e');
+      // Network or other error — try refresh before giving up
+      final refreshed = await _tryRefreshToken();
+      if (refreshed) {
+        await _init(); // retry with new token
+        return;
+      }
       await AppStorage.clearAuth();
       state = AuthUnauthenticated();
+    }
+  }
+
+  Future<bool> _tryRefreshToken() async {
+    try {
+      final refreshToken = await AppStorage.getRefreshToken();
+      final serverUrl = await AppStorage.getServerUrl();
+      if (refreshToken == null || serverUrl == null) return false;
+
+      final refreshDio = Dio(BaseOptions(
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $refreshToken',
+        },
+      ));
+      final response = await refreshDio.post('$serverUrl/api/v1/auth/refresh');
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        await AppStorage.setAccessToken(response.data['access_token']);
+        debugPrint('[AUTH] _tryRefreshToken: success');
+        return true;
+      }
+      debugPrint('[AUTH] _tryRefreshToken: failed status=${response.statusCode}');
+      return false;
+    } catch (e) {
+      debugPrint('[AUTH] _tryRefreshToken error: $e');
+      return false;
     }
   }
 
@@ -126,6 +167,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
         await AppStorage.setAccessToken(tokens.accessToken);
         await AppStorage.setRefreshToken(tokens.refreshToken);
+        if (await AppStorage.getBiometricEnabled()) {
+          await AppStorage.setBiometricRefreshToken(tokens.refreshToken);
+        }
         await AppStorage.setUserName(user.name);
         await AppStorage.setUserEmail(user.email);
         await AppStorage.setUserRole(user.role);
@@ -177,6 +221,109 @@ class AuthNotifier extends StateNotifier<AuthState> {
       debugPrint('[AUTH] login: unexpected error: $e');
       state = const AuthError('Unexpected error. Please try again.');
       return state;
+    }
+  }
+
+  Future<bool> canUseBiometrics() async {
+    try {
+      final canAuthenticate = await _localAuth.canCheckBiometrics;
+      final isDeviceSupported = await _localAuth.isDeviceSupported();
+      debugPrint('[AUTH] canUseBiometrics: canCheckBiometrics=$canAuthenticate isDeviceSupported=$isDeviceSupported');
+      return canAuthenticate && isDeviceSupported;
+    } catch (e) {
+      debugPrint('[AUTH] canUseBiometrics error: $e');
+      return false;
+    }
+  }
+
+  Future<bool> authenticateWithBiometrics() async {
+    try {
+      debugPrint('[AUTH] authenticateWithBiometrics: calling _localAuth.authenticate()');
+      final didAuthenticate = await _localAuth.authenticate(
+        localizedReason: 'Authenticate to access VAMS',
+        options: const AuthenticationOptions(
+          stickyAuth: true,
+          biometricOnly: false,
+        ),
+      );
+      debugPrint('[AUTH] authenticateWithBiometrics: result=$didAuthenticate');
+      return didAuthenticate;
+    } catch (e, stack) {
+      debugPrint('[AUTH] authenticateWithBiometrics ERROR: $e');
+      debugPrint('[AUTH] authenticateWithBiometrics STACK: $stack');
+      return false;
+    }
+  }
+
+  Future<void> loginWithStoredToken() async {
+    debugPrint('[AUTH] loginWithStoredToken() called');
+    state = AuthLoading();
+
+    // Try refresh using biometric refresh token (survives logout)
+    final biometricRefreshToken = await AppStorage.getBiometricRefreshToken();
+    if (biometricRefreshToken != null && biometricRefreshToken.isNotEmpty) {
+      try {
+        final serverUrl = await AppStorage.getServerUrl();
+        if (serverUrl != null) {
+          final refreshDio = Dio(BaseOptions(
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $biometricRefreshToken',
+            },
+          ));
+          final response = await refreshDio.post('$serverUrl/api/v1/auth/refresh');
+          if (response.statusCode == 200 && response.data['success'] == true) {
+            await AppStorage.setAccessToken(response.data['access_token']);
+            debugPrint('[AUTH] loginWithStoredToken: biometric refresh success');
+          } else {
+            debugPrint('[AUTH] loginWithStoredToken: biometric refresh failed status=${response.statusCode}');
+            state = const AuthError('Session expired. Please log in with email and password.');
+            return;
+          }
+        }
+      } catch (e) {
+        debugPrint('[AUTH] loginWithStoredToken: biometric refresh error: $e');
+        state = const AuthError('Session expired. Please log in with email and password.');
+        return;
+      }
+    } else {
+      // Fallback: try regular refresh token
+      final refreshed = await _tryRefreshToken();
+      if (!refreshed) {
+        debugPrint('[AUTH] loginWithStoredToken: refresh failed → AuthUnauthenticated');
+        state = const AuthError('Session expired. Please log in with email and password.');
+        return;
+      }
+    }
+
+    try {
+      final dio = ApiClient.instance;
+      final response = await dio.get('/api/v1/auth/me');
+      debugPrint('[AUTH] loginWithStoredToken: /me status=${response.statusCode}');
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        final needsCompany = response.data['needs_company'] == true;
+        final user = UserProfile.fromJson(response.data['user']);
+        if (needsCompany) {
+          final companies = (response.data['companies'] as List)
+              .map((c) => Company.fromJson(c))
+              .toList();
+          final accessToken = await AppStorage.getAccessToken() ?? '';
+          final refreshToken = await AppStorage.getRefreshToken() ?? '';
+          state = AuthNeedsCompany(
+            companies: companies,
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            user: user,
+          );
+        } else {
+          state = AuthAuthenticated(user);
+        }
+      } else {
+        state = const AuthError('Session expired. Please log in with email and password.');
+      }
+    } catch (e) {
+      debugPrint('[AUTH] loginWithStoredToken failed: $e');
+      state = const AuthError('Session expired. Please log in with email and password.');
     }
   }
 

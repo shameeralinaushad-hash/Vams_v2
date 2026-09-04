@@ -16,18 +16,19 @@ class EditQuotationScreen extends ConsumerStatefulWidget {
 }
 
 class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _subjectCtrl = TextEditingController();
-  final _recipientCtrl = TextEditingController();
-  final _dateCtrl = TextEditingController();
-  final _termsCtrl = TextEditingController();
-  final _taxAmountCtrl = TextEditingController(text: '0');
-  final _discountAmountCtrl = TextEditingController(text: '0');
-  final _installationCtrl = TextEditingController(text: '0');
-  final _transportCtrl = TextEditingController(text: '0');
-  List<_LineItemForm> _items = [];
-  bool _saving = false;
-  bool _loading = true;
+   final _formKey = GlobalKey<FormState>();
+   final _subjectCtrl = TextEditingController();
+   final _recipientCtrl = TextEditingController();
+   final _dateCtrl = TextEditingController();
+   final _termsCtrl = TextEditingController();
+   final _taxAmountCtrl = TextEditingController(text: '0');
+   final _discountAmountCtrl = TextEditingController(text: '0');
+   final _installationCtrl = TextEditingController(text: '0');
+   final _transportCtrl = TextEditingController(text: '0');
+   List<_LineItemForm> _items = [];
+   bool _saving = false;
+   bool _loading = true;
+   bool _showTotals = true;
 
   @override
   void initState() {
@@ -49,6 +50,7 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
         _discountAmountCtrl.text = (q['discount_amount'] ?? 0).toString();
         _installationCtrl.text = (q['installation_charges'] ?? 0).toString();
         _transportCtrl.text = (q['transportation_charges'] ?? 0).toString();
+        _showTotals = q['show_totals'] ?? true;
         _items = (q['line_items'] as List).map((li) => _LineItemForm(
           descCtrl: TextEditingController(text: li['description'] ?? ''),
           partNoCtrl: TextEditingController(text: li['part_no'] ?? ''),
@@ -127,6 +129,7 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
         'installation_charges': double.tryParse(_installationCtrl.text) ?? 0,
         'transportation_charges': double.tryParse(_transportCtrl.text) ?? 0,
         'items': lineItems,
+        'show_totals': _showTotals,
       });
 
       if (mounted) {
@@ -192,7 +195,7 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
               maxLines: 3,
             ),
 
-            const SizedBox(height: 28),
+            const SizedBox(height: 32),
             _sectionHeader('Line Items'),
             const SizedBox(height: 4),
             Text('Tap + to add items. Swipe left to remove.', style: TextStyle(fontSize: 12, color: VamsTheme.textMuted)),
@@ -210,6 +213,21 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: ListTile(
+                    title: const Text('Show Line Totals'),
+                    leading: const Icon(Icons.remove),
+                    trailing: Switch(
+                      value: _showTotals,
+                      onChanged: (val) => setState(() => _showTotals = val),
+                    ),
+                  ),
+                ),
+              ],
             ),
 
             const SizedBox(height: 28),
