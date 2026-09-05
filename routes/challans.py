@@ -2,6 +2,7 @@ import os
 from datetime import date, datetime
 from flask import Blueprint, render_template, request, redirect, url_for, current_app, flash, session
 from werkzeug.utils import secure_filename
+from sqlalchemy.orm import selectinload
 from models import db, DeliveryChallan, DeliveryChallanLineItem, CatalogItem, Order, PurchaseOrder, ClientDocSequence
 from utils import get_order_folder
 from pdf_templates.challan_template import generate_challan_pdf
@@ -103,7 +104,14 @@ def list_challans():
 
 @challans_bp.route("/order/<int:order_id>/create", methods=["GET", "POST"])
 def create_challan(order_id):
-    order = Order.query.get_or_404(order_id)
+    order = db.session.query(Order).options(
+        selectinload(Order.company),
+        selectinload(Order.client),
+        selectinload(Order.purchase_orders),
+    ).filter(Order.id == order_id).first()
+    if not order:
+        from flask import abort
+        abort(404)
     seq = ClientDocSequence.get_or_create(order.company_id, order.client_id, "challan")
 
     if request.method == "POST":
@@ -141,7 +149,9 @@ def create_challan(order_id):
         line_items = _build_challan_line_items(challan, data)
         db.session.commit()
 
-        _write_challan_pdf(order, challan, line_items)
+        from background import run_in_background
+        run_in_background(_write_challan_pdf, order, challan, line_items,
+                          _app=current_app._get_current_object())
 
         log_action("create_challan", "DeliveryChallan", challan.id,
                    f"Created delivery challan {challan_number} for {order.client.name}")
@@ -174,7 +184,14 @@ def create_challan(order_id):
 
 @challans_bp.route("/edit/<int:challan_id>", methods=["GET", "POST"])
 def edit_challan(challan_id):
-    challan = DeliveryChallan.query.get_or_404(challan_id)
+    challan = db.session.query(DeliveryChallan).options(
+        selectinload(DeliveryChallan.order),
+        selectinload(DeliveryChallan.line_items),
+        selectinload(DeliveryChallan.purchase_order),
+    ).filter(DeliveryChallan.id == challan_id).first()
+    if not challan:
+        from flask import abort
+        abort(404)
     order = challan.order
 
     if request.method == "POST":
@@ -197,7 +214,9 @@ def edit_challan(challan_id):
         line_items = _build_challan_line_items(challan, data)
         db.session.commit()
 
-        _write_challan_pdf(order, challan, line_items)
+        from background import run_in_background
+        run_in_background(_write_challan_pdf, order, challan, line_items,
+                          _app=current_app._get_current_object())
 
         log_action("edit_challan", "DeliveryChallan", challan.id,
                    f"Edited delivery challan {challan.challan_number} for {order.client.name}")
@@ -216,7 +235,12 @@ def edit_challan(challan_id):
 @challans_bp.route("/delete/<int:challan_id>", methods=["POST"])
 @permission_required("delete_documents")
 def delete_challan(challan_id):
-    challan = DeliveryChallan.query.get_or_404(challan_id)
+    challan = db.session.query(DeliveryChallan).options(
+        selectinload(DeliveryChallan.order),
+    ).filter(DeliveryChallan.id == challan_id).first()
+    if not challan:
+        from flask import abort
+        abort(404)
     order_id = challan.order_id
     was_current = challan.is_current
     challan_number = challan.challan_number
@@ -243,7 +267,13 @@ def delete_challan(challan_id):
 
 @challans_bp.route("/regenerate/<int:challan_id>", methods=["POST"])
 def regenerate_challan(challan_id):
-    challan = DeliveryChallan.query.get_or_404(challan_id)
+    challan = db.session.query(DeliveryChallan).options(
+        selectinload(DeliveryChallan.order),
+        selectinload(DeliveryChallan.line_items),
+    ).filter(DeliveryChallan.id == challan_id).first()
+    if not challan:
+        from flask import abort
+        abort(404)
     order = challan.order
     challan_id = challan.id
 

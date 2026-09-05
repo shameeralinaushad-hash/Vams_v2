@@ -208,8 +208,8 @@ class Order(db.Model):
 
     company = db.relationship("Company", lazy="selectin")
     client = db.relationship("Client", lazy="selectin")
-    subsidiary = db.relationship("ClientSubsidiary", lazy="selectin")
-    purchase_orders = db.relationship("PurchaseOrder", backref="order", cascade="all, delete-orphan", lazy="selectin")
+    subsidiary = db.relationship("ClientSubsidiary", lazy="noload")
+    purchase_orders = db.relationship("PurchaseOrder", backref="order", cascade="all, delete-orphan", lazy="noload")
 
     @property
     def purchase_order(self):
@@ -223,19 +223,19 @@ class Order(db.Model):
 
     quotations = db.relationship(
         "Quotation", backref="order", cascade="all, delete-orphan",
-        order_by="Quotation.id.desc()", lazy="selectin"
+        order_by="Quotation.id.desc()", lazy="noload"
     )
     invoices = db.relationship(
         "Invoice", backref="order", cascade="all, delete-orphan",
-        order_by="Invoice.id.desc()", lazy="selectin"
+        order_by="Invoice.id.desc()", lazy="noload"
     )
     delivery_challans = db.relationship(
         "DeliveryChallan", backref="order", cascade="all, delete-orphan",
-        order_by="DeliveryChallan.id.desc()", lazy="selectin"
+        order_by="DeliveryChallan.id.desc()", lazy="noload"
     )
     documents = db.relationship(
         "OrderDocument", backref="order", cascade="all, delete-orphan",
-        order_by="OrderDocument.doc_date.desc()", lazy="selectin"
+        order_by="OrderDocument.doc_date.desc()", lazy="noload"
     )
 
     # --- Helper Properties for Reports ---
@@ -302,7 +302,7 @@ class PurchaseOrder(db.Model):
     status = db.Column(db.String(20), default="Pending")
     total_amount = db.Column(db.Float, default=0)
 
-    line_items = db.relationship("PurchaseOrderLineItem", backref="purchase_order", cascade="all, delete-orphan", lazy="selectin")
+    line_items = db.relationship("PurchaseOrderLineItem", backref="purchase_order", cascade="all, delete-orphan", lazy="noload")
 
 
 class PurchaseOrderLineItem(db.Model):
@@ -443,10 +443,10 @@ class Invoice(db.Model):
     tax_amount = db.Column(db.Float, default=0)
     skip_letterhead = db.Column(db.Boolean, default=False)
     recipient = db.Column(db.Text, nullable=True)
-    purchase_order = db.relationship("PurchaseOrder", backref="invoices", lazy="selectin")
-    line_items = db.relationship("InvoiceLineItem", backref="invoice", cascade="all, delete-orphan", lazy="selectin")
-    payments = db.relationship("Payment", backref="invoice", cascade="all, delete-orphan", lazy="selectin")
-    credit_notes = db.relationship("CreditNote", backref="invoice", cascade="all, delete-orphan", lazy="selectin")
+    purchase_order = db.relationship("PurchaseOrder", backref="invoices", lazy="noload")
+    line_items = db.relationship("InvoiceLineItem", backref="invoice", cascade="all, delete-orphan", lazy="noload")
+    payments = db.relationship("Payment", backref="invoice", cascade="all, delete-orphan", lazy="noload")
+    credit_notes = db.relationship("CreditNote", backref="invoice", cascade="all, delete-orphan", lazy="noload")
 
     def total_paid(self):
         return sum(p.amount for p in self.payments)
@@ -507,9 +507,9 @@ class DeliveryChallan(db.Model):
     pdf_version = db.Column(db.Integer, default=1)
     is_current = db.Column(db.Boolean, default=True)
     recipient = db.Column(db.Text, nullable=True)
-    purchase_order = db.relationship("PurchaseOrder", backref="delivery_challans", lazy="selectin")
+    purchase_order = db.relationship("PurchaseOrder", backref="delivery_challans", lazy="noload")
 
-    line_items = db.relationship("DeliveryChallanLineItem", backref="challan", cascade="all, delete-orphan", lazy="selectin")
+    line_items = db.relationship("DeliveryChallanLineItem", backref="challan", cascade="all, delete-orphan", lazy="noload")
 
 
 class DeliveryChallanLineItem(db.Model):

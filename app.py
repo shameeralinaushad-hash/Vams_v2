@@ -14,6 +14,8 @@ from flask import (
 from flask_login import LoginManager, login_required, current_user
 from flask_wtf import CSRFProtect
 from flask_migrate import Migrate
+from flask_caching import Cache
+from flask_compress import Compress
 from dotenv import load_dotenv
 from sqlalchemy import extract
 from sqlalchemy.orm import selectinload
@@ -21,7 +23,6 @@ from sqlalchemy.orm import selectinload
 from config import Config
 from models import db, Company, User, Order, Invoice, Todo, Expense, ExpenseCategory, Employee, AttendanceRecord, PayrollRecord, Holiday, Notification, TeamTask, Quotation, DeliveryChallan, PersonalItem, ActionSnooze, PurchaseOrder, PurchaseOrderLineItem
 from important_actions import build_actions, DEFAULT_SNOOZE_HOURS
-from ml.tender_extractor import extract_items_from_file
 from rate_limiter import limiter
 
 load_dotenv()
@@ -73,7 +74,7 @@ def create_app():
     os.makedirs(app.config["COMPANY_DOCS_FOLDER"], exist_ok=True)
     os.makedirs(app.config["RECEIPTS_FOLDER"], exist_ok=True)
 
-    # ---- Logging setup ----
+    # ---- Logging setup (production: INFO only, no DEBUG) ----
     log_dir = os.path.join(app.root_path, "logs")
     os.makedirs(log_dir, exist_ok=True)
     file_handler = RotatingFileHandler(
@@ -86,14 +87,14 @@ def create_app():
     app.logger.addHandler(file_handler)
 
     console = logging.StreamHandler()
-    console.setLevel(logging.DEBUG)
+    console.setLevel(logging.INFO)  # Reduced from DEBUG to INFO
     console.setFormatter(logging.Formatter("%(asctime)s %(levelname)s: %(message)s"))
     app.logger.addHandler(console)
-    app.logger.setLevel(logging.DEBUG)
+    app.logger.setLevel(logging.INFO)  # Reduced from DEBUG to INFO
 
     for logger_name in ("werkzeug",):
         l = logging.getLogger(logger_name)
-        l.setLevel(logging.DEBUG)
+        l.setLevel(logging.WARNING)  # Reduced from DEBUG to WARNING
         l.addHandler(console)
 
     if not app.debug:
@@ -102,6 +103,16 @@ def create_app():
     db.init_app(app)
     migrate = Migrate(app, db)
     csrf = CSRFProtect(app)
+
+    # --- Cache (SimpleCache — per-worker in-memory; works well with 4 workers) ---
+    cache = Cache(app, config={
+        "CACHE_TYPE": "SimpleCache",
+        "CACHE_DEFAULT_TIMEOUT": 300,  # 5 minutes
+    })
+    app.cache = cache
+
+    # --- Gzip/Brotli compression (60-80% reduction on HTML/CSS/JS) ---
+    Compress(app)
 
     # --- Security headers ---
     @app.after_request
@@ -223,15 +234,14 @@ def create_app():
     @app.before_request
     def log_request():
         g.start_time = time.time()
-        app.logger.info(f"REQUEST: {request.method} {request.path} endpoint={request.endpoint}")
+        # Removed per-request INFO log — too noisy in production
 
     @app.after_request
     def log_response(response):
         elapsed_ms = (time.time() - getattr(g, 'start_time', time.time())) * 1000
         if elapsed_ms > 500:
-            app.logger.warning(f"RESPONSE: {request.method} {request.path} -> {response.status_code} [{elapsed_ms:.0f}ms]")
-        elif request.path.startswith("/api/"):
-            app.logger.info(f"RESPONSE: {request.method} {request.path} -> {response.status_code} [{elapsed_ms:.0f}ms]")
+            app.logger.warning(f"SLOW: {request.method} {request.path} -> {response.status_code} [{elapsed_ms:.0f}ms]")
+        return response
         return response
 
     @app.before_request
@@ -250,246 +260,256 @@ def create_app():
             return redirect(url_for("auth.login", next=request.path))
 
     with app.app_context():
-        db.create_all()
-
-        # One-time migration sentinel — skip if already completed
-        migration_flag = os.path.join(os.path.dirname(__file__), "database", ".migrated")
-        if not os.path.exists(migration_flag):
-
-            # Migrate expenses table: add new columns + make company_id nullable
-            import sqlalchemy as sa
-            insp = sa.inspect(db.engine)
-            exp_cols_info = insp.get_columns("expenses")
-            exp_cols = [c["name"] for c in exp_cols_info]
-            old_company_nullable = next(
-                (c.get("nullable", True) for c in exp_cols_info if c["name"] == "company_id"),
-                True
-            )
-            exp_missing_new = [c for c in ["category_id", "scope", "payment_method", "receipt_filename", "created_by", "payee", "payroll_record_id", "updated_by", "updated_at"] if c not in exp_cols]
-            if exp_missing_new or not old_company_nullable:
-                col_defs_sql = [
-                    "id INTEGER PRIMARY KEY AUTOINCREMENT",
-                    "company_id INTEGER REFERENCES companies(id)",
-                    "order_id INTEGER REFERENCES orders(id)",
-                    "category VARCHAR(100)",
-                    "category_id INTEGER REFERENCES expense_categories(id)",
-                    "scope VARCHAR(20) DEFAULT 'company'",
-                    "amount FLOAT NOT NULL",
-                    "expense_date DATE",
-                    "notes VARCHAR(300)",
-                    "payee VARCHAR(200)",
-                    "payment_method VARCHAR(20)",
-                    "receipt_filename VARCHAR(200)",
-                    "payroll_record_id INTEGER REFERENCES payroll_records(id)",
-                    "created_by INTEGER REFERENCES users(id)",
-                    "updated_by INTEGER REFERENCES users(id)",
-                    "created_at DATETIME",
-                    "updated_at DATETIME",
-                ]
-                all_src = [
-                    "id", "company_id", "order_id", "category",
-                    "NULL AS category_id", "'company' AS scope",
-                    "amount", "expense_date", "notes",
-                    "NULL AS payee",
-                    "NULL AS payment_method", "NULL AS receipt_filename",
-                    "NULL AS payroll_record_id",
-                    "NULL AS created_by", "NULL AS updated_by",
-                    "created_at", "NULL AS updated_at",
-                ]
-                db.session.execute(sa.text("DROP TABLE IF EXISTS expenses_new"))
-                db.session.execute(sa.text(f"CREATE TABLE expenses_new ({', '.join(col_defs_sql)})"))
-                db.session.execute(sa.text(f"INSERT INTO expenses_new SELECT {', '.join(all_src)} FROM expenses"))
-                db.session.execute(sa.text("DROP TABLE expenses"))
-                db.session.execute(sa.text("ALTER TABLE expenses_new RENAME TO expenses"))
-            db.session.commit()
-
-            # Migrate employees table: add new columns
-            emp_cols_info = sa.inspect(db.engine).get_columns("employees")
-            emp_cols = [c["name"] for c in emp_cols_info]
-            emp_missing = [c for c in ["email", "phone", "department", "employee_code", "user_id", "date_left"] if c not in emp_cols]
-            if emp_missing:
-                col_defs = [
-                    "id INTEGER PRIMARY KEY AUTOINCREMENT",
-                    "name VARCHAR(150) NOT NULL",
-                    "email VARCHAR(150)",
-                    "phone VARCHAR(30)",
-                    "department VARCHAR(100)",
-                    "designation VARCHAR(100)",
-                    "employee_code VARCHAR(50)",
-                    "company_id INTEGER REFERENCES companies(id)",
-                    "user_id INTEGER REFERENCES users(id)",
-                    "base_monthly_salary FLOAT DEFAULT 0",
-                    "date_joined DATE",
-                    "date_left DATE",
-                    "is_active BOOLEAN DEFAULT 1",
-                    "created_at DATETIME",
-                ]
-                src_cols = (
-                    "id", "name",
-                    "NULL AS email", "NULL AS phone", "NULL AS department",
-                    "designation", "NULL AS employee_code",
-                    "company_id", "NULL AS user_id",
-                    "base_monthly_salary", "date_joined",
-                    "NULL AS date_left", "is_active", "created_at"
-                )
-                db.session.execute(sa.text("DROP TABLE IF EXISTS employees_new"))
-                db.session.execute(sa.text(f"CREATE TABLE employees_new ({', '.join(col_defs)})"))
-                db.session.execute(sa.text(f"INSERT INTO employees_new SELECT {', '.join(src_cols)} FROM employees"))
-                db.session.execute(sa.text("DROP TABLE employees"))
-                db.session.execute(sa.text("ALTER TABLE employees_new RENAME TO employees"))
-                db.session.commit()
-
-            # Migrate payroll_records table: add paid_leaves_used column
-            pr_cols_info = sa.inspect(db.engine).get_columns("payroll_records")
-            pr_cols = [c["name"] for c in pr_cols_info]
-            if "paid_leaves_used" not in pr_cols:
-                db.session.execute(sa.text("ALTER TABLE payroll_records ADD COLUMN paid_leaves_used FLOAT DEFAULT 0"))
-                db.session.commit()
-
-            # Migrate budgets table: add month, year, recurring
-            bud_cols_info = sa.inspect(db.engine).get_columns("budgets")
-            bud_cols = [c["name"] for c in bud_cols_info]
-            bud_missing = [c for c in ["month", "year", "recurring"] if c not in bud_cols]
-            if bud_missing:
-                bud_col_defs = [
-                    "id INTEGER PRIMARY KEY AUTOINCREMENT",
-                    "scope VARCHAR(30) NOT NULL",
-                    "company_id INTEGER REFERENCES companies(id)",
-                    "category_id INTEGER REFERENCES expense_categories(id)",
-                    "month INTEGER NOT NULL DEFAULT 1",
-                    "year INTEGER NOT NULL DEFAULT 2026",
-                    "period_type VARCHAR(10) DEFAULT 'monthly'",
-                    "period_start DATE",
-                    "period_end DATE",
-                    "amount FLOAT NOT NULL",
-                    "recurring BOOLEAN DEFAULT 0",
-                    "created_by INTEGER REFERENCES users(id)",
-                    "created_at DATETIME",
-                ]
-                bud_src = (
-                    "id", "scope", "company_id", "category_id",
-                    "COALESCE(CAST(strftime('%m', period_start) AS INTEGER), 1) AS month",
-                    "COALESCE(CAST(strftime('%Y', period_start) AS INTEGER), 2026) AS year",
-                    "period_type", "period_start", "period_end",
-                    "amount", "0 AS recurring", "created_by", "created_at"
-                )
-                db.session.execute(sa.text("DROP TABLE IF EXISTS budgets_new"))
-                db.session.execute(sa.text(f"CREATE TABLE budgets_new ({', '.join(bud_col_defs)})"))
-                db.session.execute(sa.text(f"INSERT INTO budgets_new SELECT {', '.join(bud_src)} FROM budgets"))
-                db.session.execute(sa.text("DROP TABLE budgets"))
-                db.session.execute(sa.text("ALTER TABLE budgets_new RENAME TO budgets"))
-                db.session.commit()
-
-            # Migrate task_templates table: add sub_tasks column
-            tbl_names = sa.inspect(db.engine).get_table_names()
-            if "task_templates" in tbl_names:
-                tt_cols = [c["name"] for c in sa.inspect(db.engine).get_columns("task_templates")]
-                if "sub_tasks" not in tt_cols:
-                    db.session.execute(sa.text("ALTER TABLE task_templates ADD COLUMN sub_tasks TEXT DEFAULT '[]'"))
-                    db.session.commit()
-
-            # Migrate team_task_comments: add parent_id for Q&A replies
-            if "team_task_comments" in tbl_names:
-                ttc_cols = [c["name"] for c in sa.inspect(db.engine).get_columns("team_task_comments")]
-                if "parent_id" not in ttc_cols:
-                    db.session.execute(sa.text("ALTER TABLE team_task_comments ADD COLUMN parent_id INTEGER REFERENCES team_task_comments(id)"))
-                    db.session.commit()
-
-            # Migrate personal_items: add category and estimated_minutes
-            if "personal_items" in tbl_names:
-                pi_cols = [c["name"] for c in sa.inspect(db.engine).get_columns("personal_items")]
-                if "category" not in pi_cols:
-                    db.session.execute(sa.text("ALTER TABLE personal_items ADD COLUMN category VARCHAR(50)"))
-                if "estimated_minutes" not in pi_cols:
-                    db.session.execute(sa.text("ALTER TABLE personal_items ADD COLUMN estimated_minutes INTEGER"))
-                if "category" not in pi_cols or "estimated_minutes" not in pi_cols:
-                    db.session.commit()
-
-            # Migrate users: add hidden_widgets and email_notifications
-            if "users" in tbl_names:
-                u_cols = [c["name"] for c in sa.inspect(db.engine).get_columns("users")]
-                if "hidden_widgets" not in u_cols:
-                    db.session.execute(sa.text("ALTER TABLE users ADD COLUMN hidden_widgets TEXT DEFAULT ''"))
-                if "email_notifications" not in u_cols:
-                    db.session.execute(sa.text("ALTER TABLE users ADD COLUMN email_notifications BOOLEAN DEFAULT 0"))
-                if "hidden_widgets" not in u_cols or "email_notifications" not in u_cols:
-                    db.session.commit()
-
-            # Migrate task_templates: add recurring fields
-            if "task_templates" in tbl_names:
-                tt_cols = [c["name"] for c in sa.inspect(db.engine).get_columns("task_templates")]
-            if "day_of_month" not in tt_cols:
-                db.session.execute(sa.text("ALTER TABLE task_templates ADD COLUMN day_of_month INTEGER"))
-            if "is_active" not in tt_cols:
-                db.session.execute(sa.text("ALTER TABLE task_templates ADD COLUMN is_active BOOLEAN DEFAULT 1"))
-            if "last_generated_month" not in tt_cols:
-                db.session.execute(sa.text("ALTER TABLE task_templates ADD COLUMN last_generated_month INTEGER"))
-            if "last_generated_year" not in tt_cols:
-                db.session.execute(sa.text("ALTER TABLE task_templates ADD COLUMN last_generated_year INTEGER"))
-            if any(c not in tt_cols for c in ("day_of_month", "is_active", "last_generated_month", "last_generated_year")):
-                db.session.commit()
-
-            # Migrate team_tasks: add project_id for Projects feature
-            if "team_tasks" in tbl_names:
-                tt_cols2 = [c["name"] for c in sa.inspect(db.engine).get_columns("team_tasks")]
-                if "project_id" not in tt_cols2:
-                    db.session.execute(sa.text("ALTER TABLE team_tasks ADD COLUMN project_id INTEGER REFERENCES projects(id)"))
-                    db.session.commit()
-                if "archived_at" not in tt_cols2:
-                    db.session.execute(sa.text("ALTER TABLE team_tasks ADD COLUMN archived_at DATETIME"))
-                    db.session.commit()
-
-            # Write sentinel so migrations only run once
-            try:
-                with open(migration_flag, "w") as f:
-                    f.write("1")
-            except OSError:
-                pass
-
-        # Late migration for personal_items: add recurrence_rule (runs every startup, safe)
-        try:
-            import sqlalchemy as sa2
-            pi_cols = [c["name"] for c in sa2.inspect(db.engine).get_columns("personal_items")]
-            if "recurrence_rule" not in pi_cols:
-                db.session.execute(sa2.text("ALTER TABLE personal_items ADD COLUMN recurrence_rule VARCHAR(50)"))
-                db.session.commit()
-        except Exception:
-            pass
-
-        # Seed default Pakistani holidays (fixed date)
-        if Holiday.query.count() == 0:
-            fixed_holidays = [
-                (date(2026, 3, 23), "Pakistan Day", True),
-                (date(2026, 5, 1), "Labour Day", True),
-                (date(2026, 8, 14), "Independence Day", True),
-                (date(2026, 9, 6), "Defence Day", True),
-                (date(2026, 12, 25), "Quaid-e-Azam Day", True),
-            ]
-            for h_date, h_name, recurring in fixed_holidays:
-                existing = Holiday.query.filter_by(date=h_date, company_id=None).first()
-                if not existing:
-                    db.session.add(Holiday(date=h_date, name=h_name, is_recurring=recurring))
-            db.session.commit()
+        # Defer heavy startup work (db.create_all, migrations) to first request
+        # This speeds up cold starts behind Cloudflare Tunnel
+        _db_initialized = False
 
         @app.before_request
-        def check_maintenance_mode():
-            exempt_endpoints = {"static", "auth.login", "auth.logout",
-                                "maintenance.enable_maintenance", "maintenance.disable_maintenance"}
-            if request.endpoint in exempt_endpoints:
+        def _init_db_on_first_request():
+            nonlocal _db_initialized
+            if _db_initialized:
                 return None
-            if not is_maintenance_mode_on(app):
-                return None
-            if current_user.is_authenticated and current_user.role == "admin":
-                return None
+            _db_initialized = True
+            db.create_all()
 
-            flag_path = app.config["MAINTENANCE_FLAG_PATH"]
+            # One-time migration sentinel — skip if already completed
+            migration_flag = os.path.join(os.path.dirname(__file__), "database", ".migrated")
+            if not os.path.exists(migration_flag):
+
+                # Migrate expenses table: add new columns + make company_id nullable
+                import sqlalchemy as sa
+                insp = sa.inspect(db.engine)
+                exp_cols_info = insp.get_columns("expenses")
+                exp_cols = [c["name"] for c in exp_cols_info]
+                old_company_nullable = next(
+                    (c.get("nullable", True) for c in exp_cols_info if c["name"] == "company_id"),
+                    True
+                )
+                exp_missing_new = [c for c in ["category_id", "scope", "payment_method", "receipt_filename", "created_by", "payee", "payroll_record_id", "updated_by", "updated_at"] if c not in exp_cols]
+                if exp_missing_new or not old_company_nullable:
+                    col_defs_sql = [
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT",
+                        "company_id INTEGER REFERENCES companies(id)",
+                        "order_id INTEGER REFERENCES orders(id)",
+                        "category VARCHAR(100)",
+                        "category_id INTEGER REFERENCES expense_categories(id)",
+                        "scope VARCHAR(20) DEFAULT 'company'",
+                        "amount FLOAT NOT NULL",
+                        "expense_date DATE",
+                        "notes VARCHAR(300)",
+                        "payee VARCHAR(200)",
+                        "payment_method VARCHAR(20)",
+                        "receipt_filename VARCHAR(200)",
+                        "payroll_record_id INTEGER REFERENCES payroll_records(id)",
+                        "created_by INTEGER REFERENCES users(id)",
+                        "updated_by INTEGER REFERENCES users(id)",
+                        "created_at DATETIME",
+                        "updated_at DATETIME",
+                    ]
+                    all_src = [
+                        "id", "company_id", "order_id", "category",
+                        "NULL AS category_id", "'company' AS scope",
+                        "amount", "expense_date", "notes",
+                        "NULL AS payee",
+                        "NULL AS payment_method", "NULL AS receipt_filename",
+                        "NULL AS payroll_record_id",
+                        "NULL AS created_by", "NULL AS updated_by",
+                        "created_at", "NULL AS updated_at",
+                    ]
+                    db.session.execute(sa.text("DROP TABLE IF EXISTS expenses_new"))
+                    db.session.execute(sa.text(f"CREATE TABLE expenses_new ({', '.join(col_defs_sql)})"))
+                    db.session.execute(sa.text(f"INSERT INTO expenses_new SELECT {', '.join(all_src)} FROM expenses"))
+                    db.session.execute(sa.text("DROP TABLE expenses"))
+                    db.session.execute(sa.text("ALTER TABLE expenses_new RENAME TO expenses"))
+                db.session.commit()
+
+                # Migrate employees table: add new columns
+                emp_cols_info = sa.inspect(db.engine).get_columns("employees")
+                emp_cols = [c["name"] for c in emp_cols_info]
+                emp_missing = [c for c in ["email", "phone", "department", "employee_code", "user_id", "date_left"] if c not in emp_cols]
+                if emp_missing:
+                    col_defs = [
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT",
+                        "name VARCHAR(150) NOT NULL",
+                        "email VARCHAR(150)",
+                        "phone VARCHAR(30)",
+                        "department VARCHAR(100)",
+                        "designation VARCHAR(100)",
+                        "employee_code VARCHAR(50)",
+                        "company_id INTEGER REFERENCES companies(id)",
+                        "user_id INTEGER REFERENCES users(id)",
+                        "base_monthly_salary FLOAT DEFAULT 0",
+                        "date_joined DATE",
+                        "date_left DATE",
+                        "is_active BOOLEAN DEFAULT 1",
+                        "created_at DATETIME",
+                    ]
+                    src_cols = (
+                        "id", "name",
+                        "NULL AS email", "NULL AS phone", "NULL AS department",
+                        "designation", "NULL AS employee_code",
+                        "company_id", "NULL AS user_id",
+                        "base_monthly_salary", "date_joined",
+                        "NULL AS date_left", "is_active", "created_at"
+                    )
+                    db.session.execute(sa.text("DROP TABLE IF EXISTS employees_new"))
+                    db.session.execute(sa.text(f"CREATE TABLE employees_new ({', '.join(col_defs)})"))
+                    db.session.execute(sa.text(f"INSERT INTO employees_new SELECT {', '.join(src_cols)} FROM employees"))
+                    db.session.execute(sa.text("DROP TABLE employees"))
+                    db.session.execute(sa.text("ALTER TABLE employees_new RENAME TO employees"))
+                    db.session.commit()
+
+                # Migrate payroll_records table: add paid_leaves_used column
+                pr_cols_info = sa.inspect(db.engine).get_columns("payroll_records")
+                pr_cols = [c["name"] for c in pr_cols_info]
+                if "paid_leaves_used" not in pr_cols:
+                    db.session.execute(sa.text("ALTER TABLE payroll_records ADD COLUMN paid_leaves_used FLOAT DEFAULT 0"))
+                    db.session.commit()
+
+                # Migrate budgets table: add month, year, recurring
+                bud_cols_info = sa.inspect(db.engine).get_columns("budgets")
+                bud_cols = [c["name"] for c in bud_cols_info]
+                bud_missing = [c for c in ["month", "year", "recurring"] if c not in bud_cols]
+                if bud_missing:
+                    bud_col_defs = [
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT",
+                        "scope VARCHAR(30) NOT NULL",
+                        "company_id INTEGER REFERENCES companies(id)",
+                        "category_id INTEGER REFERENCES expense_categories(id)",
+                        "month INTEGER NOT NULL DEFAULT 1",
+                        "year INTEGER NOT NULL DEFAULT 2026",
+                        "period_type VARCHAR(10) DEFAULT 'monthly'",
+                        "period_start DATE",
+                        "period_end DATE",
+                        "amount FLOAT NOT NULL",
+                        "recurring BOOLEAN DEFAULT 0",
+                        "created_by INTEGER REFERENCES users(id)",
+                        "created_at DATETIME",
+                    ]
+                    bud_src = (
+                        "id", "scope", "company_id", "category_id",
+                        "COALESCE(CAST(strftime('%m', period_start) AS INTEGER), 1) AS month",
+                        "COALESCE(CAST(strftime('%Y', period_start) AS INTEGER), 2026) AS year",
+                        "period_type", "period_start", "period_end",
+                        "amount", "0 AS recurring", "created_by", "created_at"
+                    )
+                    db.session.execute(sa.text("DROP TABLE IF EXISTS budgets_new"))
+                    db.session.execute(sa.text(f"CREATE TABLE budgets_new ({', '.join(bud_col_defs)})"))
+                    db.session.execute(sa.text(f"INSERT INTO budgets_new SELECT {', '.join(bud_src)} FROM budgets"))
+                    db.session.execute(sa.text("DROP TABLE budgets"))
+                    db.session.execute(sa.text("ALTER TABLE budgets_new RENAME TO budgets"))
+                    db.session.commit()
+
+                # Migrate task_templates table: add sub_tasks column
+                tbl_names = sa.inspect(db.engine).get_table_names()
+                if "task_templates" in tbl_names:
+                    tt_cols = [c["name"] for c in sa.inspect(db.engine).get_columns("task_templates")]
+                    if "sub_tasks" not in tt_cols:
+                        db.session.execute(sa.text("ALTER TABLE task_templates ADD COLUMN sub_tasks TEXT DEFAULT '[]'"))
+                        db.session.commit()
+
+                # Migrate team_task_comments: add parent_id for Q&A replies
+                if "team_task_comments" in tbl_names:
+                    ttc_cols = [c["name"] for c in sa.inspect(db.engine).get_columns("team_task_comments")]
+                    if "parent_id" not in ttc_cols:
+                        db.session.execute(sa.text("ALTER TABLE team_task_comments ADD COLUMN parent_id INTEGER REFERENCES team_task_comments(id)"))
+                        db.session.commit()
+
+                # Migrate personal_items: add category and estimated_minutes
+                if "personal_items" in tbl_names:
+                    pi_cols = [c["name"] for c in sa.inspect(db.engine).get_columns("personal_items")]
+                    if "category" not in pi_cols:
+                        db.session.execute(sa.text("ALTER TABLE personal_items ADD COLUMN category VARCHAR(50)"))
+                    if "estimated_minutes" not in pi_cols:
+                        db.session.execute(sa.text("ALTER TABLE personal_items ADD COLUMN estimated_minutes INTEGER"))
+                    if "category" not in pi_cols or "estimated_minutes" not in pi_cols:
+                        db.session.commit()
+
+                # Migrate users: add hidden_widgets and email_notifications
+                if "users" in tbl_names:
+                    u_cols = [c["name"] for c in sa.inspect(db.engine).get_columns("users")]
+                    if "hidden_widgets" not in u_cols:
+                        db.session.execute(sa.text("ALTER TABLE users ADD COLUMN hidden_widgets TEXT DEFAULT ''"))
+                    if "email_notifications" not in u_cols:
+                        db.session.execute(sa.text("ALTER TABLE users ADD COLUMN email_notifications BOOLEAN DEFAULT 0"))
+                    if "hidden_widgets" not in u_cols or "email_notifications" not in u_cols:
+                        db.session.commit()
+
+                # Migrate task_templates: add recurring fields
+                if "task_templates" in tbl_names:
+                    tt_cols = [c["name"] for c in sa.inspect(db.engine).get_columns("task_templates")]
+                    if "day_of_month" not in tt_cols:
+                        db.session.execute(sa.text("ALTER TABLE task_templates ADD COLUMN day_of_month INTEGER"))
+                    if "is_active" not in tt_cols:
+                        db.session.execute(sa.text("ALTER TABLE task_templates ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+                    if "last_generated_month" not in tt_cols:
+                        db.session.execute(sa.text("ALTER TABLE task_templates ADD COLUMN last_generated_month INTEGER"))
+                    if "last_generated_year" not in tt_cols:
+                        db.session.execute(sa.text("ALTER TABLE task_templates ADD COLUMN last_generated_year INTEGER"))
+                    if any(c not in tt_cols for c in ("day_of_month", "is_active", "last_generated_month", "last_generated_year")):
+                        db.session.commit()
+
+                # Migrate team_tasks: add project_id for Projects feature
+                if "team_tasks" in tbl_names:
+                    tt_cols2 = [c["name"] for c in sa.inspect(db.engine).get_columns("team_tasks")]
+                    if "project_id" not in tt_cols2:
+                        db.session.execute(sa.text("ALTER TABLE team_tasks ADD COLUMN project_id INTEGER REFERENCES projects(id)"))
+                        db.session.commit()
+                    if "archived_at" not in tt_cols2:
+                        db.session.execute(sa.text("ALTER TABLE team_tasks ADD COLUMN archived_at DATETIME"))
+                        db.session.commit()
+
+                # Write sentinel so migrations only run once
+                try:
+                    with open(migration_flag, "w") as f:
+                        f.write("1")
+                except OSError:
+                    pass
+
+            # Late migration for personal_items: add recurrence_rule (runs every startup, safe)
             try:
-                with open(flag_path, "r", encoding="utf-8") as f:
-                    message = f.read().strip()
-            except OSError:
-                message = None
+                import sqlalchemy as sa2
+                pi_cols = [c["name"] for c in sa2.inspect(db.engine).get_columns("personal_items")]
+                if "recurrence_rule" not in pi_cols:
+                    db.session.execute(sa2.text("ALTER TABLE personal_items ADD COLUMN recurrence_rule VARCHAR(50)"))
+                    db.session.commit()
+            except Exception:
+                pass
 
-            return render_template("errors/maintenance.html", message=message), 503
+            # Seed default Pakistani holidays (fixed date)
+            if Holiday.query.count() == 0:
+                fixed_holidays = [
+                    (date(2026, 3, 23), "Pakistan Day", True),
+                    (date(2026, 5, 1), "Labour Day", True),
+                    (date(2026, 8, 14), "Independence Day", True),
+                    (date(2026, 9, 6), "Defence Day", True),
+                    (date(2026, 12, 25), "Quaid-e-Azam Day", True),
+                ]
+                for h_date, h_name, recurring in fixed_holidays:
+                    existing = Holiday.query.filter_by(date=h_date, company_id=None).first()
+                    if not existing:
+                        db.session.add(Holiday(date=h_date, name=h_name, is_recurring=recurring))
+                db.session.commit()
+
+    @app.before_request
+    def check_maintenance_mode():
+        exempt_endpoints = {"static", "auth.login", "auth.logout",
+                            "maintenance.enable_maintenance", "maintenance.disable_maintenance"}
+        if request.endpoint in exempt_endpoints:
+            return None
+        if not is_maintenance_mode_on(app):
+            return None
+        if current_user.is_authenticated and current_user.role == "admin":
+            return None
+
+        flag_path = app.config["MAINTENANCE_FLAG_PATH"]
+        try:
+            with open(flag_path, "r", encoding="utf-8") as f:
+                message = f.read().strip()
+        except OSError:
+            message = None
+
+        return render_template("errors/maintenance.html", message=message), 503
 
     # Deterministic avatar color filter
     AVATAR_PALETTE = ['#14181f','#d64545','#d99a2b','#1e9e63','#8b5cf6','#36a2eb']
@@ -503,6 +523,26 @@ def create_app():
     @app.context_processor
     def inject_companies():
         active_id = session.get("active_company_id")
+        # Skip heavy queries for API endpoints (they use JWT, not templates)
+        if request.endpoint and request.endpoint.startswith("api_"):
+            return {
+                "all_companies": [],
+                "active_company_obj": None,
+                "overdue_count": 0,
+                "maintenance_mode_on": False,
+                "unread_notifications": 0,
+                "page_id": "api",
+                "today_line": "",
+                "section_meta": {},
+                "gmail_connected": False,
+            }
+
+        # Use cached queries (keyed by company_id) to avoid repeated DB hits
+        cache_key = f"ctx_{active_id}"
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+
         # Updated from Company.query.get() for SQLAlchemy 2.0 compatibility
         active_company_obj = db.session.get(Company, active_id) if active_id else None
 
@@ -585,7 +625,7 @@ def create_app():
             except Exception:
                 pass
 
-        return {
+        result = {
             "all_companies": Company.query.all(),
             "active_company_obj": active_company_obj,
             "overdue_count": overdue_count,
@@ -596,6 +636,8 @@ def create_app():
             "section_meta": section_meta,
             "gmail_connected": gmail_connected,
         }
+        cache.set(cache_key, result, timeout=120)  # cache for 2 minutes
+        return result
 
     @app.errorhandler(404)
     def not_found_error(error):
@@ -728,36 +770,37 @@ def create_app():
         insight_items = []
 
         if company_id:
-            orders = Order.query.options(selectinload(Order.quotations)).filter_by(company_id=company_id).all()
-            stats["total_orders"] = len(orders)
-            won = [o for o in orders if o.status == "PO Received"]
-            not_received = [o for o in orders if o.status == "Not Received"]
-            pending = [o for o in orders if o.status == "Pending"]
-            stats["won_count"] = len(won)
-            stats["not_received_count"] = len(not_received)
-            stats["pending_count"] = len(pending)
-            decided = len(won) + len(not_received)
-            stats["win_rate"] = round((len(won) / decided) * 100, 1) if decided > 0 else None
+            # --- SQL aggregates instead of loading all orders ---
+            # Order status counts (single query)
+            status_counts = db.session.query(
+                Order.status, db.func.count(Order.id)
+            ).filter_by(company_id=company_id).group_by(Order.status).all()
+            status_map = {s: c for s, c in status_counts}
+            stats["total_orders"] = sum(status_map.values())
+            stats["won_count"] = status_map.get("PO Received", 0)
+            stats["not_received_count"] = status_map.get("Not Received", 0)
+            stats["pending_count"] = status_map.get("Pending", 0)
+            decided = stats["won_count"] + stats["not_received_count"]
+            stats["win_rate"] = round((stats["won_count"] / decided) * 100, 1) if decided > 0 else None
 
-            def _po_in_range(po, frm, to):
-                return po.po_date and (frm is None or po.po_date >= frm) and (to is None or po.po_date <= to)
-
-            def _exp_in_range(exp, frm, to):
-                d = exp.expense_date or exp.created_at.date() if exp.created_at else exp.expense_date
-                if d is None:
-                    return True
-                return (frm is None or d >= frm) and (to is None or d <= to)
-
-            # PO-based revenue: sum of line items from received POs in date range
-            pos = PurchaseOrder.query.join(Order).filter(
+            # PO-based revenue: SQL SUM with date filter
+            po_q = db.session.query(db.func.coalesce(db.func.sum(PurchaseOrder.total_amount), 0)).join(Order).filter(
                 Order.company_id == company_id,
                 PurchaseOrder.status.in_(["Received", "Delivered", "Partially Delivered"])
-            ).all()
-            in_range_pos = [po for po in pos if _po_in_range(po, date_from, date_to)]
-            stats["total_invoiced"] = sum(po.total_amount for po in in_range_pos)
-            stats["outstanding"] = 0  # No invoice outstanding tracking for now
+            )
+            if date_from:
+                po_q = po_q.filter(PurchaseOrder.po_date >= date_from)
+            if date_to:
+                po_q = po_q.filter(PurchaseOrder.po_date <= date_to)
+            stats["total_invoiced"] = po_q.scalar()
+            stats["outstanding"] = 0
 
-            # PO status counts for pie chart
+            # PO status counts (SQL GROUP BY)
+            po_status_counts = db.session.query(
+                PurchaseOrder.status, db.func.count(PurchaseOrder.id)
+            ).join(Order).filter(
+                Order.company_id == company_id
+            ).group_by(PurchaseOrder.status).all()
             _status_key_map = {
                 "Pending": "po_pending",
                 "Received": "po_received",
@@ -765,25 +808,17 @@ def create_app():
                 "Partially Delivered": "po_partially_delivered",
                 "Cancelled": "po_cancelled",
             }
-            for order in orders:
-                order_date = order.created_at.date() if order.created_at else None
-                in_range = order_date and (date_from is None or order_date >= date_from) and (date_to is None or order_date <= date_to)
-                if not in_range:
-                    continue
-                po = order.purchase_order
-                if po:
-                    key = _status_key_map.get(po.status)
-                    if key:
-                        stats[key] += 1
-                else:
-                    stats["po_none"] += 1
+            for status, count in po_status_counts:
+                key = _status_key_map.get(status)
+                if key:
+                    stats[key] = count
+            # Count orders with no PO
+            stats["po_none"] = db.session.query(db.func.count(Order.id)).filter(
+                Order.company_id == company_id,
+                ~Order.purchase_orders.any()
+            ).scalar()
 
-            # Use SQL SUM instead of loading all expenses into Python
-            exp_q = Expense.query.filter_by(company_id=company_id)
-            if date_from:
-                exp_q = exp_q.filter(Expense.expense_date >= date_from)
-            if date_to:
-                exp_q = exp_q.filter(Expense.expense_date <= date_to)
+            # Expenses (already SQL)
             stats["total_expenses"] = db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0)).filter(
                 Expense.company_id == company_id,
                 Expense.expense_date >= date_from if date_from else True,
@@ -791,20 +826,29 @@ def create_app():
             ).scalar()
             stats["estimated_profit"] = stats["total_invoiced"] - stats["total_expenses"]
 
-            # --- Prior-period deltas for comparison badges ---
+            # --- Prior-period deltas ---
             deltas = {
                 "revenue": None, "receivables": None, "expenses": None, "profit": None,
                 "orders": None,
             }
             if compare and prior_from is not None:
-                prior_rev = sum(po.total_amount for po in pos if _po_in_range(po, prior_from, prior_to))
+                prior_rev = db.session.query(db.func.coalesce(db.func.sum(PurchaseOrder.total_amount), 0)).join(Order).filter(
+                    Order.company_id == company_id,
+                    PurchaseOrder.status.in_(["Received", "Delivered", "Partially Delivered"]),
+                    PurchaseOrder.po_date >= prior_from,
+                    PurchaseOrder.po_date <= prior_to,
+                ).scalar()
                 prior_exp = db.session.query(db.func.coalesce(db.func.sum(Expense.amount), 0)).filter(
                     Expense.company_id == company_id,
                     Expense.expense_date >= prior_from,
                     Expense.expense_date <= prior_to,
                 ).scalar()
                 prior_profit = prior_rev - prior_exp
-                prior_orders = sum(1 for o in orders if o.created_at.date() and prior_from <= o.created_at.date() <= prior_to) if orders else 0
+                prior_orders = db.session.query(db.func.count(Order.id)).filter(
+                    Order.company_id == company_id,
+                    Order.created_at >= datetime.combine(prior_from, datetime.min.time()),
+                    Order.created_at <= datetime.combine(prior_to, datetime.max.time()),
+                ).scalar() if prior_from and prior_to else 0
 
                 def _pct(cur, prev):
                     if not prev:
@@ -820,36 +864,73 @@ def create_app():
             else:
                 deltas = {k: None for k in deltas}
 
-            recent_orders = sorted(orders, key=lambda o: o.created_at, reverse=True)[:5]
+            # Recent orders (only 5, not all)
+            recent_orders = Order.query.filter_by(company_id=company_id).order_by(
+                Order.created_at.desc()
+            ).limit(5).all()
 
-            # --- Chart bucketing by period granularity ---
+            # Load pending + no-quotation orders for build_actions (small lists)
+            pending = Order.query.filter_by(company_id=company_id, status="Pending").all()
+            no_quotation_orders = Order.query.filter(
+                Order.company_id == company_id,
+                Order.status == "Pending",
+                ~Order.quotations.any()
+            ).all()
+
+            # --- Chart: SQL GROUP BY for revenue bucketing ---
             chart_labels, chart_revenue = [], []
-            if date_from is None:
-                dated = [po for po in pos if po.po_date]
-                if dated:
-                    c_start = min(po.po_date for po in dated)
-                    c_end = max(po.po_date for po in dated)
-                else:
-                    c_start = c_end = today
-            else:
-                c_start, c_end = date_from, date_to
-
+            po_date_col = PurchaseOrder.po_date
             if period == "daily":
-                cur = c_start
-                while cur <= c_end and len(chart_labels) <= 120:
-                    chart_labels.append(cur.strftime("%b %d"))
-                    chart_revenue.append(round(sum(po.total_amount for po in in_range_pos if po.po_date == cur), 2))
-                    cur += timedelta(days=1)
+                rows = db.session.query(
+                    po_date_col, db.func.sum(PurchaseOrder.total_amount)
+                ).join(Order).filter(
+                    Order.company_id == company_id,
+                    PurchaseOrder.status.in_(["Received", "Delivered", "Partially Delivered"]),
+                    po_date_col >= date_from if date_from else True,
+                    po_date_col <= date_to if date_to else True,
+                ).group_by(po_date_col).order_by(po_date_col).all()
+                rev_map = {str(d): float(s) for d, s in rows}
+                if date_from and date_to:
+                    cur = date_from
+                    while cur <= date_to and len(chart_labels) <= 120:
+                        chart_labels.append(cur.strftime("%b %d"))
+                        chart_revenue.append(round(rev_map.get(str(cur), 0), 2))
+                        cur += timedelta(days=1)
             elif period == "yearly":
+                year_col = db.func.to_char(po_date_col, "YYYY")
+                rows = db.session.query(
+                    year_col, db.func.sum(PurchaseOrder.total_amount)
+                ).join(Order).filter(
+                    Order.company_id == company_id,
+                    PurchaseOrder.status.in_(["Received", "Delivered", "Partially Delivered"]),
+                    po_date_col >= date_from if date_from else True,
+                    po_date_col <= date_to if date_to else True,
+                ).group_by(year_col).order_by(year_col).all()
+                rev_map = {str(y): float(s) for y, s in rows}
+                c_start = date_from or today.replace(month=1, day=1)
+                c_end = date_to or today
                 for yy in range(c_start.year, c_end.year + 1):
                     chart_labels.append(str(yy))
-                    chart_revenue.append(round(sum(po.total_amount for po in in_range_pos if po.po_date and po.po_date.year == yy), 2))
+                    chart_revenue.append(round(rev_map.get(str(yy), 0), 2))
             else:  # monthly
+                month_col = db.func.to_char(po_date_col, "YYYY-MM")
+                rows = db.session.query(
+                    month_col, db.func.sum(PurchaseOrder.total_amount)
+                ).join(Order).filter(
+                    Order.company_id == company_id,
+                    PurchaseOrder.status.in_(["Received", "Delivered", "Partially Delivered"]),
+                    po_date_col >= date_from if date_from else True,
+                    po_date_col <= date_to if date_to else True,
+                ).group_by(month_col).order_by(month_col).all()
+                rev_map = {str(m): float(s) for m, s in rows}
+                c_start = date_from or today.replace(day=1)
+                c_end = date_to or today
                 cur = date(c_start.year, c_start.month, 1)
                 end = date(c_end.year, c_end.month, 1)
                 while cur <= end and len(chart_labels) <= 120:
+                    key = cur.strftime("%Y-%m")
                     chart_labels.append(cur.strftime("%b %Y"))
-                    chart_revenue.append(round(sum(po.total_amount for po in in_range_pos if po.po_date and po.po_date.year == cur.year and po.po_date.month == cur.month), 2))
+                    chart_revenue.append(round(rev_map.get(key, 0), 2))
                     if cur.month == 12:
                         cur = date(cur.year + 1, 1, 1)
                     else:
@@ -861,12 +942,17 @@ def create_app():
             todos = Todo.query.filter_by(company_id=company_id).order_by(Todo.is_done.asc(), priority_order,
                                                                          Todo.due_date.is_(None),
                                                                          Todo.due_date.asc()).all()
-            if pending:
-                warnings.append({"text": f"{len(pending)} order(s) still awaiting PO",
+            if stats["pending_count"]:
+                warnings.append({"text": f"{stats['pending_count']} order(s) still awaiting PO",
                                  "link": url_for("orders.list_orders", status="Pending"), "critical": False})
-            no_quotation_orders = [o for o in orders if o.status == "Pending" and not o.quotation]
-            if no_quotation_orders:
-                warnings.append({"text": f"{len(no_quotation_orders)} order(s) have no quotation yet",
+            # Count orders with pending status and no quotation (SQL)
+            no_quotation_count = db.session.query(db.func.count(Order.id)).filter(
+                Order.company_id == company_id,
+                Order.status == "Pending",
+                ~Order.quotations.any()
+            ).scalar()
+            if no_quotation_count:
+                warnings.append({"text": f"{no_quotation_count} order(s) have no quotation yet",
                                  "link": url_for("orders.list_orders", status="Pending"), "critical": False})
 
             # --- Document pipeline (works-in-progress / "what's outstanding now") ---
@@ -1092,6 +1178,7 @@ def create_app():
         if file.content_length and file.content_length > 50 * 1024 * 1024:
             return jsonify({'error': 'File exceeds 50MB limit'}), 413
 
+        from ml.tender_extractor import extract_items_from_file
         items = extract_items_from_file(file.stream, filename=file.filename, force_ai=False)
         return jsonify({'items': items})
 
@@ -1104,6 +1191,7 @@ def create_app():
         if file.content_length and file.content_length > 50 * 1024 * 1024:
             return jsonify({'error': 'File exceeds 50MB limit'}), 413
 
+        from ml.tender_extractor import extract_items_from_file
         items = extract_items_from_file(file.stream, filename=file.filename, force_ai=True)
         return jsonify({'items': items})
 

@@ -2,6 +2,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt
 from sqlalchemy import Integer, cast
+from sqlalchemy.orm import selectinload
 from models import db, Order, Client, Company, Quotation, QuotationLineItem, PurchaseOrder, Invoice, DeliveryChallan, Payment, ClientCompanyLink
 from socket_events import emit_company, emit_dashboard_update
 
@@ -220,7 +221,15 @@ def list_orders():
 @jwt_required()
 def get_order(order_id):
     company_id = _get_company_id()
-    order = db.session.get(Order, order_id)
+    order = db.session.query(Order).options(
+        selectinload(Order.quotations),
+        selectinload(Order.invoices).selectinload(Invoice.payments),
+        selectinload(Order.invoices).selectinload(Invoice.credit_notes),
+        selectinload(Order.invoices).selectinload(Invoice.purchase_order),
+        selectinload(Order.delivery_challans).selectinload(DeliveryChallan.purchase_order),
+        selectinload(Order.purchase_orders).selectinload(PurchaseOrder.line_items),
+        selectinload(Order.documents),
+    ).filter(Order.id == order_id).first()
     if not order or order.company_id != company_id:
         return jsonify({"success": False, "error": "not_found", "message": "Order not found."}), 404
 
@@ -375,7 +384,11 @@ def delete_order(order_id):
     if not company_id:
         return jsonify({"success": False, "error": "no_company", "message": "No active company."}), 400
 
-    order = db.session.get(Order, order_id)
+    order = db.session.query(Order).options(
+        selectinload(Order.quotations),
+        selectinload(Order.invoices),
+        selectinload(Order.delivery_challans),
+    ).filter(Order.id == order_id).first()
     if not order or order.company_id != company_id:
         return jsonify({"success": False, "error": "not_found", "message": "Order not found."}), 404
 

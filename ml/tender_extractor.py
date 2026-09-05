@@ -33,6 +33,7 @@ except ImportError:
 
 import hashlib
 import time
+import bisect
 
 # Try importing Gemini SDK.
 # NOTE: `google-generativeai` (the old `import google.generativeai as genai`
@@ -103,9 +104,50 @@ MAX_ITEMS = 500
 # for predictable, crash-free behaviour: extra requests queue instead of
 # competing for the same limited RAM.
 _EXTRACTION_LOCK = threading.Lock()
+_error_lock = threading.Lock()
 # Tracks the last extraction error message so routes can surface the real
 # cause to the UI (e.g. network failure vs "no items found").
 _last_extraction_error = None
+
+# Singleton Groq client (avoid recreating per-request)
+_groq_client = None
+_groq_client_lock = threading.Lock()
+
+def _get_groq_client():
+    global _groq_client
+    if _groq_client is not None:
+        return _groq_client
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        return None
+    with _groq_client_lock:
+        if _groq_client is None:
+            from groq import Groq
+            _groq_client = Groq(api_key=api_key)
+    return _groq_client
+
+def _set_extraction_error(msg):
+    """Thread-safe setter for _last_extraction_error."""
+    global _last_extraction_error
+    with _error_lock:
+        _last_extraction_error = msg
+
+
+def _normalize_text(text):
+    """Normalize extracted text before parsing. Handles Unicode quirks,
+    line-break hyphenation repair, page number removal, and whitespace
+    normalization — critical preprocessing for reliable regex matching."""
+    if not text:
+        return ""
+    import unicodedata
+    text = unicodedata.normalize("NFKC", text)
+    text = re.sub(r'-\n(\w)', r'\1', text)          # repair line-break hyphenation
+    text = re.sub(r'\n\s*\d+\s*\n', '\n', text)    # remove page numbers between lines
+    text = re.sub(r'[ \t]+', ' ', text)              # collapse horizontal whitespace
+    text = re.sub(r'\n{3,}', '\n\n', text)           # limit consecutive newlines
+    return text.strip()
+
+
 # Tesseract engine/segmentation tuning - free accuracy wins, no extra
 # dependencies or compute cost. `--oem 1` selects the LSTM-only engine
 # (generally more accurate than the legacy engine on modern Tesseract
@@ -188,6 +230,19 @@ def extract_items_from_file(
         the return type unchanged for existing callers.
     """
     diagnostics = {"warnings": [], "low_confidence_pages": []}
+
+    # File size guard
+    try:
+        file_stream.seek(0)
+        file_size = len(file_stream.read())
+        file_stream.seek(0)
+        if file_size > 100 * 1024 * 1024:
+            diagnostics["warnings"].append(
+                f"File is very large ({file_size / (1024*1024):.0f}MB); extraction may be slow or fail due to memory constraints."
+            )
+    except Exception:
+        pass
+
     is_force_ai = force_ai or force_groq or force_gemini
     # 1. EXPLICIT AI EXTRACTION (Triggered when user clicks 'Extract with Groq AI'
     #    or 'Extract with Gemini AI'). Routed through _run_ai_extraction so the
@@ -243,23 +298,34 @@ def extract_items_from_file(
                     schedule_tables = [t for t in all_tables if _classify_table(t) == "schedule_table"]
                     if schedule_tables:
                         for t in schedule_tables:
-                            items.extend(_parse_single_table_block(t))
+                            try:
+                                items.extend(_parse_single_table_block(t))
+                            except Exception as e:
+                                print(f"[PDF Warning]: Schedule table parsing failed: {e}")
+                                continue
                             if len(items) >= MAX_ITEMS:
                                 break
                     else:
                         combined_grid = []
                         last_col_count = None
                         for table in all_tables:
-                            cols = len(table[0]) if table else 0
-                            if combined_grid and abs(cols - last_col_count) > 1:
-                                items.extend(_parse_table(combined_grid))
-                                combined_grid = []
-                                if len(items) >= MAX_ITEMS:
-                                    break
-                            combined_grid.extend(table)
-                            last_col_count = cols
+                            try:
+                                cols = len(table[0]) if table else 0
+                                if combined_grid and abs(cols - last_col_count) > 2:
+                                    items.extend(_parse_table(combined_grid))
+                                    combined_grid = []
+                                    if len(items) >= MAX_ITEMS:
+                                        break
+                                combined_grid.extend(table)
+                                last_col_count = cols
+                            except Exception as e:
+                                print(f"[PDF Warning]: Table processing failed: {e}")
+                                continue
                         if combined_grid and len(items) < MAX_ITEMS:
-                            items.extend(_parse_table(combined_grid))
+                            try:
+                                items.extend(_parse_table(combined_grid))
+                            except Exception as e:
+                                print(f"[PDF Warning]: Combined grid parsing failed: {e}")
                 if not items:
                     full_text_parts = []
                     for page in pdf.pages:
@@ -325,8 +391,15 @@ def extract_items_from_file(
                                 except OSError:
                                     pass
         except Exception as e:
-            print(f"[PDF Extract Error]: {e}")
-            diagnostics["warnings"].append(f"PDF extraction error: {e}")
+            err_str = str(e).lower()
+            if any(kw in err_str for kw in ["password", "encrypted", "permissions", "decrypt"]):
+                diagnostics["warnings"].append(
+                    "PDF appears to be password-protected or encrypted. "
+                    "Please provide an unlocked copy for extraction."
+                )
+            else:
+                print(f"[PDF Extract Error]: {e}")
+                diagnostics["warnings"].append(f"PDF extraction error: {e}")
 
         if include_photos and items:
             try:
@@ -361,6 +434,8 @@ def extract_items_from_file(
             if ai_items:
                 result = ai_items[:MAX_ITEMS]
                 return {"items": result, **diagnostics} if return_diagnostics else result
+    # Apply amendment precedence (amendments supersede base document)
+    items = _apply_amendment_precedence(items)
     result = items[:MAX_ITEMS]
     return {"items": result, **diagnostics} if return_diagnostics else result
 
@@ -368,6 +443,36 @@ def extract_items_from_file(
 def extract_items_from_pdf(file_stream, filename=""):
     """Backward-compatibility wrapper."""
     return extract_items_from_file(file_stream, filename)
+
+
+def extract_items_from_files(file_streams, filenames, **kwargs):
+    """Extract items from multiple files, cross-referencing across them.
+    Useful for multi-file tender packets (main PDF + annexures).
+
+    :param file_streams: list of BytesIO/file-like objects.
+    :param filenames: list of original filenames (for extension detection).
+    :param kwargs: passed through to extract_items_from_file.
+    :return: combined and deduplicated list of items.
+    """
+    all_items = []
+    seen_keys = set()
+    for stream, name in zip(file_streams, filenames):
+        try:
+            items = extract_items_from_file(stream, name, **kwargs)
+            if isinstance(items, dict):
+                items = items.get("items", [])
+            for item in items:
+                key = (
+                    (item.get("description") or "").strip().lower()[:80],
+                    (item.get("part_no") or "").strip().lower(),
+                )
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    all_items.append(item)
+        except Exception as e:
+            print(f"[Batch Extract Warning]: File '{name}' failed: {e}")
+            continue
+    return all_items[:MAX_ITEMS]
 # =========================================================================
 # GROQ AI EXTRACTION HELPER
 # =========================================================================
@@ -392,8 +497,41 @@ def _max_text_tokens_per_call():
     return max(500, _GROQ_TPM_BUDGET - _GROQ_PROMPT_OVERHEAD_TOKENS - _GROQ_RESPONSE_RESERVE_TOKENS)
 
 
+_SECTION_HEADER_RE = re.compile(
+    r'(?:Annexure|Anx|Schedule|Section|Chapter|Part|Clause)\s+[\w\d\-]+',
+    re.IGNORECASE
+)
+
 def _chunk_text_by_tokens(text, max_tokens):
+    """Split text into chunks that fit within max_tokens, preferring to split
+    at section boundaries (Annexure, Schedule, Section, etc.) to preserve
+    document structure for the AI model."""
     max_chars = max_tokens * 4
+    # Find section boundaries
+    section_matches = list(_SECTION_HEADER_RE.finditer(text))
+    if section_matches and len(text) > max_chars:
+        chunks = []
+        for i, match in enumerate(section_matches):
+            start = match.start()
+            end = section_matches[i + 1].start() if i + 1 < len(section_matches) else len(text)
+            section_text = text[start:end]
+            if len(section_text) <= max_chars:
+                chunks.append(section_text)
+            else:
+                # Section too large — fall back to line-based splitting
+                lines = section_text.split("\n")
+                current, current_len = [], 0
+                for line in lines:
+                    line_len = len(line) + 1
+                    if current_len + line_len > max_chars and current:
+                        chunks.append("\n".join(current))
+                        current, current_len = [], 0
+                    current.append(line)
+                    current_len += line_len
+                if current:
+                    chunks.append("\n".join(current))
+        return chunks
+    # No sections found or text fits — simple line-based splitting
     lines = text.split("\n")
     chunks, current, current_len = [], [], 0
     for line in lines:
@@ -422,7 +560,17 @@ _AI_SYSTEM_PROMPT = (
     "If a row has a separate Part No / Stock No / P/N column, put ONLY that value in "
     "'part_no' - do NOT prepend or mix it into 'description'. Leave 'part_no' as an empty "
     "string if the document has no such column. Default unit to 'Nos' if unspecified, "
-    "qty to 1.0, unit_price to 0.0, and annexure to '' if no annexure grouping is detected. "
+    "qty to 1.0, unit_price to 0.0, and annexure to '' if no annexure grouping is detected.\n\n"
+    "EXAMPLE INPUT:\n"
+    "Annexure A - Electrical Items\n"
+    "S.No | Part No | Description | A/U | Qty | Rate\n"
+    "1 | CW-250 | Copper Wire 2.5 sq mm | Mtr | 100 | 45.50\n"
+    "2 | PVT-100 | PVC Insulation Tape | Roll | 50 | 12.00\n\n"
+    "EXAMPLE OUTPUT:\n"
+    '{"items": ['
+    '{"description": "Copper Wire 2.5 sq mm", "part_no": "CW-250", "unit": "Mtr", "qty": 100.0, "unit_price": 45.50, "annexure": "Annexure A"},'
+    '{"description": "PVC Insulation Tape", "part_no": "PVT-100", "unit": "Roll", "qty": 50.0, "unit_price": 12.00, "annexure": "Annexure A"}'
+    ']}\n\n'
     "Output the JSON object and NOTHING else - no preamble, no explanation, no closing remarks."
 )
 
@@ -448,6 +596,21 @@ def _format_and_dedupe_items(raw_items):
     return formatted
 
 
+def _verify_arithmetic(items):
+    """Check qty * unit_price against amount/total where available.
+    Flags mismatches by reducing confidence and adding a warning."""
+    for item in items:
+        qty = item.get("qty")
+        price = item.get("unit_price")
+        total = item.get("total") or item.get("amount")
+        if qty and price and total and qty > 0 and price > 0 and total > 0:
+            expected = qty * price
+            if abs(expected - total) > max(0.01 * total, 1.0):
+                item["confidence"] = max(item.get("confidence", 0.5) - 0.2, 0.1)
+                item["warning"] = f"Arithmetic mismatch: {qty}x{price}={expected:.2f} != {total:.2f}"
+    return items
+
+
 # =========================================================================
 # GEMINI AI EXTRACTION (primary AI fallback — huge free-tier TPM headroom,
 # accepts a raw PDF natively so no rasterizing/chunking is normally needed)
@@ -457,17 +620,16 @@ def _extract_with_gemini(file_stream, filename=""):
     """Sends the native PDF/image bytes (or extracted text for Word/Excel)
     to Gemini. Preferred AI provider — see GROQ vs GEMINI note in
     _run_ai_extraction() below."""
-    global _last_extraction_error
-    _last_extraction_error = None
+    _set_extraction_error(None)
     if not GEMINI_AVAILABLE:
         msg = "`google-genai` not installed. Run `pip install google-genai`."
-        _last_extraction_error = msg
+        _set_extraction_error(msg)
         print(f"[Gemini Error]: {msg}")
         return []
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         msg = "`GEMINI_API_KEY` environment variable is missing."
-        _last_extraction_error = msg
+        _set_extraction_error(msg)
         print(f"[Gemini Error]: {msg}")
         return []
 
@@ -480,7 +642,7 @@ def _extract_with_gemini(file_stream, filename=""):
             client = _get_gemini_client()
             if client is None:
                 msg = "Failed to create Gemini client — check GEMINI_API_KEY."
-                _last_extraction_error = msg
+                _set_extraction_error(msg)
                 print(f"[Gemini Error]: {msg}")
                 return []
             # gemini-2.5-flash is deprecated for new users as of 2026 (returns
@@ -543,7 +705,21 @@ def _extract_with_gemini(file_stream, filename=""):
                                     match = re.search(r"\{.*\}", raw_json, re.DOTALL)
                                     if not match:
                                         continue
-                                    data = json.loads(match.group(0))
+                                    attempt = match.group(0)
+                                    data = None
+                                    for fix in [
+                                        re.sub(r',\s*\{[^}]*$', '', attempt),
+                                        re.sub(r',\s*"[^"]*$', '', attempt),
+                                        attempt + '}',
+                                        attempt + '"}',
+                                    ]:
+                                        try:
+                                            data = json.loads(fix)
+                                            break
+                                        except json.JSONDecodeError:
+                                            continue
+                                    if data is None:
+                                        continue
                                 all_items.extend(data.get("items", []))
                             except Exception as e:
                                 print(f"[Gemini]: chunk {start+1}-{end} failed: {e}")
@@ -581,7 +757,21 @@ def _extract_with_gemini(file_stream, filename=""):
                 match = re.search(r"\{.*\}", raw_json, re.DOTALL)
                 if not match:
                     raise
-                data = json.loads(match.group(0))
+                attempt = match.group(0)
+                data = None
+                for fix in [
+                    re.sub(r',\s*\{[^}]*$', '', attempt),
+                    re.sub(r',\s*"[^"]*$', '', attempt),
+                    attempt + '}',
+                    attempt + '"}',
+                ]:
+                    try:
+                        data = json.loads(fix)
+                        break
+                    except json.JSONDecodeError:
+                        continue
+                if data is None:
+                    raise
 
             return _format_and_dedupe_items(data.get("items", []))
 
@@ -592,12 +782,12 @@ def _extract_with_gemini(file_stream, filename=""):
                 time.sleep(_RETRY_DELAY)
                 continue
         except Exception as e:
-            _last_extraction_error = str(e)
+            _set_extraction_error(str(e))
             print(f"[Gemini Extraction Error]: {e}")
             return []
 
     msg = f"Gemini API unreachable (network error after {_MAX_RETRIES+1} attempts): {last_exc}"
-    _last_extraction_error = msg
+    _set_extraction_error(msg)
     print(f"[Gemini Extraction Error]: {msg}")
     return []
 
@@ -609,6 +799,7 @@ def _extract_with_gemini(file_stream, filename=""):
 
 def _call_groq_json(client, model_name, content_payload):
     _MAX_API_RETRIES = 2
+    _API_TIMEOUT = 60  # seconds
     for attempt in range(_MAX_API_RETRIES + 1):
         try:
             response = client.chat.completions.create(
@@ -616,7 +807,8 @@ def _call_groq_json(client, model_name, content_payload):
                 messages=[{"role": "user", "content": content_payload}],
                 response_format={"type": "json_object"},
                 temperature=0.1,
-                max_tokens=4096,
+                max_tokens=8192,
+                timeout=_API_TIMEOUT,
             )
             break
         except Exception as e:
@@ -633,7 +825,8 @@ def _call_groq_json(client, model_name, content_payload):
                 model=model_name,
                 messages=[{"role": "user", "content": content_payload}],
                 temperature=0.1,
-                max_tokens=4096,
+                max_tokens=8192,
+                timeout=_API_TIMEOUT,
             )
             break
 
@@ -651,28 +844,46 @@ def _call_groq_json(client, model_name, content_payload):
         match = re.search(r"\{.*\}", raw_json, re.DOTALL)
         if not match:
             raise
-        data = json.loads(match.group(0))
+        attempt = match.group(0)
+        # Try progressive truncation to recover from max_tokens cutoff
+        for fix in [
+            re.sub(r',\s*\{[^}]*$', '', attempt),
+            re.sub(r',\s*"[^"]*$', '', attempt),
+            attempt + '}',
+            attempt + '"}',
+            attempt + '"}}',
+        ]:
+            try:
+                data = json.loads(fix)
+                break
+            except json.JSONDecodeError:
+                continue
+        else:
+            raise
     return data.get("items", [])
 
 
 def _extract_with_groq(file_stream, filename=""):
     """Text-first, chunked-if-needed. Only rasterizes to page images
     (the old, token-expensive path) when there is truly no text layer."""
-    global _last_extraction_error
-    _last_extraction_error = None
+    _set_extraction_error(None)
     if not GROQ_AVAILABLE:
         msg = "`groq` SDK is not installed. Run `pip install groq`."
-        _last_extraction_error = msg
+        _set_extraction_error(msg)
         print(f"[Groq Error]: {msg}")
         return []
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
         msg = "`GROQ_API_KEY` environment variable is missing."
-        _last_extraction_error = msg
+        _set_extraction_error(msg)
         print(f"[Groq Error]: {msg}")
         return []
 
-    client = Groq(api_key=api_key)
+    client = _get_groq_client()
+    if not client:
+        msg = "Failed to initialize Groq client."
+        _set_extraction_error(msg)
+        return []
     ext = filename.lower().split(".")[-1] if "." in filename else ""
     model_name = os.environ.get("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
     max_tokens_per_call = _max_text_tokens_per_call()
@@ -682,7 +893,8 @@ def _extract_with_groq(file_stream, filename=""):
         if ext == "pdf":
             file_stream.seek(0)
             with pdfplumber.open(file_stream) as pdf:
-                doc_text = "\n".join((p.extract_text() or "") for p in pdf.pages)
+                doc_text = _normalize_text("\n".join((p.extract_text() or "") for p in pdf.pages))
+            import gc; gc.collect()
         elif ext in {"docx", "doc", "xlsx", "xls"}:
             doc_text = _extract_text_content_for_llm(file_stream, ext)
 
@@ -720,11 +932,13 @@ def _extract_with_groq(file_stream, filename=""):
                     continue
                 if i < len(images_b64) - 1:
                     time.sleep(2)
+            del images_b64
+            import gc; gc.collect()
             return _format_and_dedupe_items(all_raw_items)
 
         return []
     except Exception as e:
-        _last_extraction_error = str(e)
+        _set_extraction_error(str(e))
         print(f"[Groq Extraction Error]: {e}")
         return []
 
@@ -815,12 +1029,12 @@ def _extract_text_content_for_llm(file_stream, ext):
                     sheet = wb[sheet_name]
                     text_content.append(f"=== {sheet_name} ===")
                     for row in sheet.iter_rows(values_only=True):
-                        row_vals = [str(c).strip() for c in row if c is not None]
+                        row_vals = [_safe_cell_str(c) for c in row]
                         if row_vals:
                             text_content.append(" | ".join(row_vals))
         except Exception as e:
             print(f"[Text Read Error excel]: {e}")
-    return "\n".join(text_content)
+    return _normalize_text("\n".join(text_content))
 # =========================================================================
 # LOCAL RULE-BASED EXTRACTION HELPERS
 # =========================================================================
@@ -833,13 +1047,17 @@ def _extract_from_docx(file_stream):
         doc = docx.Document(file_stream)
         raw_tables = []
         for table in doc.tables:
-            table_grid = []
-            for row in table.rows:
-                row_vals = [" ".join(cell.text.split()).strip() for cell in row.cells]
-                if any(row_vals):
-                    table_grid.append(row_vals)
-            if table_grid:
-                raw_tables.append(_collapse_blank_columns(table_grid))
+            try:
+                table_grid = []
+                for row in table.rows:
+                    row_vals = [" ".join(cell.text.split()).strip() for cell in row.cells]
+                    if any(row_vals):
+                        table_grid.append(row_vals)
+                if table_grid:
+                    raw_tables.append(_collapse_blank_columns(table_grid))
+            except Exception as e:
+                print(f"[DOCX Warning]: Table read failed: {e}")
+                continue
         raw_tables = _merge_headerless_continuations(raw_tables)
         if _classify_tables(raw_tables) == "tender_dual_table":
             items = _extract_dual_table_tender(raw_tables)
@@ -847,13 +1065,17 @@ def _extract_from_docx(file_stream):
             schedule_tables = [t for t in raw_tables if _classify_table(t) == "schedule_table"]
             tables_to_parse = schedule_tables if schedule_tables else raw_tables
             for table_grid in tables_to_parse:
-                extracted = _parse_single_table_block(table_grid) if schedule_tables else _parse_table(table_grid)
-                if extracted:
-                    items.extend(extracted)
+                try:
+                    extracted = _parse_single_table_block(table_grid) if schedule_tables else _parse_table(table_grid)
+                    if extracted:
+                        items.extend(extracted)
+                except Exception as e:
+                    print(f"[DOCX Warning]: Table parsing failed: {e}")
+                    continue
                 if len(items) >= MAX_ITEMS:
                     break
         if not items:
-            full_text = "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
+            full_text = _normalize_text("\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()]))
             items.extend(_parse_plain_text(full_text))
     except Exception as e:
         print(f"[Word Extract Error]: {e}")
@@ -876,6 +1098,19 @@ def _fill_merged_cells(sheet):
     return rows
 
 
+def _safe_cell_str(cell):
+    """Convert cell to string, filtering out Excel error values (#REF!, #N/A, etc.)."""
+    if cell is None:
+        return ""
+    try:
+        from openpyxl.cell.error import Error
+        if isinstance(cell, Error):
+            return ""
+    except ImportError:
+        pass
+    return str(cell).strip()
+
+
 def _extract_from_excel(file_stream, include_photos=False, diagnostics=None):
     """
     Extracts line items from an Excel workbook (.xlsx/.xls).
@@ -887,8 +1122,7 @@ def _extract_from_excel(file_stream, include_photos=False, diagnostics=None):
     Excel embedded images are also extracted and paired with items by
     their row position when include_photos=True (used for technical offers).
     """
-    global _last_extraction_error
-    _last_extraction_error = None
+    _set_extraction_error(None)
 
     try:
         file_stream.seek(0)
@@ -938,100 +1172,122 @@ def _extract_from_excel(file_stream, include_photos=False, diagnostics=None):
             sheet_names = []
 
         for sheet_name in sheet_names:
-            # Detect annexure sheet by name: "Annexure A", "Anx-B", "A", "1", "Sheet2" etc.
-            sheet_name_clean = sheet_name.strip()
-            sheet_name_lower = sheet_name_clean.lower()
+            try:
+                # Detect annexure sheet by name: "Annexure A", "Anx-B", "A", "1", "Sheet2" etc.
+                sheet_name_clean = sheet_name.strip()
+                sheet_name_lower = sheet_name_clean.lower()
 
-            is_annexure_sheet = False
-            annexure_label = ""
+                is_annexure_sheet = False
+                annexure_label = ""
 
-            # Heuristic: single-letter, "annexure/anx/anx-" prefix, or numeric suffix
-            if re.match(r"^(annexure|anx|anx-)\s*['\"]?([A-Za-z0-9])$", sheet_name_lower):
-                m = re.match(r"^(annexure|anx|anx-)\s*['\"]?([A-Za-z0-9])$", sheet_name_lower)
-                annexure_label = m.group(2).upper() if m else sheet_name_clean
-                is_annexure_sheet = True
-            elif re.match(r"^[A-Za-z]$", sheet_name_clean) and sheet_name_clean.upper() not in ("A", "I", "V"):
-                annexure_label = sheet_name_clean.upper()
-                is_annexure_sheet = True
-            elif re.match(r"^[A-Za-z]\s*\d+$", sheet_name_clean):
-                annexure_label = re.match(r"^([A-Za-z])", sheet_name_clean).group(1).upper()
-                is_annexure_sheet = True
-            elif "annexure" in sheet_name_lower or "anx" in sheet_name_lower:
-                annexure_label = sheet_name_clean
-                is_annexure_sheet = True
+                # Heuristic: single-letter, "annexure/anx/anx-" prefix, or numeric suffix
+                if re.match(r"^(annexure|anx|anx-)\s*['\"]?([A-Za-z0-9])$", sheet_name_lower):
+                    m = re.match(r"^(annexure|anx|anx-)\s*['\"]?([A-Za-z0-9])$", sheet_name_lower)
+                    annexure_label = m.group(2).upper() if m else sheet_name_clean
+                    is_annexure_sheet = True
+                elif re.match(r"^[A-Za-z]$", sheet_name_clean) and sheet_name_clean.upper() not in ("A", "I", "V"):
+                    annexure_label = sheet_name_clean.upper()
+                    is_annexure_sheet = True
+                elif re.match(r"^[A-Za-z]\s*\d+$", sheet_name_clean):
+                    annexure_label = re.match(r"^([A-Za-z])", sheet_name_clean).group(1).upper()
+                    is_annexure_sheet = True
+                elif "annexure" in sheet_name_lower or "anx" in sheet_name_lower:
+                    annexure_label = sheet_name_clean
+                    is_annexure_sheet = True
 
-            if XLRD_AVAILABLE and hasattr(workbook, 'sheet_names'):
-                sheet = workbook.sheet_by_name(sheet_name)
-                # Convert xlrd sheet to list of rows (xlrd provides cell values directly)
-                table = []
-                excel_row_map = []
-                for excel_row_num in range(1, sheet.nrows + 1):
-                    row_vals = []
-                    for col in range(sheet.ncols):
-                        cell = sheet.cell_value(excel_row_num - 1, col)
-                        if cell is not None:
-                            row_vals.append(str(cell).strip())
+                if XLRD_AVAILABLE and hasattr(workbook, 'sheet_names'):
+                    sheet = workbook.sheet_by_name(sheet_name)
+                    # Convert xlrd sheet to list of rows (xlrd provides cell values directly)
+                    table = []
+                    excel_row_map = []
+                    for excel_row_num in range(1, sheet.nrows + 1):
+                        row_vals = []
+                        for col in range(sheet.ncols):
+                            cell = sheet.cell_value(excel_row_num - 1, col)
+                            if cell is not None:
+                                row_vals.append(str(cell).strip())
+                            else:
+                                row_vals.append("")
+                        if any(v for v in row_vals if v):
+                            table.append(row_vals)
+                            excel_row_map.append(excel_row_num)
+                else:
+                    # openpyxl interface — fill merged cells first
+                    sheet = workbook[sheet_name]
+                    raw_rows = _fill_merged_cells(sheet)
+                    table = []
+                    excel_row_map = []
+                    for excel_row_num, row_vals_raw in enumerate(raw_rows, start=1):
+                        row_vals = [_safe_cell_str(cell) for cell in row_vals_raw]
+                        if any(v for v in row_vals if v):
+                            table.append(row_vals)
+                            excel_row_map.append(excel_row_num)
+
+                if not table:
+                    continue  # skip empty sheets
+
+                sheet_items = _parse_table(table)
+
+                # Tag each item with the annexure label
+                for item in sheet_items:
+                    if is_annexure_sheet and annexure_label:
+                        existing_annexure = item.get("annexure", "").strip()
+                        if existing_annexure:
+                            item["annexure"] = f"{annexure_label} - {existing_annexure}"
                         else:
-                            row_vals.append("")
-                    if any(v for v in row_vals if v):
-                        table.append(row_vals)
-                        excel_row_map.append(excel_row_num)
-            else:
-                # openpyxl interface — fill merged cells first
-                sheet = workbook[sheet_name]
-                raw_rows = _fill_merged_cells(sheet)
-                table = []
-                excel_row_map = []
-                for excel_row_num, row_vals_raw in enumerate(raw_rows, start=1):
-                    row_vals = [str(cell).strip() if cell is not None else "" for cell in row_vals_raw]
-                    if any(v for v in row_vals if v):
-                        table.append(row_vals)
-                        excel_row_map.append(excel_row_num)
+                            item["annexure"] = annexure_label
 
-            if not table:
-                continue  # skip empty sheets
+                # Pair photos with items by row index (sheet-keyed dict)
+                # Images are anchored to Excel rows (1-based). Data items start
+                # after the header row, so find the header offset to compute
+                # the correct mapping from Excel row to sheet_items index.
+                sheet_photos = photos_by_sheet.get(sheet_name, [])
+                if sheet_photos and sheet_items:
+                    h_idx, _ = _find_header_row(table)
+                    data_start_row = (h_idx + 1) if h_idx is not None else 0
+                    for photo in sheet_photos:
+                        excel_row = photo.get("row_index", 1)  # 1-based Excel row
+                        # Map Excel row to table index (table skips empty rows)
+                        try:
+                            table_idx = excel_row_map.index(excel_row)
+                        except ValueError:
+                            continue  # This Excel row was empty, no item here
+                        item_idx = table_idx - data_start_row  # 0-based into sheet_items
+                        if 0 <= item_idx < len(sheet_items):
+                            target_item = sheet_items[item_idx]
+                            if not target_item.get("photo_bytes"):
+                                target_item["photo_bytes"] = photo.get("bytes")
+                                target_item["photo_ext"] = photo.get("ext", "jpg")
 
-            sheet_items = _parse_table(table)
+                all_items.extend(sheet_items)
+                if len(all_items) >= MAX_ITEMS:
+                    break
 
-            # Tag each item with the annexure label
-            for item in sheet_items:
-                if is_annexure_sheet and annexure_label:
-                    existing_annexure = item.get("annexure", "").strip()
-                    if existing_annexure:
-                        item["annexure"] = f"{annexure_label} - {existing_annexure}"
-                    else:
-                        item["annexure"] = annexure_label
+            except Exception as e:
+                print(f"[Excel Warning]: Sheet '{sheet_name}' failed: {e}")
+                if diagnostics is not None:
+                    diagnostics["warnings"].append(f"Sheet '{sheet_name}' skipped: {e}")
+                continue
 
-            # Pair photos with items by row index (sheet-keyed dict)
-            # Images are anchored to Excel rows (1-based). Data items start
-            # after the header row, so find the header offset to compute
-            # the correct mapping from Excel row to sheet_items index.
-            sheet_photos = photos_by_sheet.get(sheet_name, [])
-            if sheet_photos and sheet_items:
-                h_idx, _ = _find_header_row(table)
-                data_start_row = (h_idx + 1) if h_idx is not None else 0
-                for photo in sheet_photos:
-                    excel_row = photo.get("row_index", 1)  # 1-based Excel row
-                    # Map Excel row to table index (table skips empty rows)
-                    try:
-                        table_idx = excel_row_map.index(excel_row)
-                    except ValueError:
-                        continue  # This Excel row was empty, no item here
-                    item_idx = table_idx - data_start_row  # 0-based into sheet_items
-                    if 0 <= item_idx < len(sheet_items):
-                        target_item = sheet_items[item_idx]
-                        if not target_item.get("photo_bytes"):
-                            target_item["photo_bytes"] = photo.get("bytes")
-                            target_item["photo_ext"] = photo.get("ext", "jpg")
-
-            all_items.extend(sheet_items)
-            if len(all_items) >= MAX_ITEMS:
-                break
+        # Check for uncached formula cells (all None values)
+        if diagnostics is not None and not all_items:
+            try:
+                for sn in (workbook.sheetnames if hasattr(workbook, 'sheetnames') else []):
+                    ws = workbook[sn]
+                    non_none = sum(1 for row in ws.iter_rows(max_row=5) for c in row if c.value is not None)
+                    if non_none == 0:
+                        diagnostics["warnings"].append(
+                            f"Sheet '{sn}': all formula cells appear uncached (None). "
+                            f"Results may be incomplete. Re-save the file in Excel to cache values."
+                        )
+                        break
+            except Exception:
+                pass
 
         return all_items
 
     except Exception as e:
-        _last_extraction_error = str(e)
+        _set_extraction_error(str(e))
         print(f"[Excel Extract Error]: {e}")
         return []
 
@@ -1043,9 +1299,12 @@ def _extract_from_image(file_stream, diagnostics=None):
         img = _deskew_image(img)
         img = _preprocess_for_ocr(img)
         img = img.convert("L")
+        # Auto-select PSM: use PSM 6 (single uniform block) for better
+        # table/structured text recognition on full-page images
+        psm_config = "--psm 6"
         try:
             from pytesseract import Output
-            data = pytesseract.image_to_data(img, output_type=Output.DICT)
+            data = pytesseract.image_to_data(img, output_type=Output.DICT, config=psm_config)
             confs = [int(float(c)) for c in data["conf"] if str(c).strip() not in ("", "-1")]
             if confs and diagnostics is not None:
                 avg_conf = sum(confs) / len(confs)
@@ -1063,7 +1322,7 @@ def _extract_from_image(file_stream, diagnostics=None):
                 raw_lines.setdefault(line_key, []).append(t)
             raw_text = "\n".join(" ".join(words) for words in raw_lines.values())
         except Exception:
-            raw_text = pytesseract.image_to_string(img)  # fall back to plain OCR if data-mode fails
+            raw_text = pytesseract.image_to_string(img, config=psm_config)
         return _parse_plain_text(raw_text)
     except pytesseract.TesseractNotFoundError:
         print("[OCR Error] Tesseract is not installed or not added to system PATH.")
@@ -1075,6 +1334,62 @@ def _extract_from_image(file_stream, diagnostics=None):
         if diagnostics is not None:
             diagnostics["warnings"].append(f"Image OCR failed: {e}")
         return []
+# =========================================================================
+# AMENDMENT / ADDENDUM PRECEDENCE
+#
+# Tender documents often have amendments or addenda that supersede the base
+# document. When items appear in both the base and an amendment, the
+# amendment version should take precedence.
+# =========================================================================
+
+_AMENDMENT_RE = re.compile(
+    r'(?:Amendment|Addendum|Revision|Corrigendum)\s+(\d+)', re.IGNORECASE
+)
+
+def _apply_amendment_precedence(items):
+    """When items appear in both a base document and an amendment/addendum,
+    the amendment version takes precedence. Items from amendments are tagged
+    with their amendment number; if a base item has the same description
+    but a later amendment overrides it, the amendment version wins."""
+    if not items:
+        return items
+    # Group items by description key
+    by_key = {}
+    for item in items:
+        desc = (item.get("description") or "").strip().lower()[:80]
+        part = (item.get("part_no") or "").strip().lower()
+        key = (desc, part)
+        by_key.setdefault(key, []).append(item)
+    # For each group, prefer the amendment version
+    result = []
+    for key, group in by_key.items():
+        if len(group) == 1:
+            result.append(group[0])
+            continue
+        # Check if any item mentions an amendment
+        amendment_items = []
+        base_items = []
+        for item in group:
+            annexure = (item.get("annexure") or "").lower()
+            source = (item.get("source_text") or "").lower()
+            if _AMENDMENT_RE.search(annexure) or _AMENDMENT_RE.search(source):
+                amendment_items.append(item)
+            else:
+                base_items.append(item)
+        if amendment_items:
+            # Prefer the last amendment (highest number)
+            amendment_items.sort(
+                key=lambda x: int(
+                    (_AMENDMENT_RE.search((x.get("annexure") or "") + " " + (x.get("source_text") or "")).group(1) or "0")
+                ),
+                reverse=True
+            )
+            result.append(amendment_items[0])
+        else:
+            result.append(base_items[0])
+    return result
+
+
 # =========================================================================
 # PHOTO / IMAGE EXTRACTION
 #
@@ -1242,6 +1557,22 @@ def _attach_photos_by_position(items, file_stream, min_dim=_MIN_IMG_DIM, diagnos
         # them. We detect that below and crop it into per-item slices
         # instead of silently giving every item a copy of the whole thing.
         shared_claims = {}
+        # Pre-build inverted index: key -> set of page numbers (avoids O(items*pages) text searches)
+        text_to_pages = {}
+        for item in items:
+            if item.get("photo_bytes"):
+                continue
+            key = (item.get("part_no") or "").strip()
+            if not key:
+                desc_words = (item.get("description") or "").strip().split()
+                key = " ".join(desc_words[:3])
+            if not key:
+                continue
+            for pno in range(len(doc)):
+                if page_layout.get(pno) == "scanned_page":
+                    continue
+                if doc[pno].search_for(key):
+                    text_to_pages.setdefault(key, set()).add(pno)
         for item in items:
             if item.get("photo_bytes"):
                 continue  # already paired by heading-based matching
@@ -1251,7 +1582,8 @@ def _attach_photos_by_position(items, file_stream, min_dim=_MIN_IMG_DIM, diagnos
                 key = " ".join(desc_words[:3])
             if not key:
                 continue
-            for pno in range(len(doc)):
+            matched_pages = text_to_pages.get(key, set())
+            for pno in sorted(matched_pages):
                 if page_layout.get(pno) == "scanned_page":
                     continue  # no text layer here - search_for() below can never match
                 candidates = images_by_page.get(pno)
@@ -1322,26 +1654,34 @@ def _attach_photos_by_position(items, file_stream, min_dim=_MIN_IMG_DIM, diagnos
 
 
 def _preprocess_for_ocr(pil_image):
-    """Cheap, free accuracy win before handing an image to Tesseract:
-    evens out lighting with CLAHE (contrast-limited adaptive histogram
-    equalization) and then binarizes with adaptive thresholding, so
-    faint or unevenly-lit scans (phone photos, old photocopies, a
-    watermark washing out part of the page) come through with cleaner,
-    better-separated glyph edges. On documents like these, this kind of
-    preprocessing often improves OCR accuracy more than any downstream
-    model would - and costs almost nothing in CPU/RAM, which matters on
-    constrained hardware. Falls back to a plain grayscale conversion
-    (still valid Tesseract input) if OpenCV is unavailable or
-    preprocessing fails for any reason."""
+    """Adaptive preprocessing before Tesseract: detects whether the page has
+    uneven lighting (phone photos, spine shadows) and applies the right
+    binarization method accordingly. Clean scans get Otsu (preserves edges);
+    uneven pages get adaptive threshold (handles gradients). Also applies
+    CLAHE for contrast normalization. Falls back to plain grayscale if
+    OpenCV is unavailable."""
     try:
         import cv2
         import numpy as np
         arr = np.array(pil_image.convert("L"))
+        # Detect uneven lighting by comparing tile means
+        h, w = arr.shape
+        tile_size = max(h // 4, 1), max(w // 4, 1)
+        means = []
+        for y in range(0, h - tile_size[0] + 1, tile_size[0]):
+            for x in range(0, w - tile_size[1] + 1, tile_size[1]):
+                tile = arr[y:y+tile_size[0], x:x+tile_size[1]]
+                means.append(tile.mean())
+        uneven = (max(means) - min(means)) > 40 if means else False
+        # CLAHE for contrast normalization
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         contrasted = clahe.apply(arr)
-        binarized = cv2.adaptiveThreshold(
-            contrasted, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 15
-        )
+        if uneven:
+            binarized = cv2.adaptiveThreshold(
+                contrasted, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 10
+            )
+        else:
+            _, binarized = cv2.threshold(contrasted, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         return Image.fromarray(binarized)
     except Exception as e:
         print(f"[OCR Preprocess Warning]: {e}")
@@ -1676,12 +2016,9 @@ def _reconstruct_table_from_ocr(fitz_page, dpi=300, y_tol=6, x_cluster_dist=25, 
     all_x = [x for row in row_groups for x, w, txt in row]
     col_starts = _cluster_columns(all_x, max_x_dist=x_cluster_dist)
     def _col_index(x):
-        best_i, best_dist = 0, None
-        for i, cx in enumerate(col_starts):
-            dist = abs(x - cx)
-            if best_dist is None or dist < best_dist:
-                best_i, best_dist = i, dist
-        return best_i
+        i = bisect.bisect_left(col_starts, x)
+        candidates = [j for j in (i-1, i, i+1) if 0 <= j < len(col_starts)]
+        return min(candidates, key=lambda j: abs(col_starts[j] - x)) if candidates else 0
     # --- build the grid, space-joining words that land in the same cell ---
     grid = []
     for row in sorted(row_groups, key=lambda r: min(x for x, w, txt in r)):
@@ -1693,16 +2030,20 @@ def _reconstruct_table_from_ocr(fitz_page, dpi=300, y_tol=6, x_cluster_dist=25, 
         grid.append(cells)
     return grid
 
+_gmft_lock = threading.Lock()
+
 def _get_gmft_engine():
     """Lazily creates and caches the gmft detector/formatter pair (mirrors
     the old _get_paddle_engine caching pattern) so the underlying Table
     Transformer model weights are loaded once per process, not once per
     page/document."""
     global _gmft_detector, _gmft_formatter
-    if _gmft_detector is None:
-        _gmft_detector = AutoTableDetector()
-    if _gmft_formatter is None:
-        _gmft_formatter = AutoTableFormatter()
+    if _gmft_detector is None or _gmft_formatter is None:
+        with _gmft_lock:
+            if _gmft_detector is None:
+                _gmft_detector = AutoTableDetector()
+            if _gmft_formatter is None:
+                _gmft_formatter = AutoTableFormatter()
     return _gmft_detector, _gmft_formatter
 
 
@@ -2049,7 +2390,7 @@ def _extract_images_from_docx(file_stream, min_dim, output_dir):
     return results
 
 
-def _extract_images_from_excel(file_stream, min_dim=_MIN_IMG_DIM):
+def _extract_images_from_excel(file_stream, min_dim=_MIN_IMG_DIM, output_dir=None):
     """
     Extracts embedded images from an Excel workbook (.xlsx/.xls).
 
@@ -2068,6 +2409,12 @@ def _extract_images_from_excel(file_stream, min_dim=_MIN_IMG_DIM):
 
     file_stream.seek(0)
     file_bytes = file_stream.read()
+
+    # .xls (OLE2) files embed images in binary Escher streams, not ZIP XML
+    if file_bytes[:8] == b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1':
+        print("[Excel Image Extract]: .xls (OLE2) format — images embedded in binary streams, "
+              "not extractable via ZIP/XML. Convert to .xlsx first for photo extraction.")
+        return {}
 
     try:
         with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
@@ -2373,6 +2720,27 @@ def detect_document_type(file_stream, filename=""):
             result = _classify_tables(tables)
             return result if result != "unknown" else ("plain_text" if not tables else "unknown")
         if ext in {"xlsx", "xls"}:
+            try:
+                file_stream.seek(0)
+                if ext == "xls" and XLRD_AVAILABLE:
+                    wb = xlrd.open_workbook(file_contents=file_stream.read())
+                    for sname in wb.sheet_names():
+                        sh = wb.sheet_by_name(sname)
+                        for r in range(min(5, sh.nrows)):
+                            row = [str(sh.cell_value(r, c)).strip().lower() for c in range(sh.ncols)]
+                            if _looks_like_schedule_header(row):
+                                return "tender_dual_table"
+                else:
+                    wb = openpyxl.load_workbook(file_stream, read_only=True, data_only=True)
+                    for sname in wb.sheetnames:
+                        raw = _fill_merged_cells(wb[sname])
+                        for row in raw[:5]:
+                            if _looks_like_schedule_header(row):
+                                wb.close()
+                                return "tender_dual_table"
+                    wb.close()
+            except Exception:
+                pass
             return "quotation"
         if ext in {"png", "jpg", "jpeg", "webp", "bmp"}:
             return "plain_text"
@@ -2488,7 +2856,7 @@ def _merge_headerless_continuations(raw_tables):
         prev_cols = len(prev[0]) if prev and prev[0] else 0
 
         header_idx, _ = _find_header_row(table)
-        if header_idx is None and cols > 0 and abs(cols - prev_cols) <= 1:
+        if header_idx is None and cols > 0 and abs(cols - prev_cols) <= 2:
             prev.extend(table)
         else:
             merged.append(list(table))
@@ -2641,12 +3009,30 @@ def _parse_single_table_block(table):
             # matching against a parts catalogue, Excel column widths).
             clean_part_no = part_no if (part_no and not _is_pure_number_or_sno(part_no)) else ""
             if len(full_desc) > 1 and not _is_pure_number_or_sno(full_desc):
+                # Confidence scoring: base + bonuses for each quality signal
+                confidence = 0.4  # base for having a description
+                if len(full_desc) > 10:
+                    confidence += 0.1
+                if qty is not None and qty > 0:
+                    confidence += 0.15
+                if price and price > 0:
+                    confidence += 0.15
+                if clean_part_no:
+                    confidence += 0.05
+                if unit and unit != "Nos":
+                    confidence += 0.05
+                if has_sno:
+                    confidence += 0.05
+                confidence = min(confidence, 1.0)
                 item = {
                     "description": full_desc[:250],
                     "part_no": clean_part_no,
                     "unit": unit,
                     "qty": qty if (qty is not None and qty > 0) else 1.0,
                     "unit_price": price,
+                    "confidence": round(confidence, 2),
+                    "source_page": None,  # filled by caller if available
+                    "source_text": row_str[:200] if len(row_str) > 200 else row_str,
                 }
                 if current_annexure:
                     item["annexure"] = current_annexure
@@ -2778,6 +3164,7 @@ def _extract_number(text):
 
 
 def _parse_plain_text(text):
+    text = _normalize_text(text)
     results = []
     buffer_lines = []
     current_annexure = None
@@ -2843,12 +3230,25 @@ def _parse_plain_text(text):
             full_description = _LEADING_SNO_RE.sub("", full_description)
             full_description = _LEADING_INDEX_RE.sub("", full_description)
             if len(full_description) > 2 and not _is_pure_number_or_sno(full_description):
+                confidence = 0.4
+                if len(full_description) > 10:
+                    confidence += 0.1
+                if qty > 0:
+                    confidence += 0.15
+                if price > 0:
+                    confidence += 0.15
+                if unit and unit != "Nos":
+                    confidence += 0.05
+                confidence = min(confidence, 1.0)
                 item = {
                     "description": full_description[:250],
                     "part_no": "",
                     "unit": unit,
                     "qty": qty if qty > 0 else 1.0,
                     "unit_price": price,
+                    "confidence": round(confidence, 2),
+                    "source_page": None,
+                    "source_text": cleaned[:200],
                 }
                 if current_annexure:
                     item["annexure"] = current_annexure

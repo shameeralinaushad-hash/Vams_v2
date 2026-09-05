@@ -2,6 +2,7 @@ from datetime import date, datetime
 from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt
 from werkzeug.utils import secure_filename
+from sqlalchemy.orm import selectinload
 from models import db, Invoice, InvoiceLineItem, Payment, CreditNote, Order, Client, CatalogItem, ClientDocSequence, PriceHistory
 from numbering import build_invoice_number
 from utils import get_order_folder
@@ -182,7 +183,12 @@ def get_invoice(invoice_id):
     if not company_id:
         return jsonify({"success": False, "error": "no_company", "message": "No active company."}), 400
 
-    invoice = db.session.get(Invoice, invoice_id)
+    invoice = db.session.query(Invoice).options(
+        selectinload(Invoice.order),
+        selectinload(Invoice.line_items),
+        selectinload(Invoice.payments),
+        selectinload(Invoice.credit_notes),
+    ).filter(Invoice.id == invoice_id).first()
     if not invoice:
         return jsonify({"success": False, "error": "not_found", "message": "Invoice not found."}), 404
 
@@ -396,7 +402,10 @@ def create_invoice(order_id):
     if not company_id:
         return jsonify({"success": False, "error": "no_company", "message": "No active company."}), 400
 
-    order = db.session.get(Order, order_id)
+    order = db.session.query(Order).options(
+        selectinload(Order.company),
+        selectinload(Order.client),
+    ).filter(Order.id == order_id).first()
     if not order or order.company_id != company_id:
         return jsonify({"success": False, "error": "not_found", "message": "Order not found."}), 404
 
@@ -444,7 +453,9 @@ def create_invoice(order_id):
     line_items = _build_invoice_line_items(invoice, items, order)
     db.session.commit()
 
-    _write_invoice_pdf(order, invoice, line_items)
+    from background import run_in_background
+    run_in_background(_write_invoice_pdf, order, invoice, line_items,
+                      _app=current_app._get_current_object())
 
     emit_company("list_refresh", {"section": "invoices"}, order.company_id)
     emit_dashboard_update(order.company_id)
@@ -492,7 +503,10 @@ def delete_invoice(invoice_id):
     if not company_id:
         return jsonify({"success": False, "error": "no_company", "message": "No active company."}), 400
 
-    invoice = db.session.get(Invoice, invoice_id)
+    invoice = db.session.query(Invoice).options(
+        selectinload(Invoice.order),
+        selectinload(Invoice.payments),
+    ).filter(Invoice.id == invoice_id).first()
     if not invoice:
         return jsonify({"success": False, "error": "not_found", "message": "Invoice not found."}), 404
 
@@ -534,7 +548,10 @@ def edit_invoice(invoice_id):
     if not company_id:
         return jsonify({"success": False, "error": "no_company", "message": "No active company."}), 400
 
-    invoice = db.session.get(Invoice, invoice_id)
+    invoice = db.session.query(Invoice).options(
+        selectinload(Invoice.order),
+        selectinload(Invoice.line_items),
+    ).filter(Invoice.id == invoice_id).first()
     if not invoice:
         return jsonify({"success": False, "error": "not_found", "message": "Invoice not found."}), 404
 
@@ -576,7 +593,9 @@ def edit_invoice(invoice_id):
     line_items = _build_invoice_line_items(invoice, items, order)
     db.session.commit()
 
-    _write_invoice_pdf(order, invoice, line_items)
+    from background import run_in_background
+    run_in_background(_write_invoice_pdf, order, invoice, line_items,
+                      _app=current_app._get_current_object())
 
     log_action("edit_invoice", "Invoice", invoice.id, f"Edited invoice {invoice.invoice_number} for {order.client.name}")
 

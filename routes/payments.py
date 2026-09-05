@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from flask_login import current_user
+from sqlalchemy.orm import selectinload
 from models import db, Payment, Invoice, Order, Payable, Notification, User
 from audit import log_action
 from permissions import permission_required
@@ -21,7 +22,10 @@ def list_payments():
     active_tab = request.args.get("tab", "receivables")
 
     invoices = (
-        Invoice.query.join(Order)
+        db.session.query(Invoice).options(
+            selectinload(Invoice.payments),
+            selectinload(Invoice.credit_notes),
+        ).join(Order)
         .filter(Order.company_id == company_id)
         .order_by(Invoice.invoice_date.desc())
         .all()
@@ -113,7 +117,13 @@ def list_payments():
 
 @payments_bp.route("/invoice/<int:invoice_id>/add", methods=["POST"])
 def add_payment(invoice_id):
-    invoice = Invoice.query.get_or_404(invoice_id)
+    invoice = db.session.query(Invoice).options(
+        selectinload(Invoice.payments),
+        selectinload(Invoice.credit_notes),
+    ).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        from flask import abort
+        abort(404)
     redirect_target = request.form.get("next") or request.referrer or url_for("orders.view_order", order_id=invoice.order_id)
 
     amount = parse_float(request.form.get("amount"))

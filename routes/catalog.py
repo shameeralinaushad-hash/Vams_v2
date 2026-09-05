@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, jsonify, session, current_app
 from sqlalchemy.orm import selectinload
+from sqlalchemy import func
 from models import db, CatalogItem, PriceHistory
 from market_price import check_market_price
 
@@ -8,24 +9,28 @@ catalog_bp = Blueprint("catalog", __name__, url_prefix="/catalog")
 
 @catalog_bp.route("/")
 def list_catalog():
-    # 1. Fetch all items with price_history eagerly loaded (fixes N+1)
-    items = CatalogItem.query.options(
+    page = request.args.get("page", 1, type=int)
+    per_page = 50
+
+    # Paginated items for table
+    pagination = CatalogItem.query.options(
         selectinload(CatalogItem.price_history)
-    ).order_by(CatalogItem.description).all()
+    ).order_by(CatalogItem.description).paginate(page=page, per_page=per_page, error_out=False)
+    items = pagination.items
 
-    # 2. Capture highlight ID for the "shine" effect
     highlight_id = request.args.get("highlight", type=int)
-
-    # 3. Calculate Metrics
-    total_items = len(items)
+    total_items = CatalogItem.query.count()
     total_history_count = PriceHistory.query.count()
 
-    # 4. Prepare Chart Data (Top 5 most frequently quoted items)
-    # Sort by history length descending
-    top_items = sorted(items, key=lambda x: len(x.price_history), reverse=True)[:5]
-
-    chart_labels = [i.description for i in top_items]
-    chart_data = [len(i.price_history) for i in top_items]
+    # Chart: top 5 most frequently quoted items (SQL aggregation)
+    top_rows = db.session.query(
+        CatalogItem.description,
+        func.count(PriceHistory.id).label("cnt")
+    ).outerjoin(PriceHistory, PriceHistory.catalog_item_id == CatalogItem.id
+    ).group_by(CatalogItem.id, CatalogItem.description
+    ).order_by(func.count(PriceHistory.id).desc()).limit(5).all()
+    chart_labels = [r[0] for r in top_rows]
+    chart_data = [r[1] for r in top_rows]
 
     return render_template(
         "catalog/list.html",
@@ -34,7 +39,8 @@ def list_catalog():
         total_items=total_items,
         total_history_count=total_history_count,
         chart_labels=chart_labels,
-        chart_data=chart_data
+        chart_data=chart_data,
+        pagination=pagination,
     )
 
 @catalog_bp.route("/market_price/<int:item_id>")

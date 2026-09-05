@@ -593,27 +593,57 @@ def generate_payroll():
     working_days = working_days - 8
 
     employees = Employee.query.filter(Employee.is_active == True).all()
-    count = 0
+    emp_ids = [e.id for e in employees]
     start_of_month = date(year, month, 1)
+    count = 0
+
+    # Batch: all attendance records for all employees this month
+    attn_rows = db.session.query(
+        AttendanceRecord.employee_id,
+        AttendanceRecord.status,
+        func.count(AttendanceRecord.id).label("cnt")
+    ).filter(
+        AttendanceRecord.employee_id.in_(emp_ids),
+        extract("month", AttendanceRecord.date) == month,
+        extract("year", AttendanceRecord.date) == year,
+    ).group_by(AttendanceRecord.employee_id, AttendanceRecord.status).all()
+
+    attn_map = {}
+    for emp_id, status, cnt in attn_rows:
+        if emp_id not in attn_map:
+            attn_map[emp_id] = {"present": 0, "half_day": 0, "leave": 0}
+        attn_map[emp_id][status] = cnt
+
+    # Batch: prior leaves for all employees
+    prior_leaves_rows = db.session.query(
+        AttendanceRecord.employee_id,
+        func.count(AttendanceRecord.id).label("cnt")
+    ).filter(
+        AttendanceRecord.employee_id.in_(emp_ids),
+        AttendanceRecord.status == "leave",
+        AttendanceRecord.date < start_of_month,
+    ).group_by(AttendanceRecord.employee_id).all()
+    prior_leaves_map = {emp_id: cnt for emp_id, cnt in prior_leaves_rows}
+
+    # Batch: existing payroll records
+    existing_rows = PayrollRecord.query.filter(
+        PayrollRecord.employee_id.in_(emp_ids),
+        PayrollRecord.month == month,
+        PayrollRecord.year == year,
+    ).all()
+    existing_map = {r.employee_id: r for r in existing_rows}
+
     for emp in employees:
-        existing = PayrollRecord.query.filter_by(employee_id=emp.id, month=month, year=year).first()
+        existing = existing_map.get(emp.id)
         if existing and existing.status != "draft":
             continue
-        present = AttendanceRecord.query.filter_by(employee_id=emp.id, status="present").filter(
-            extract("month", AttendanceRecord.date) == month,
-            extract("year", AttendanceRecord.date) == year,
-        ).count()
-        half_days = AttendanceRecord.query.filter_by(employee_id=emp.id, status="half_day").filter(
-            extract("month", AttendanceRecord.date) == month,
-            extract("year", AttendanceRecord.date) == year,
-        ).count()
-        leaves_this_month = AttendanceRecord.query.filter_by(employee_id=emp.id, status="leave").filter(
-            extract("month", AttendanceRecord.date) == month,
-            extract("year", AttendanceRecord.date) == year,
-        ).count()
-        prior_leaves = AttendanceRecord.query.filter_by(employee_id=emp.id, status="leave").filter(
-            AttendanceRecord.date < start_of_month
-        ).count()
+
+        emp_attn = attn_map.get(emp.id, {"present": 0, "half_day": 0, "leave": 0})
+        present = emp_attn["present"]
+        half_days = emp_attn["half_day"]
+        leaves_this_month = emp_attn["leave"]
+        prior_leaves = prior_leaves_map.get(emp.id, 0)
+
         stats = emp.get_paid_leave_stats(as_of_date=start_of_month)
         available_before = max(0, stats["earned"] - prior_leaves)
         paid_leaves_used = min(leaves_this_month, available_before)
@@ -840,19 +870,67 @@ def efficiency():
     if company_id:
         query = query.filter(db.or_(Employee.company_id == company_id, Employee.company_id == None))
     employees = query.order_by(Employee.name).all()
+    emp_ids = [e.id for e in employees]
+
+    # Batch attendance query: get (employee_id, status, count) for all employees in one query
+    attn_rows = db.session.query(
+        AttendanceRecord.employee_id,
+        AttendanceRecord.status,
+        func.count(AttendanceRecord.id).label("cnt")
+    ).filter(
+        AttendanceRecord.employee_id.in_(emp_ids),
+        extract("month", AttendanceRecord.date) == month,
+        extract("year", AttendanceRecord.date) == year,
+    ).group_by(AttendanceRecord.employee_id, AttendanceRecord.status).all()
+
+    attn_map = {}  # {emp_id: {"present": N, "total": N}}
+    for emp_id, status, cnt in attn_rows:
+        if emp_id not in attn_map:
+            attn_map[emp_id] = {"present": 0, "total": 0}
+        attn_map[emp_id]["total"] += cnt
+        if status == "present":
+            attn_map[emp_id]["present"] = cnt
+
+    # Batch task velocity: done this month + 3 months history
+    task_rows = db.session.query(
+        TeamTask.assignee_id,
+        extract("month", TeamTask.completed_at).label("m"),
+        extract("year", TeamTask.completed_at).label("y"),
+        func.count(TeamTask.id).label("cnt")
+    ).filter(
+        TeamTask.assignee_id.in_(emp_ids),
+        TeamTask.status == "done",
+    ).group_by(TeamTask.assignee_id, extract("month", TeamTask.completed_at), extract("year", TeamTask.completed_at)).all()
+
+    task_map = {}  # {emp_id: {(y,m): count}}
+    for emp_id, m, y, cnt in task_rows:
+        if emp_id not in task_map:
+            task_map[emp_id] = {}
+        task_map[emp_id][(int(y), int(m))] = cnt
 
     data = []
     for emp in employees:
-        total_d = AttendanceRecord.query.filter_by(employee_id=emp.id).filter(
-            extract("month", AttendanceRecord.date) == month,
-            extract("year", AttendanceRecord.date) == year,
-        ).count()
-        present_d = AttendanceRecord.query.filter_by(employee_id=emp.id, status="present").filter(
-            extract("month", AttendanceRecord.date) == month,
-            extract("year", AttendanceRecord.date) == year,
-        ).count()
-        attn_pct = (present_d / total_d * 100) if total_d > 0 else 0
-        task_vel = _task_velocity_score(emp.id, month, year)
+        emp_attn = attn_map.get(emp.id, {"present": 0, "total": 0})
+        attn_pct = (emp_attn["present"] / emp_attn["total"] * 100) if emp_attn["total"] > 0 else 0
+
+        # Task velocity
+        emp_tasks = task_map.get(emp.id, {})
+        done_this = emp_tasks.get((year, month), 0)
+        prev_counts = [emp_tasks.get((year * 12 + month - 1 - i) // 12, (year * 12 + month - 1 - i) % 12 + 1) if False else 0 for i in range(1, 4)]
+        # Compute previous months properly
+        prev_counts = []
+        for i in range(1, 4):
+            ym = year * 12 + month - 1 - i
+            py = ym // 12
+            pm = ym % 12 + 1
+            prev_counts.append(emp_tasks.get((py, pm), 0))
+        avg_prev = sum(prev_counts) / 3 if prev_counts else 0
+        if avg_prev == 0:
+            task_vel = min(done_this * 50, 100) if done_this > 0 else 0
+        else:
+            ratio = done_this / avg_prev
+            task_vel = min(round(ratio * 100), 100)
+
         combined = round(attn_pct * 0.6 + task_vel * 0.4, 1)
         data.append({
             "employee": emp,

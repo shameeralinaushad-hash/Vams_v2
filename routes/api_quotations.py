@@ -292,7 +292,9 @@ def create_quotation(order_id):
         line_items.append(li)
     db.session.commit()
 
-    _write_quotation_pdf(order, quotation, line_items)
+    from background import run_in_background
+    run_in_background(_write_quotation_pdf, order, quotation, line_items,
+                      _app=current_app._get_current_object())
 
     log_action("create_quotation", "Quotation", quotation.id, f"Created quotation {quote_number} for {order.client.name}")
 
@@ -421,7 +423,9 @@ def edit_quotation(quotation_id):
         line_items.append(li)
     db.session.commit()
 
-    _write_quotation_pdf(order, quotation, line_items)
+    from background import run_in_background
+    run_in_background(_write_quotation_pdf, order, quotation, line_items,
+                      _app=current_app._get_current_object())
 
     log_action("edit_quotation", "Quotation", quotation.id, f"Edited quotation {quotation.quote_number} for {order.client.name}")
 

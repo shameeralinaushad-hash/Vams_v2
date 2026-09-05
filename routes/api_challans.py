@@ -3,6 +3,7 @@ from datetime import date, datetime
 from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt
 from werkzeug.utils import secure_filename
+from sqlalchemy.orm import selectinload
 from models import db, DeliveryChallan, DeliveryChallanLineItem, CatalogItem, Order, ClientDocSequence
 from utils import get_order_folder
 from pdf_templates.challan_template import generate_challan_pdf
@@ -183,7 +184,11 @@ def get_challan(challan_id):
     if not company_id:
         return jsonify({"success": False, "error": "no_company", "message": "No active company."}), 400
 
-    challan = db.session.get(DeliveryChallan, challan_id)
+    challan = db.session.query(DeliveryChallan).options(
+        selectinload(DeliveryChallan.order),
+        selectinload(DeliveryChallan.line_items),
+        selectinload(DeliveryChallan.purchase_order),
+    ).filter(DeliveryChallan.id == challan_id).first()
     if not challan:
         return jsonify({"success": False, "error": "not_found", "message": "Challan not found."}), 404
 
@@ -201,7 +206,11 @@ def create_challan(order_id):
     if not company_id:
         return jsonify({"success": False, "error": "no_company", "message": "No active company."}), 400
 
-    order = db.session.get(Order, order_id)
+    order = db.session.query(Order).options(
+        selectinload(Order.company),
+        selectinload(Order.client),
+        selectinload(Order.purchase_orders),
+    ).filter(Order.id == order_id).first()
     if not order or order.company_id != company_id:
         return jsonify({"success": False, "error": "not_found", "message": "Order not found."}), 404
 
@@ -268,7 +277,9 @@ def create_challan(order_id):
         line_items.append(li)
     db.session.commit()
 
-    _write_challan_pdf(order, challan, line_items)
+    from background import run_in_background
+    run_in_background(_write_challan_pdf, order, challan, line_items,
+                      _app=current_app._get_current_object())
 
     log_action("create_challan", "DeliveryChallan", challan.id, f"Created delivery challan {challan_number} for {order.client.name}")
 
@@ -288,7 +299,11 @@ def edit_challan(challan_id):
     if not company_id:
         return jsonify({"success": False, "error": "no_company", "message": "No active company."}), 400
 
-    challan = db.session.get(DeliveryChallan, challan_id)
+    challan = db.session.query(DeliveryChallan).options(
+        selectinload(DeliveryChallan.order),
+        selectinload(DeliveryChallan.line_items),
+        selectinload(DeliveryChallan.purchase_order),
+    ).filter(DeliveryChallan.id == challan_id).first()
     if not challan:
         return jsonify({"success": False, "error": "not_found", "message": "Challan not found."}), 404
 
@@ -340,7 +355,9 @@ def edit_challan(challan_id):
         line_items.append(li)
     db.session.commit()
 
-    _write_challan_pdf(order, challan, line_items)
+    from background import run_in_background
+    run_in_background(_write_challan_pdf, order, challan, line_items,
+                      _app=current_app._get_current_object())
 
     log_action("edit_challan", "DeliveryChallan", challan.id, f"Edited challan {challan.challan_number} for {order.client.name}")
 
@@ -357,7 +374,9 @@ def delete_challan(challan_id):
     if not company_id:
         return jsonify({"success": False, "error": "no_company", "message": "No active company."}), 400
 
-    challan = db.session.get(DeliveryChallan, challan_id)
+    challan = db.session.query(DeliveryChallan).options(
+        selectinload(DeliveryChallan.order),
+    ).filter(DeliveryChallan.id == challan_id).first()
     if not challan:
         return jsonify({"success": False, "error": "not_found", "message": "Challan not found."}), 404
 

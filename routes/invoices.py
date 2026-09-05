@@ -2,7 +2,8 @@ import os
 from datetime import date, datetime
 from flask import Blueprint, render_template, request, redirect, url_for, current_app, flash, session
 from werkzeug.utils import secure_filename
-from models import db, Invoice, InvoiceLineItem, CatalogItem, Order, PurchaseOrder, ClientDocSequence, PriceHistory
+from sqlalchemy.orm import selectinload
+from models import db, Invoice, InvoiceLineItem, CatalogItem, Order, PurchaseOrder, ClientDocSequence, PriceHistory, Quotation
 from utils import get_order_folder
 from pdf_templates.invoice_template import generate_invoice_pdf
 from audit import log_action
@@ -123,7 +124,13 @@ def list_invoices():
 
 @invoices_bp.route("/order/<int:order_id>/create", methods=["GET", "POST"])
 def create_invoice(order_id):
-    order = Order.query.get_or_404(order_id)
+    order = db.session.query(Order).options(
+        selectinload(Order.purchase_orders).selectinload(PurchaseOrder.line_items),
+        selectinload(Order.quotations),
+    ).filter(Order.id == order_id).first()
+    if not order:
+        from flask import abort
+        abort(404)
     seq = ClientDocSequence.get_or_create(order.company_id, order.client_id, "invoice")
 
     if request.method == "POST":
@@ -157,7 +164,9 @@ def create_invoice(order_id):
         line_items = _build_invoice_line_items(invoice, data, order)
         db.session.commit()
 
-        _write_invoice_pdf(order, invoice, line_items)
+        from background import run_in_background
+        run_in_background(_write_invoice_pdf, order, invoice, line_items,
+                          _app=current_app._get_current_object())
 
         log_action("create_invoice", "Invoice", invoice.id, f"Created invoice {invoice_number} for {order.client.name}")
 
@@ -199,7 +208,9 @@ def create_invoice(order_id):
         line_items = _build_invoice_line_items(invoice, data, order)
         db.session.commit()
 
-        _write_invoice_pdf(order, invoice, line_items)
+        from background import run_in_background
+        run_in_background(_write_invoice_pdf, order, invoice, line_items,
+                          _app=current_app._get_current_object())
 
         log_action("create_invoice", "Invoice", invoice.id, f"Created invoice {invoice_number} for {order.client.name}")
 
@@ -242,7 +253,13 @@ def create_invoice(order_id):
 
 @invoices_bp.route("/edit/<int:invoice_id>", methods=["GET", "POST"])
 def edit_invoice(invoice_id):
-    invoice = Invoice.query.get_or_404(invoice_id)
+    invoice = db.session.query(Invoice).options(
+        selectinload(Invoice.line_items),
+        selectinload(Invoice.order),
+    ).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        from flask import abort
+        abort(404)
     order = invoice.order
 
     if request.method == "POST":
@@ -264,7 +281,9 @@ def edit_invoice(invoice_id):
         line_items = _build_invoice_line_items(invoice, data, order)
         db.session.commit()
 
-        _write_invoice_pdf(order, invoice, line_items)
+        from background import run_in_background
+        run_in_background(_write_invoice_pdf, order, invoice, line_items,
+                          _app=current_app._get_current_object())
 
         log_action("edit_invoice", "Invoice", invoice.id,
                    f"Edited invoice {invoice.invoice_number} for {order.client.name}")
@@ -290,7 +309,12 @@ def edit_invoice(invoice_id):
 @invoices_bp.route("/delete/<int:invoice_id>", methods=["POST"])
 @permission_required("delete_documents")
 def delete_invoice(invoice_id):
-    invoice = Invoice.query.get_or_404(invoice_id)
+    invoice = db.session.query(Invoice).options(
+        selectinload(Invoice.payments),
+    ).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        from flask import abort
+        abort(404)
     order_id = invoice.order_id
     company_id = invoice.order.company_id
 
@@ -325,7 +349,13 @@ def delete_invoice(invoice_id):
 
 @invoices_bp.route("/regenerate/<int:invoice_id>", methods=["POST"])
 def regenerate_invoice(invoice_id):
-    invoice = Invoice.query.get_or_404(invoice_id)
+    invoice = db.session.query(Invoice).options(
+        selectinload(Invoice.order),
+        selectinload(Invoice.line_items),
+    ).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        from flask import abort
+        abort(404)
     order = invoice.order
     invoice_id = invoice.id
 
@@ -388,7 +418,12 @@ def reactivate_invoice(invoice_id):
 @invoices_bp.route("/<int:invoice_id>/credit-note/add", methods=["POST"])
 @permission_required("issue_credit_notes")
 def add_credit_note(invoice_id):
-    invoice = Invoice.query.get_or_404(invoice_id)
+    invoice = db.session.query(Invoice).options(
+        selectinload(Invoice.credit_notes),
+    ).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        from flask import abort
+        abort(404)
 
     amount = float(request.form.get("amount", 0))
     reason = request.form.get("reason", "").strip()

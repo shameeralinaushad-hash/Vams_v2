@@ -72,7 +72,13 @@ def add_client():
 
 @clients_bp.route("/edit/<int:client_id>", methods=["GET", "POST"])
 def edit_client(client_id):
-    client = Client.query.get_or_404(client_id)
+    from sqlalchemy.orm import selectinload
+    client = db.session.query(Client).options(
+        selectinload(Client.company_links),
+    ).filter(Client.id == client_id).first()
+    if not client:
+        from flask import abort
+        abort(404)
     companies = Company.query.all()
     linked_company_ids = {link.company_id for link in client.company_links}
 
@@ -218,7 +224,13 @@ def update_client_numbering(client_id):
 @clients_bp.route("/<int:client_id>/statement")
 @login_required
 def download_statement(client_id):
-    client = Client.query.get_or_404(client_id)
+    from sqlalchemy.orm import selectinload
+    client = db.session.query(Client).options(
+        selectinload(Client.company_links),
+    ).filter(Client.id == client_id).first()
+    if not client:
+        from flask import abort
+        abort(404)
     orders = Order.query.filter_by(client_id=client.id).order_by(Order.created_at.desc()).all()
 
     company_breakdown = []

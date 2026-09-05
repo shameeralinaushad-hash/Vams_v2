@@ -2,6 +2,7 @@ import os, json
 from datetime import date, datetime
 from flask import Blueprint, request, jsonify, session
 from flask_login import login_required, current_user
+from sqlalchemy import func, case, and_, literal_column
 from models import db, PersonalItem, Order, Client, ClientCompanyLink, Employee, Expense, Invoice, Company
 from rate_limiter import limiter
 
@@ -27,25 +28,46 @@ def _build_context(page, uid):
 
     # ---- Company-wide stats (always available) ----
     if cid:
-        orders = Order.query.filter(Order.company_id == cid).all()
-        ctx["total_orders"] = len(orders)
-        ctx["won_orders"] = sum(1 for o in orders if o.status == "PO Received")
-        ctx["pending_orders"] = sum(1 for o in orders if o.status == "Pending")
-        ctx["not_received"] = sum(1 for o in orders if o.status == "Not Received")
+        order_stats = db.session.query(
+            func.count(Order.id).label("total"),
+            func.sum(case((Order.status == "PO Received", 1), else_=0)).label("won"),
+            func.sum(case((Order.status == "Pending", 1), else_=0)).label("pending"),
+            func.sum(case((Order.status == "Not Received", 1), else_=0)).label("not_received"),
+        ).filter(Order.company_id == cid).first()
+        ctx["total_orders"] = order_stats.total or 0
+        ctx["won_orders"] = int(order_stats.won or 0)
+        ctx["pending_orders"] = int(order_stats.pending or 0)
+        ctx["not_received"] = int(order_stats.not_received or 0)
 
-        invoices = Invoice.query.join(Order).filter(Order.company_id == cid).all()
-        active_invs = [inv for inv in invoices if inv.is_current and not inv.is_cancelled()]
-        ctx["total_invoiced"] = round(sum(inv.net_revenue() for inv in active_invs), 2)
+        inv_stats = db.session.query(
+            func.sum(case((and_(Invoice.is_current == True, Invoice.status != "cancelled"),
+                           Invoice.total_amount), else_=0)).label("total_invoiced"),
+            func.sum(case((and_(Invoice.is_current == True, Invoice.status != "cancelled"),
+                           Invoice.total_amount), else_=0)).label("gross"),
+        ).join(Order).filter(Order.company_id == cid).first()
+        # Net revenue needs payments/credit_notes loaded, so use a subquery
+        active_invs = db.session.query(Invoice).join(Order).filter(
+            Order.company_id == cid, Invoice.is_current == True, Invoice.status != "cancelled"
+        ).all()
+        ctx["total_invoiced"] = round(sum(inv.total_amount for inv in active_invs), 2)
         ctx["outstanding"] = round(sum(inv.balance_due() for inv in active_invs), 2)
-        ctx["overdue_30plus"] = len([inv for inv in invoices if not inv.is_fully_paid() and not inv.is_cancelled() and inv.days_overdue() > 30])
+        ctx["overdue_30plus"] = db.session.query(func.count(Invoice.id)).join(Order).filter(
+            Order.company_id == cid, Invoice.status != "cancelled",
+            Invoice.is_current == True,
+            Invoice.invoice_date < func.current_date() - 30,
+        ).scalar() or 0
 
-        ctx["total_expenses"] = round(sum(e.amount for e in Expense.query.filter_by(company_id=cid).all()), 2)
+        ctx["total_expenses"] = round(
+            db.session.query(func.coalesce(func.sum(Expense.amount), 0))
+            .filter(Expense.company_id == cid).scalar(), 2)
         ctx["estimated_profit"] = round(ctx["total_invoiced"] - ctx["total_expenses"], 2)
 
         ctx["total_clients"] = ClientCompanyLink.query.filter(ClientCompanyLink.company_id == cid).count()
         ctx["total_employees"] = Employee.query.filter(Employee.company_id == cid, Employee.is_active == True).count()
 
-        recent = sorted(orders, key=lambda o: o.created_at, reverse=True)[:5]
+        recent = db.session.query(Order).filter(Order.company_id == cid).order_by(
+            Order.created_at.desc()
+        ).limit(5).all()
         ctx["recent_orders"] = [f"{o.order_number} ({o.status})" for o in recent]
 
     # ---- Page-specific context ----

@@ -3,13 +3,13 @@ import json
 from datetime import date, datetime
 from flask import Blueprint, render_template, request, redirect, url_for, current_app, flash, session, jsonify
 from werkzeug.utils import secure_filename
+from sqlalchemy.orm import selectinload
 from models import db, Quotation, QuotationLineItem, QuotationAnnexure, CatalogItem, Order, ClientDocSequence, PriceHistory, CustomField
 from utils import get_order_folder, validate_upload, delete_file_if_exists
 from pdf_templates.quotation_template import generate_quotation_pdf
 from audit import log_action
 from numbering import build_quotation_number, build_technical_offer_number
 from permissions import permission_required
-from ml.tender_extractor import extract_items_from_file
 from socket_events import emit_company, emit_dashboard_update
 
 # File signature magic bytes for format detection
@@ -363,7 +363,14 @@ def list_quotations():
 
 @quotations_bp.route("/order/<int:order_id>/create", methods=["GET", "POST"])
 def create_quotation(order_id):
-    order = Order.query.get_or_404(order_id)
+    order = db.session.query(Order).options(
+        selectinload(Order.company),
+        selectinload(Order.client),
+        selectinload(Order.quotations),
+    ).filter(Order.id == order_id).first()
+    if not order:
+        from flask import abort
+        abort(404)
     doc_type = "commercial" if request.args.get("doc_type", "commercial") != "technical" else "technical"
     seq_doc_type = "technical" if doc_type == "technical" else "quotation"
     seq = ClientDocSequence.get_or_create(order.company_id, order.client_id, seq_doc_type)
@@ -409,7 +416,9 @@ def create_quotation(order_id):
         line_items = _build_quotation_line_items(quotation, data, order)
         db.session.commit()
 
-        _write_quotation_pdf(order, quotation, line_items)
+        from background import run_in_background
+        run_in_background(_write_quotation_pdf, order, quotation, line_items,
+                          _app=current_app._get_current_object())
 
         log_action("create_quotation", "Quotation", quotation.id, f"Created quotation {quote_number} for {order.client.name}")
 
@@ -454,7 +463,14 @@ def create_quotation(order_id):
 
 @quotations_bp.route("/edit/<int:quotation_id>", methods=["GET", "POST"])
 def edit_quotation(quotation_id):
-    quotation = Quotation.query.get_or_404(quotation_id)
+    quotation = db.session.query(Quotation).options(
+        selectinload(Quotation.order),
+        selectinload(Quotation.line_items),
+        selectinload(Quotation.annexures),
+    ).filter(Quotation.id == quotation_id).first()
+    if not quotation:
+        from flask import abort
+        abort(404)
     order = quotation.order
 
     if request.method == "POST":
@@ -494,7 +510,9 @@ def edit_quotation(quotation_id):
         for path in old_photo_paths - kept_photo_paths:
             delete_file_if_exists(os.path.join(current_app.root_path, "static", path.lstrip("/")))
 
-        _write_quotation_pdf(order, quotation, line_items)
+        from background import run_in_background
+        run_in_background(_write_quotation_pdf, order, quotation, line_items,
+                          _app=current_app._get_current_object())
 
         log_action("edit_quotation", "Quotation", quotation.id,
                    f"Edited quotation {quotation.quote_number} for {order.client.name}")
@@ -538,7 +556,12 @@ def edit_quotation(quotation_id):
 @quotations_bp.route("/delete/<int:quotation_id>", methods=["POST"])
 @permission_required("delete_documents")
 def delete_quotation(quotation_id):
-    quotation = Quotation.query.get_or_404(quotation_id)
+    quotation = db.session.query(Quotation).options(
+        selectinload(Quotation.order),
+    ).filter(Quotation.id == quotation_id).first()
+    if not quotation:
+        from flask import abort
+        abort(404)
     order_id = quotation.order_id
     was_current = quotation.is_current
     quote_number = quotation.quote_number
@@ -625,6 +648,7 @@ def _save_extracted_photos(items):
 @quotations_bp.route("/extract-from-pdf", methods=["POST"])
 def extract_from_pdf():
     """Standard Rule-Based Extraction with Groq AI Fallback."""
+    from ml.tender_extractor import extract_items_from_file
     file = request.files.get("tender_file")
     doc_type = "commercial" if request.form.get("doc_type", "commercial") != "technical" else "technical"
     if not file or not file.filename:
@@ -688,8 +712,10 @@ def extract_from_pdf():
     # doc type with a Photo column). PDF and Excel both support embedded
     # images; Word/other formats don't.
     want_photos = doc_type == "technical" and ext in {"pdf", "xlsx", "xls"}
-    items = extract_items_from_file(file, file.filename, use_groq_fallback=True, force_groq=False,
-                                     include_photos=want_photos)
+    from ml.tender_extractor import _EXTRACTION_LOCK
+    with _EXTRACTION_LOCK:
+        items = extract_items_from_file(file, file.filename, use_groq_fallback=True, force_groq=False,
+                                         include_photos=want_photos)
     if doc_type == "technical" and items:
         for item in items:
             item["unit_price"] = 0.0
@@ -735,6 +761,7 @@ def extract_from_pdf():
 @quotations_bp.route("/extract-with-groq", methods=["POST"])
 def extract_with_groq():
     """Explicit Groq AI Extraction (chunked/token-safe backup provider)."""
+    from ml.tender_extractor import extract_items_from_file
     file = request.files.get("tender_file")
     doc_type = "commercial" if request.form.get("doc_type", "commercial") != "technical" else "technical"
     if not file or not file.filename:
@@ -749,7 +776,9 @@ def extract_with_groq():
             "error": "Supported file types: PDF, Images (PNG/JPG), Excel (.xlsx/.xls), Word (.docx/.doc)"
         })
 
-    items = extract_items_from_file(file, file.filename, force_groq=True)
+    from ml.tender_extractor import _EXTRACTION_LOCK
+    with _EXTRACTION_LOCK:
+        items = extract_items_from_file(file, file.filename, force_groq=True)
     if doc_type == "technical" and items:
         for item in items:
             item["unit_price"] = 0.0
@@ -791,6 +820,7 @@ def extract_with_groq():
 @quotations_bp.route("/extract-with-gemini", methods=["POST"])
 def extract_with_gemini():
     """Direct Multimodal Gemini AI Extraction."""
+    from ml.tender_extractor import extract_items_from_file
     file = request.files.get("tender_file")
     doc_type = "commercial" if request.form.get("doc_type", "commercial") != "technical" else "technical"
     if not file or not file.filename:
@@ -805,7 +835,9 @@ def extract_with_gemini():
             "error": "Supported file types: PDF, Images (PNG/JPG), Excel (.xlsx/.xls), Word (.docx/.doc)"
         })
 
-    items = extract_items_from_file(file, file.filename, force_gemini=True)
+    from ml.tender_extractor import _EXTRACTION_LOCK
+    with _EXTRACTION_LOCK:
+        items = extract_items_from_file(file, file.filename, force_gemini=True)
     if doc_type == "technical" and items:
         for item in items:
             item["unit_price"] = 0.0

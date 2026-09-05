@@ -4,9 +4,10 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from datetime import datetime
+from sqlalchemy.orm import selectinload
 from models import (
     db, Order, PurchaseOrder, PurchaseOrderLineItem, Client, ClientCompanyLink,
-    Company, Quotation, QuotationLineItem, OrderDocument,
+    Company, Quotation, QuotationLineItem, OrderDocument, Invoice, DeliveryChallan,
     Notification, User
 )
 from utils import get_order_folder, validate_upload, ALLOWED_DOC_EXTENSIONS
@@ -154,13 +155,29 @@ def add_order():
 
 @orders_bp.route("/<int:order_id>")
 def view_order(order_id):
-    order = Order.query.get_or_404(order_id)
+    order = db.session.query(Order).options(
+        selectinload(Order.quotations),
+        selectinload(Order.invoices).selectinload(Invoice.payments),
+        selectinload(Order.invoices).selectinload(Invoice.credit_notes),
+        selectinload(Order.delivery_challans),
+        selectinload(Order.purchase_orders).selectinload(PurchaseOrder.line_items),
+        selectinload(Order.documents),
+    ).filter(Order.id == order_id).first()
+    if not order:
+        from flask import abort
+        abort(404)
     return render_template("orders/view.html", order=order)
 
 
 @orders_bp.route("/<int:order_id>/edit", methods=["POST"])
 def edit_order(order_id):
-    order = Order.query.get_or_404(order_id)
+    order = db.session.query(Order).options(
+        selectinload(Order.purchase_orders).selectinload(PurchaseOrder.line_items),
+        selectinload(Order.documents),
+    ).filter(Order.id == order_id).first()
+    if not order:
+        from flask import abort
+        abort(404)
     company_id = require_active_company()
 
     # Target URL to redirect back to exact page (or fallback)
@@ -255,7 +272,12 @@ def mark_status(order_id, new_status):
 
 @orders_bp.route("/<int:order_id>/upload_po", methods=["POST"])
 def upload_po(order_id):
-    order = Order.query.get_or_404(order_id)
+    order = db.session.query(Order).options(
+        selectinload(Order.purchase_orders).selectinload(PurchaseOrder.line_items),
+    ).filter(Order.id == order_id).first()
+    if not order:
+        from flask import abort
+        abort(404)
     redirect_target = request.form.get("next") or request.referrer or url_for("orders.view_order", order_id=order.id)
 
     po_id = request.form.get("po_id", type=int)
@@ -338,11 +360,12 @@ def extract_po(order_id):
         return jsonify({"error": "File type not supported. Use PDF, JPG, or PNG."}), 400
 
     try:
-        from ml.tender_extractor import extract_items_from_file, _last_extraction_error
-        items = extract_items_from_file(
-            file.stream, file.filename,
-            force_gemini=True, return_diagnostics=False
-        )
+        from ml.tender_extractor import extract_items_from_file, _last_extraction_error, _EXTRACTION_LOCK
+        with _EXTRACTION_LOCK:
+            items = extract_items_from_file(
+                file.stream, file.filename,
+                force_gemini=True, return_diagnostics=False
+            )
         if isinstance(items, dict):
             items = items.get("items", [])
         if not items and _last_extraction_error:
@@ -467,7 +490,12 @@ def delete_document(order_id, doc_id):
 @orders_bp.route("/delete/<int:order_id>", methods=["POST"])
 @permission_required("delete_orders")
 def delete_order(order_id):
-    order = Order.query.get_or_404(order_id)
+    order = db.session.query(Order).options(
+        selectinload(Order.invoices).selectinload(Invoice.payments),
+    ).filter(Order.id == order_id).first()
+    if not order:
+        from flask import abort
+        abort(404)
     redirect_target = request.form.get("next") or request.referrer or url_for("orders.list_orders")
 
     if order.invoice and order.invoice.payments:
@@ -500,7 +528,10 @@ def search_preview():
         return jsonify([])
     search_like = f"%{q}%"
     matches = (
-        Order.query.filter(Order.company_id == company_id)
+        db.session.query(Order).options(
+            selectinload(Order.quotations),
+        )
+        .filter(Order.company_id == company_id)
         .filter(
             db.or_(
                 Order.title.ilike(search_like),

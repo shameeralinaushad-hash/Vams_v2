@@ -18,10 +18,11 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
-        "pool_size": 10,
-        "max_overflow": 20,
-        "pool_recycle": 3600,
+        "pool_size": 15,
+        "max_overflow": 30,
+        "pool_recycle": 1800,
         "pool_pre_ping": True,
+        "pool_timeout": 30,
     }
     SEND_FILE_MAX_AGE_DEFAULT = 31536000  # cache static files (letterheads, PDFs, etc.) for 1 year
 

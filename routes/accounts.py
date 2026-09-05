@@ -8,13 +8,12 @@ import csv
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, Response, current_app
 from flask_login import login_required, current_user
 from sqlalchemy import func, extract
-from models import db, Company, User, Order, Invoice, Expense, ExpenseCategory, RecurringExpenseTemplate, Notification, Payable, Client, Budget
+from sqlalchemy.orm import selectinload
+from models import db, Company, User, Order, Invoice, Expense, ExpenseCategory, RecurringExpenseTemplate, Notification, Payable, Client, Budget, Payment, CreditNote
 from audit import log_action
 from utils import parse_float, validate_upload, delete_file_if_exists
 from werkzeug.utils import secure_filename
 from PIL import Image
-import pytesseract
-import pdfplumber
 
 ALLOWED_RECEIPT_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "pdf"}
 
@@ -219,7 +218,10 @@ def _check_overdue_notifications(company_id):
         return
     now = date.today()
 
-    overdue = Invoice.query.join(Order).filter(
+    overdue = db.session.query(Invoice).options(
+        selectinload(Invoice.payments),
+        selectinload(Invoice.credit_notes),
+    ).join(Order).filter(
         Order.company_id == company_id,
         Invoice.status != "cancelled",
         Invoice.invoice_date < now,
@@ -270,7 +272,10 @@ def dashboard():
     net_position = 0
 
     if company_id:
-        invoices = Invoice.query.join(Order).filter(
+        invoices = db.session.query(Invoice).options(
+            selectinload(Invoice.payments),
+            selectinload(Invoice.credit_notes),
+        ).join(Order).filter(
             Order.company_id == company_id,
             Invoice.invoice_date.between(start_date, end_date) if period != "all" else True,
         ).all()
@@ -294,25 +299,65 @@ def dashboard():
         y = ym // 12
         m = ym % 12 + 1
         monthly_labels.append(f"{y}-{m:02d}")
-        inc = 0
-        exp = 0
-        if company_id:
-            invs = Invoice.query.join(Order).filter(
-                Order.company_id == company_id,
-                Invoice.is_current == True,
-                Invoice.status != "cancelled",
-                extract("year", Invoice.invoice_date) == y,
-                extract("month", Invoice.invoice_date) == m,
-            ).all()
-            inc = round(sum(inv.net_revenue() for inv in invs), 2)
-        exps = Expense.query.filter(
-            Expense.expense_date.between(date(y, m, 1), date(y, m, monthrange(y, m)[1]))
-        )
-        if company_id:
-            exps = exps.filter(db.or_(Expense.company_id == company_id, Expense.scope.in_(["personal", "general"])))
-        exp = round(sum(e.amount for e in exps.all()), 2)
-        monthly_income.append(inc)
-        monthly_expenses.append(exp)
+        monthly_income.append(0)
+        monthly_expenses.append(0)
+
+    # Single SQL query for all 6 months of invoices
+    if company_id:
+        pay_sq = db.session.query(
+            Payment.invoice_id,
+            func.sum(Payment.amount).label("paid")
+        ).group_by(Payment.invoice_id).subquery()
+        credit_sq = db.session.query(
+            CreditNote.invoice_id,
+            func.sum(CreditNote.amount).label("credited")
+        ).group_by(CreditNote.invoice_id).subquery()
+
+        monthly_inv = db.session.query(
+            extract("year", Invoice.invoice_date).label("y"),
+            extract("month", Invoice.invoice_date).label("m"),
+            func.sum(
+                Invoice.total_amount
+                - func.coalesce(pay_sq.c.paid, 0)
+                - func.coalesce(credit_sq.c.credited, 0)
+            ).label("revenue")
+        ).outerjoin(pay_sq, pay_sq.c.invoice_id == Invoice.id
+        ).outerjoin(credit_sq, credit_sq.c.invoice_id == Invoice.id
+        ).join(Order, Order.id == Invoice.order_id
+        ).filter(
+            Order.company_id == company_id,
+            Invoice.is_current == True,
+            Invoice.status != "cancelled",
+        ).group_by(
+            extract("year", Invoice.invoice_date),
+            extract("month", Invoice.invoice_date)
+        ).all()
+
+        inv_map = {(int(r.y), int(r.m)): round(float(r.revenue or 0), 2) for r in monthly_inv}
+        for i in range(6):
+            ym = today.year * 12 + today.month - 1 - i
+            y = ym // 12
+            m = ym % 12 + 1
+            monthly_income[5 - i] = inv_map.get((y, m), 0)
+
+        # Single SQL query for all 6 months of expenses
+        monthly_exp = db.session.query(
+            extract("year", Expense.expense_date).label("y"),
+            extract("month", Expense.expense_date).label("m"),
+            func.sum(Expense.amount).label("total")
+        ).filter(
+            db.or_(Expense.company_id == company_id, Expense.scope.in_(["personal", "general"]))
+        ).group_by(
+            extract("year", Expense.expense_date),
+            extract("month", Expense.expense_date)
+        ).all()
+
+        exp_map = {(int(r.y), int(r.m)): round(float(r.total or 0), 2) for r in monthly_exp}
+        for i in range(6):
+            ym = today.year * 12 + today.month - 1 - i
+            y = ym // 12
+            m = ym % 12 + 1
+            monthly_expenses[5 - i] = exp_map.get((y, m), 0)
 
     top_categories = db.session.query(
         ExpenseCategory.name, func.coalesce(func.sum(Expense.amount), 0).label("total")
@@ -324,14 +369,23 @@ def dashboard():
     recurring_url = url_for("accounts.list_recurring_templates")
     generate_recurring_url = url_for("accounts.generate_recurring")
 
-    total_inflow = sum(
-        inv.net_revenue() for inv in
-        Invoice.query.join(Order).filter(
-            Invoice.is_current == True,
-            Invoice.status != "cancelled",
-            Invoice.invoice_date.between(start_date, end_date) if period != "all" else True,
-        ).all()
-    )
+    total_inflow = db.session.query(
+        func.coalesce(func.sum(
+            Invoice.total_amount
+            - func.coalesce(
+                db.session.query(func.sum(Payment.amount)).filter(Payment.invoice_id == Invoice.id).correlate(Invoice).scalar_subquery(),
+                0
+            )
+            - func.coalesce(
+                db.session.query(func.sum(CreditNote.amount)).filter(CreditNote.invoice_id == Invoice.id).correlate(Invoice).scalar_subquery(),
+                0
+            )
+        ), 0)
+    ).join(Order).filter(
+        Invoice.is_current == True,
+        Invoice.status != "cancelled",
+        Invoice.invoice_date.between(start_date, end_date) if period != "all" else True,
+    ).scalar()
     total_outflow = sum(
         e.amount for e in
         Expense.query.filter(
@@ -355,7 +409,10 @@ def dashboard():
 
     # Receivables & Payables
     if company_id:
-        invoices = Invoice.query.join(Order).filter(Order.company_id == company_id).all()
+        invoices = db.session.query(Invoice).options(
+            selectinload(Invoice.payments),
+            selectinload(Invoice.credit_notes),
+        ).join(Order).filter(Order.company_id == company_id).all()
         unpaid = [inv for inv in invoices if not inv.is_fully_paid() and not inv.is_cancelled()]
         total_receivable = sum(inv.balance_due() for inv in unpaid)
         aging_receivable = {"0_30": 0, "31_60": 0, "60_plus": 0}
@@ -426,22 +483,22 @@ def personal_expenses():
     pagination = query.order_by(Expense.expense_date.desc()).paginate(page=page, per_page=per_page, error_out=False)
     expenses = pagination.items
 
-    this_month = sum(e.amount for e in Expense.query.filter(
-        Expense.scope == "personal",
-        Expense.created_by == current_user.id,
-        Expense.expense_date.between(date.today().replace(day=1), date.today())
-    ).all())
-    last_month_start = (date.today().replace(day=1) - timedelta(days=1)).replace(day=1)
-    last_month = sum(e.amount for e in Expense.query.filter(
-        Expense.scope == "personal",
-        Expense.created_by == current_user.id,
-        Expense.expense_date.between(last_month_start, date.today().replace(day=1) - timedelta(days=1))
-    ).all())
-    ytd = sum(e.amount for e in Expense.query.filter(
-        Expense.scope == "personal",
-        Expense.created_by == current_user.id,
-        Expense.expense_date.between(date(date.today().year, 1, 1), date.today())
-    ).all())
+    today = date.today()
+    personal_filter = [Expense.scope == "personal", Expense.created_by == current_user.id]
+
+    this_month = float(db.session.query(func.coalesce(func.sum(Expense.amount), 0)).filter(
+        *personal_filter,
+        Expense.expense_date.between(today.replace(day=1), today)
+    ).scalar())
+    last_month_start = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+    last_month = float(db.session.query(func.coalesce(func.sum(Expense.amount), 0)).filter(
+        *personal_filter,
+        Expense.expense_date.between(last_month_start, today.replace(day=1) - timedelta(days=1))
+    ).scalar())
+    ytd = float(db.session.query(func.coalesce(func.sum(Expense.amount), 0)).filter(
+        *personal_filter,
+        Expense.expense_date.between(date(today.year, 1, 1), today)
+    ).scalar())
 
     categories = _categories_for_scope("personal")
     cat_totals = _expense_cat_totals("personal", start_date, end_date, user_id=current_user.id)
@@ -543,10 +600,10 @@ def general_expenses():
     pagination = query.order_by(Expense.expense_date.desc()).paginate(page=page, per_page=per_page, error_out=False)
     expenses = pagination.items
 
-    overall_spent = sum(e.amount for e in Expense.query.filter(
+    overall_spent = float(db.session.query(func.coalesce(func.sum(Expense.amount), 0)).filter(
         Expense.scope == "general",
         Expense.expense_date.between(start_date, end_date)
-    ).all())
+    ).scalar())
 
     today = date.today()
     budget_rows = _budget_rows(today.month, today.year, None, "general")
@@ -651,7 +708,10 @@ def company_accounts():
 
     all_companies = Company.query.all()
 
-    invoices = Invoice.query.join(Order).filter(Order.company_id == company_id).all()
+    invoices = db.session.query(Invoice).options(
+        selectinload(Invoice.payments),
+        selectinload(Invoice.credit_notes),
+    ).join(Order).filter(Order.company_id == company_id).all()
     total_revenue = sum(inv.net_revenue() for inv in invoices if inv.is_current and not inv.is_cancelled())
     period_revenue = sum(inv.net_revenue() for inv in invoices if
                          inv.is_current and not inv.is_cancelled() and inv.invoice_date
@@ -673,10 +733,10 @@ def company_accounts():
     total_expenses = db.session.query(func.coalesce(func.sum(Expense.amount), 0)).filter(
         Expense.company_id == company_id
     ).scalar()
-    period_expenses = sum(e.amount for e in Expense.query.filter(
+    period_expenses = float(db.session.query(func.coalesce(func.sum(Expense.amount), 0)).filter(
         Expense.company_id == company_id,
         Expense.expense_date.between(start_date, end_date)
-    ).all())
+    ).scalar())
     net_profit = collected_revenue - period_expenses
 
     categories = _categories_for_scope("company")
@@ -703,10 +763,10 @@ def company_accounts():
                    inv.is_current and not inv.is_cancelled() and inv.invoice_date
                    and inv.invoice_date.year == y and inv.invoice_date.month == m)
         monthly_collected.append(round(coll, 2))
-        exps = sum(e.amount for e in Expense.query.filter(
+        exps = float(db.session.query(func.coalesce(func.sum(Expense.amount), 0)).filter(
             Expense.company_id == company_id,
             Expense.expense_date.between(date(y, m, 1), date(y, m, monthrange(y, m)[1]))
-        ).all())
+        ).scalar())
         monthly_exp.append(round(exps, 2))
 
     return render_template("accounts/company.html",
@@ -1245,6 +1305,7 @@ def receipt_ocr_import():
 
 
 def _ocr_image_text(path):
+    import pytesseract
     try:
         img = Image.open(path)
         img = img.convert("L")
@@ -1258,6 +1319,7 @@ def _ocr_image_text(path):
 
 
 def _ocr_pdf_text(path):
+    import pdfplumber
     text_parts = []
     try:
         with pdfplumber.open(path) as pdf:
